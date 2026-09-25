@@ -288,6 +288,12 @@ SF.Main = (() => {
       input.aimYaw = Math.atan2(dx, dz);
       input.aimPitch = Math.atan2(aimPoint.pos.y - (p.y + 2.2), Math.hypot(dx, dz));
     } else { input.aimYaw = camYaw; input.aimPitch = 0; }
+    // 固定战斗室歼击车(WoT 式): 瞄准点超出射界 → 车体自动转向瞄准点(伴随回转扩圈)
+    if (p.parts.noTurret && aimPoint) {
+      const arc = (p.spec.gunArc !== undefined) ? p.spec.gunArc : 10 * Math.PI / 180;
+      const off = SF.Util.angDiff(p.yaw, input.aimYaw);
+      if (Math.abs(off) > arc * 0.9) input.steer = SF.Util.clamp(off * 2.5, -1, 1);
+    }
     return input;
   }
 

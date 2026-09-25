@@ -117,7 +117,12 @@ SF.Tank = class {
     const localYaw = Math.atan2(AIM_LOCAL.x, AIM_LOCAL.z);
     const localElev = Math.atan2(AIM_LOCAL.y, Math.hypot(AIM_LOCAL.x, AIM_LOCAL.z));
     if (this.parts.noTurret) {
-      this.turretYaw = this.yaw; this.lastTurretRate = yawRate;
+      // 固定战斗室(WoT 式): 火炮在 ±gunArc 射界内横向伺服; 超界由引擎/玩家自动转车体对准
+      const arc = (S.gunArc !== undefined) ? S.gunArc : 10 * Math.PI / 180;
+      const layYaw = U.clamp(localYaw, -arc, arc);
+      const before = this.turretYaw;
+      this.turretYaw = U.angMoveToward(this.turretYaw, this.yaw + layYaw, Math.max(S.turretTraverse, 0.4) * dt);
+      this.lastTurretRate = U.angDiff(before, this.turretYaw) / dt;
     } else {
       const before = this.turretYaw;
       this.turretYaw = U.angMoveToward(this.turretYaw, this.yaw + localYaw, S.turretTraverse * dt);
@@ -129,7 +134,7 @@ SF.Tank = class {
     const D = S.dispersion;
     const moveK = Math.abs(this.speed) / S.maxSpeed * D.move;
     const turnK = Math.min(1, Math.abs(this.lastYawRate) / S.hullTraverse) * D.hullTurn;
-    const turK = this.parts.noTurret ? 0 : Math.min(1, Math.abs(this.lastTurretRate) / Math.max(S.turretTraverse, 0.01)) * D.turretTurn;
+    const turK = Math.min(1, Math.abs(this.lastTurretRate) / Math.max(S.turretTraverse, 0.01)) * D.turretTurn;
     const target = U.clamp(D.base * (1 + moveK + turnK + turK), D.base, D.max);
     this.disp += (target - this.disp) * (1 - Math.exp(-dt * 2.2 / D.aimTime));
 

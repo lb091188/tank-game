@@ -89,7 +89,7 @@ SF.CFG = {
     stug3: {
       name: '三号突击炮 G', nation: 'GER', cls: 'TD', tier: 'V', hp: 700,
       maxSpeed: 11.11, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
-      hullTraverse: 37.0 * Math.PI / 180, turretTraverse: 0.0 * Math.PI / 180,
+      hullTraverse: 37.0 * Math.PI / 180, turretTraverse: 0.45 * Math.PI / 180, gunArc: 10 * Math.PI / 180,   // 固定战斗室: ±10° 射界内横向伺服, 超界自动转车体
       gunDepression: -8 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
       gun: { pen: 132, dmg: 200, reload: 5.4, speed: 790 },
       sample: { l: 3.05, w: 1.5 },
@@ -98,7 +98,7 @@ SF.CFG = {
     jagdpanther: {
       name: '猎豹歼击车', nation: 'GER', cls: 'TD', tier: 'VII', hp: 1150,
       maxSpeed: 12.78, reverseRatio: 0.42, accel: 3.8, brake: 9, coastDrag: 5.2,
-      hullTraverse: 36.0 * Math.PI / 180, turretTraverse: 0.0 * Math.PI / 180,
+      hullTraverse: 36.0 * Math.PI / 180, turretTraverse: 0.42 * Math.PI / 180, gunArc: 11 * Math.PI / 180,   // 固定战斗室: ±11° 射界内横向伺服, 超界自动转车体
       gunDepression: -7 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
       gun: { pen: 175, dmg: 260, reload: 7.0, speed: 1000 },
       sample: { l: 3.5, w: 1.7 },
@@ -161,7 +161,7 @@ SF.CFG = {
     su85: {
       name: 'SU-85 歼击车', nation: 'USSR', cls: 'TD', tier: 'V', hp: 700,
       maxSpeed: 13.06, reverseRatio: 0.42, accel: 4.0, brake: 9, coastDrag: 5.2,
-      hullTraverse: 38.0 * Math.PI / 180, turretTraverse: 0.0 * Math.PI / 180,
+      hullTraverse: 38.0 * Math.PI / 180, turretTraverse: 0.45 * Math.PI / 180, gunArc: 10 * Math.PI / 180,   // 固定战斗室: ±10° 射界内横向伺服, 超界自动转车体
       gunDepression: -5 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
       gun: { pen: 130, dmg: 220, reload: 6.0, speed: 792 },
       sample: { l: 3.0, w: 1.6 },
@@ -170,7 +170,7 @@ SF.CFG = {
     su100: {
       name: 'SU-100 歼击车', nation: 'USSR', cls: 'TD', tier: 'VI', hp: 900,
       maxSpeed: 13.33, reverseRatio: 0.42, accel: 4.0, brake: 9, coastDrag: 5.2,
-      hullTraverse: 38.0 * Math.PI / 180, turretTraverse: 0.0 * Math.PI / 180,
+      hullTraverse: 38.0 * Math.PI / 180, turretTraverse: 0.42 * Math.PI / 180, gunArc: 11 * Math.PI / 180,   // 固定战斗室: ±11° 射界内横向伺服, 超界自动转车体
       gunDepression: -5 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
       gun: { pen: 175, dmg: 320, reload: 8.5, speed: 895 },
       sample: { l: 3.0, w: 1.6 },
@@ -179,7 +179,7 @@ SF.CFG = {
     isu152: {
       name: 'ISU-152', nation: 'USSR', cls: 'TD', tier: 'VII', hp: 1150,
       maxSpeed: 11.94, reverseRatio: 0.42, accel: 3.4, brake: 9, coastDrag: 5.2,
-      hullTraverse: 30.0 * Math.PI / 180, turretTraverse: 0.0 * Math.PI / 180,
+      hullTraverse: 30.0 * Math.PI / 180, turretTraverse: 0.35 * Math.PI / 180, gunArc: 8 * Math.PI / 180,   // 固定战斗室: ±8° 射界内横向伺服, 超界自动转车体
       gunDepression: -4 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
       gun: { pen: 175, dmg: 620, reload: 13, speed: 600 },
       sample: { l: 3.45, w: 1.65 },
@@ -296,7 +296,7 @@ SF.CFG = {
     ferdinand: {
       name: '斐迪南歼击车', nation: 'GER', cls: 'TD', tier: 'VII', hp: 1250,
       maxSpeed: 8.33, reverseRatio: 0.42, accel: 2.6, brake: 9, coastDrag: 5.2,
-      hullTraverse: 28.0 * Math.PI / 180, turretTraverse: 0.0 * Math.PI / 180,
+      hullTraverse: 28.0 * Math.PI / 180, turretTraverse: 0.4 * Math.PI / 180, gunArc: 14 * Math.PI / 180,   // 固定战斗室: ±14° 射界内横向伺服, 超界自动转车体
       gunDepression: -7 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
       gun: { pen: 194, dmg: 240, reload: 7.5, speed: 1000 },
       sample: { l: 3.5, w: 1.65 },
@@ -377,7 +377,7 @@ SF.CFG = {
     td: {
       name: '敌方坦克歼击车', hp: 650,
       maxSpeed: 9.7, reverseRatio: 0.4, accel: 3.0, brake: 8, coastDrag: 4.6,
-      hullTraverse: 20 * Math.PI / 180, turretTraverse: 0,   // 战斗室固定: 无炮塔回转
+      hullTraverse: 20 * Math.PI / 180, turretTraverse: 0.45 * Math.PI / 180, gunArc: 10 * Math.PI / 180,   // 固定战斗室: ±10° 射界内横向伺服, 超界自动转车体
       gunDepression: -6 * Math.PI / 180, gunElevation: 12 * Math.PI / 180,
       gun: { pen: 120, dmg: 280, reload: 8.0, speed: 1000 },
       sample: { l: 3.35, w: 1.45 },
