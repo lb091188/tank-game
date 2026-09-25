@@ -173,12 +173,13 @@ function makeTrackTexture() {
     raw[row] = 0;
     for (let x = 0; x < W; x++) {
       const link = (x % 8) < 6;                       // 8px = 一节链节, 6px 链板 + 2px 缝
-      let r = 26, g = 26, b = 28;                     // 缝隙暗色
+      let r = 20, g = 20, b = 22;                     // 缝隙暗色(高对比)
       if (link) {
-        r = g = b = 52 + Math.round(hash3(x, y, 7) * 10);   // 链板 + 微噪声
-        if (y >= 26 && y <= 38) r = g = b = 74;       // 中部导向齿
-        if (y < 4 || y > 59) r = g = b = 40;          // 上下边缘暗
-        if ((x % 8) < 1 || (x % 8) > 4) r += 8;       // 链节边缘微亮(销轴)
+        r = g = b = 96 + Math.round(hash3(x, y, 7) * 18);   // 链板亮(滚动参照)
+        if (y >= 26 && y <= 38) r = g = b = 130;      // 中部导向齿(最亮)
+        if (y < 4 || y > 59) r = g = b = 60;          // 上下边缘
+        if ((x % 8) < 1 || (x % 8) > 4) r = g = b += 14;    // 链节边缘(销轴)
+        if ((y === 8 || y === 55) && (x % 8) >= 2 && (x % 8) <= 4) r = g = b = 150;  // 铆钉亮点
       }
       raw[row + 1 + x * 3] = r; raw[row + 1 + x * 3 + 1] = g; raw[row + 1 + x * 3 + 2] = b;
     }
@@ -215,7 +216,8 @@ function part(geo, m, color, camoScale = 0.85, tileZ = 0) {
     const dirt = 0.70 + 0.30 * clamp01(y / 3.2);                                               // 下部泥土渐变
     const noise = 0.96 + 0.08 * hash3(Math.round(x * 8), Math.round(y * 8), Math.round(z * 8));
     const k = (patch ? camoScale : 1) * dirt * noise;
-    colors[i * 3] = base[0] * k; colors[i * 3 + 1] = base[1] * k; colors[i * 3 + 2] = base[2] * k;
+    const kk = tileZ > 0 ? 1 : k;                     // 履带板保持纹理原始对比度
+    colors[i * 3] = base[0] * kk; colors[i * 3 + 1] = base[1] * kk; colors[i * 3 + 2] = base[2] * kk;
   }
   let uvs = null;
   if (tileZ > 0) {
@@ -249,6 +251,11 @@ function addWheel(root, x, y, z, r, thick, interleave = false) {
   const w = N(`wheel${wheelSeq++}`, { translation: [x, y, z], extras: { wheelR: r } });
   w.parts.push(part(cyl(r, r, thick, 12), M4x(0, 0, 0, 0, 0, Math.PI / 2), [0.2, 0.21, 0.22]));
   w.parts.push(part(cyl(r * (interleave ? 0.7 : 0.55), r * (interleave ? 0.7 : 0.55), thick + 0.05, 10), M4x(0, 0, 0, 0, 0, Math.PI / 2), RUBBER));
+  w.parts.push(part(cyl(r * 0.34, r * 0.34, thick + 0.08, 8), M4x(0, 0, 0, 0, 0, Math.PI / 2), [0.3, 0.31, 0.32]));   // 轮毂盖
+  for (let b = 0; b < 5; b++) {                                                                                          // 5 颗外露螺栓(旋转参照)
+    const a = b / 5 * Math.PI * 2;
+    w.parts.push(part(cyl(0.048, 0.048, thick + 0.14, 6), M4x(0, Math.sin(a) * r * 0.58, Math.cos(a) * r * 0.58, 0, 0, Math.PI / 2), [0.5, 0.52, 0.55]));
+  }
   root.children.push(w);
   return w;
 }
