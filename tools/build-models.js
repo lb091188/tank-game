@@ -240,6 +240,7 @@ const M4x = (x, y, z, rx = 0, ry = 0, rz = 0, s = 1) =>
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 const cyl = (rt, rb, h, seg = 12) => new THREE.CylinderGeometry(rt, rb, h, seg);
 const sphere = (r, seg = 8) => new THREE.SphereGeometry(r, seg, Math.max(4, seg >> 1));
+const sphereSeg = (r, wSeg, hSeg, phiStart, phiLen) => new THREE.SphereGeometry(r, wSeg, hSeg, phiStart, phiLen, 0, Math.PI / 2);  // 竖直上半球扇区
 
 const TRACK_C = [0.12, 0.12, 0.12], GUN_C = [0.16, 0.16, 0.15], RUBBER = [0.08, 0.08, 0.08];
 const OLIVE = [0.33, 0.35, 0.22], GRAY = [0.30, 0.31, 0.34], DGRAY = [0.23, 0.24, 0.26], YGRAY = [0.43, 0.39, 0.27];
@@ -308,11 +309,12 @@ function hullKit(zone, w, y, z, col) {
 }
 
 /* ============ 火炮(套管+制退器) ============ */
-function buildGun(pivot, r, len, col, brake) {
+function buildGun(pivot, r, len, col, brake, evac) {
   const gun = N('gun', { translation: pivot });
   const barrel = N('barrel', { extras: { zone: 'gun', armor: 0 } });
   barrel.parts.push(part(cyl(r * 1.45, r * 1.6, 0.55, 10), M4x(0, 0, 0.24, Math.PI / 2, 0, 0), col));          // 防危板/套管
   barrel.parts.push(part(cyl(r, r, len - 0.5, 10), M4x(0, 0, len / 2 + 0.2, Math.PI / 2, 0, 0), col));
+  if (evac) barrel.parts.push(part(cyl(r * 1.4, r * 1.4, len * 0.18, 10), M4x(0, 0, len * 0.58, Math.PI / 2, 0, 0), col));   // 抽烟装置
   if (brake) {
     barrel.parts.push(part(cyl(r + 0.05, r + 0.05, 0.34, 10), M4x(0, 0, len - 0.28, Math.PI / 2, 0, 0), col)); // 双气室制退器
     barrel.parts.push(part(cyl(r - 0.02, r - 0.02, 0.1, 10), M4x(0, 0, len + 0.02, Math.PI / 2, 0, 0), col));
@@ -401,11 +403,22 @@ function buildRosterTank(T) {
   if (T.skirts) for (const sx of [-1, 1]) hullSide.parts.push(part(box(0.05, 0.6, H.l * 0.7), M4x(sx * (H.w / 2 + 0.38), H.y - 0.2, 0.1), C));
   fenders(hullSide, H.w / 2, H.y + H.h / 2 + 0.05, H.l * 0.92, C);
   hullKit(hullSide, H.w, H.y + H.h / 2 + 0.2, H.l / 2 - 0.15, C);
+  if (T.sponson) {   // M3 李式: 右前侧向 75 炮廓
+    hullSide.parts.push(part(box(1.2, 0.8, H.w * 0.9), M4x(H.w * 0.42, H.y + H.h * 0.55, H.l * 0.22), C));
+    hullSide.parts.push(part(cyl(0.075, 0.075, 1.5, 8), M4x(H.w * 0.95, H.y + H.h * 0.55, H.l * 0.22, 0, 0, Math.PI / 2), GUN_C));
+  }
   root.children.push(hullSide);
 
   const glacis = Z('glacis', T.armor.glacis);
-  glacis.parts.push(part(box(H.w * 0.94, T.gl / Math.cos(T.ga), 0.2),
-    M4x(0, H.y + H.h / 2 - Math.cos(T.ga) * T.gl / 2, H.l / 2 - 0.3 + Math.sin(T.ga) * T.gl / 2, -T.ga, 0, 0), C));
+  if (T.pike) {
+    // 楔形首上(尖鼻子): 左右两块半宽板向内收角, IS-3/59式/T-54 家族特征
+    for (const sx of [-1, 1])
+      glacis.parts.push(part(box(H.w * 0.55, T.gl / Math.cos(T.ga), 0.2),
+        M4x(sx * H.w * 0.24, H.y + H.h / 2 - Math.cos(T.ga) * T.gl / 2, H.l / 2 - 0.3 + Math.sin(T.ga) * T.gl / 2, -T.ga, sx * 0.38, 0), C));
+  } else {
+    glacis.parts.push(part(box(H.w * 0.94, T.gl / Math.cos(T.ga), 0.2),
+      M4x(0, H.y + H.h / 2 - Math.cos(T.ga) * T.gl / 2, H.l / 2 - 0.3 + Math.sin(T.ga) * T.gl / 2, -T.ga, 0, 0), C));
+  }
   root.children.push(glacis);
   const lower = Z('lowerPlate', T.armor.lower);
   lower.parts.push(part(box(H.w * 0.94, H.h * 0.75, 0.18), M4x(0, H.y - H.h * 0.12, H.l / 2 - 0.03, -0.22, 0, 0), C));
@@ -418,20 +431,21 @@ function buildRosterTank(T) {
   engineDeck(top, rear, H.w, H.y + H.h / 2 + 0.07, -H.l / 2 + 1.2, C);
   root.children.push(top);
 
-  const gun = { r: T.gr || 0.075, len: T.gl2, brake: T.brake !== false };
+  const gun = { r: T.gr || 0.075, len: T.gl2, brake: T.brake !== false, evac: !!T.evac };
   if (T.turret === 'casemate') {
     // 固定战斗室(突击炮/歼击车)
     const cy = H.y + H.h / 2;
     const mantlet = Z('mantlet', T.armor.mantlet);
-    mantlet.parts.push(part(box(H.w * 0.84, T.casH, 0.22), M4x(0, cy + T.casH / 2, H.l / 2 - 0.45, -T.casA || -0.35, 0, 0), C));
+    const cz = T.casZ || 0;
+    mantlet.parts.push(part(box(H.w * 0.84, T.casH, 0.22), M4x(0, cy + T.casH / 2, H.l / 2 - 0.45 + cz, -T.casA || -0.35, 0, 0), C));
     root.children.push(mantlet);
     const casS = Z('turretSide', T.armor.turretSide);
-    for (const sx of [-1, 1]) casS.parts.push(part(box(0.16, T.casH, T.casL || 2.4), M4x(sx * H.w * 0.4, cy + T.casH / 2, H.l / 2 - 1.2), C));
+    for (const sx of [-1, 1]) casS.parts.push(part(box(0.16, T.casH, T.casL || 2.4), M4x(sx * H.w * 0.4, cy + T.casH / 2, H.l / 2 - 1.2 + cz), C));
     root.children.push(casS);
     const casT = Z('turretRoof', T.armor.top);
-    casT.parts.push(part(box(H.w * 0.85, 0.12, (T.casL || 2.4) + 0.4), M4x(0, cy + T.casH + 0.05, H.l / 2 - 1.25), C));
+    casT.parts.push(part(box(H.w * 0.85, 0.12, (T.casL || 2.4) + 0.4), M4x(0, cy + T.casH + 0.05, H.l / 2 - 1.25 + cz), C));
     root.children.push(casT);
-    root.children.push(buildGun([0, cy + T.casH * 0.6, H.l / 2 + 0.05], gun.r, gun.len, GUN_C, gun.brake));
+    root.children.push(buildGun([0, cy + T.casH * 0.6, H.l / 2 + 0.05 + cz], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
   } else {
     // 旋转炮塔: cyl(铸造圆塔) / box(方塔) / open(敞篷圆塔)
     const cy = H.y + H.h / 2 + 0.04;
@@ -442,7 +456,25 @@ function buildRosterTank(T) {
     const tSide = Z('turretSide', T.armor.turretSide);
     const tRear = Z('turretRear', T.armor.turretRear || T.armor.turretSide);
     const tRoof = Z('turretRoof', T.armor.top);
-    if (TR.kind === 'cyl' || TR.kind === 'open') {
+    if (TR.kind === 'dome') {
+      // 铸造半球炮塔(59式/IS-3/T-44/百人队长): 前扇区=炮塔正面, 侧扇区=侧面, 顶部圆盖
+      const rr = TR.r;
+      tFront.parts.push(part(sphereSeg(rr, 10, 6, -0.75, 1.5), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
+      tSide.parts.push(part(sphereSeg(rr, 10, 6, 0.75, 1.82), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
+      tSide.parts.push(part(sphereSeg(rr, 10, 6, 2.57, 1.82), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
+      tRear.parts.push(part(sphereSeg(rr, 10, 6, 4.39, 1.5), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
+      tRoof.parts.push(part(cyl(rr * 0.55, rr * 0.62, 0.12, 12), M4x(0, ty + TR.th * 0.72, 0), C));
+      tRoof.parts.push(part(cyl(0.34, 0.36, 0.26, 8), M4x(rr * 0.42, ty + TR.th * 0.72 + 0.16, -0.15), C));   // 半球上指挥塔
+      if (TR.bustle) tRear.parts.push(part(box(rr * 1.3, TR.th * 0.5, 0.7), M4x(0, ty, -rr - 0.3), C));
+    } else if (TR.kind === 'hex') {
+      // T-34/76 式六棱炮塔: 六棱柱体 + 前装甲板 + 后尾舱
+      tSide.parts.push(part(cyl(TR.r, TR.r * 0.94, TR.th, 6), M4x(0, ty, 0, 0, Math.PI / 6, 0), C));
+      tFront.parts.push(part(box(TR.r * 1.1, TR.th, 0.2), M4x(0, ty, TR.r * 0.72), C));
+      tRear.parts.push(part(box(TR.r * 1.5, TR.th * 0.7, 0.6), M4x(0, ty - 0.05, -TR.r * 0.85), C));
+      tRoof.parts.push(part(cyl(TR.r * 0.62, TR.r * 0.62, 0.1, 6), M4x(0, TR.th + 0.03, 0, 0, Math.PI / 6, 0), C));
+      tRoof.parts.push(part(cyl(0.3, 0.32, 0.2, 8), M4x(TR.r * 0.3, TR.th + 0.12, -0.1), C));
+      tRoof.parts.push(part(box(0.6, 0.3, 0.4), M4x(-TR.r * 0.3, TR.th + 0.06, 0.2), C));   // 双开舱门
+    } else if (TR.kind === 'cyl' || TR.kind === 'open') {
       tFront.parts.push(part(cyl(TR.r * 0.94, TR.r, TR.th, 16), M4x(0, ty, 0), C));
       if (TR.bustle) tFront.parts.push(part(box(TR.r * 1.3, TR.th * 0.7, 0.8), M4x(0, ty, -TR.r - 0.35), C));
       tSide.parts.push(part(cyl(TR.r * 0.96, TR.r, 0.06, 16), M4x(0, TR.th + 0.02, 0), C));
@@ -458,13 +490,15 @@ function buildRosterTank(T) {
       tRear.parts.push(part(box(tw, TR.th, 0.16), M4x(0, ty, -tl / 2 + 0.04), C));
       tRoof.parts.push(part(box(tw - 0.1, 0.1, tl - 0.1), M4x(0, TR.th + 0.05, 0), C));
     }
-    tRoof.parts.push(part(cyl(0.34, 0.36, 0.26, 8), M4x(TR.r ? TR.r * 0.45 : 0.5, TR.kind === 'box' ? TR.th + 0.2 : TR.th + 0.2, -0.2), C));  // 指挥塔
+    if (TR.kind !== 'dome' && TR.kind !== 'hex')
+      tRoof.parts.push(part(cyl(0.34, 0.36, 0.26, 8), M4x(TR.r ? TR.r * 0.45 : 0.5, TR.kind === 'box' ? TR.th + 0.2 : TR.th + 0.2, -0.2), C));  // 指挥塔
     const mantlet = Z('mantlet', T.armor.mantlet);
-    const mR = TR.kind === 'box' ? null : TR.r * 0.45;
+    if (T.mantletBlob) mantlet.parts.push(part(sphere(0.5, 10).scale ? new THREE.SphereGeometry(0.48, 10, 8) : null, M4x(0, ty + 0.02, (TR.l || TR.r * 2) / 2 - 0.05, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.9, 0.8)), C));  // 猪头炮盾(黑豹/三突)
+    const mR = (TR.kind === 'box' || TR.kind === 'dome' || TR.kind === 'hex') ? null : TR.r * 0.45;
     if (mR) mantlet.parts.push(part(cyl(mR, mR, 0.32, 12), M4x(0, ty + 0.02, (TR.l || TR.r * 2) / 2 + 0.04, Math.PI / 2, 0, 0), C));
-    else mantlet.parts.push(part(box(0.95, 0.66, 0.3), M4x(0, ty + 0.02, TR.l / 2 + 0.08), C));
+    else if (!T.mantletBlob) mantlet.parts.push(part(box(0.95, 0.66, 0.3), M4x(0, ty + 0.02, TR.l / 2 + 0.08), C));
     turret.children.push(tFront, tSide, tRear, tRoof, mantlet);
-    turret.children.push(buildGun([0, ty, TR.kind === 'box' ? TR.l / 2 + 0.5 : TR.r + 0.5], gun.r, gun.len, GUN_C, gun.brake));
+    turret.children.push(buildGun([0, ty, (TR.kind === 'box' || TR.kind === 'hex') ? (TR.l || TR.r * 1.5) / 2 + 0.5 : TR.r + 0.5], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
     root.children.push(turret);
   }
   return root;
@@ -481,7 +515,7 @@ const ROSTER = [
     hull: { l: 5.9, w: 2.76, h: 1.08, y: 1.30 }, gl: 1.5, ga: 0.18, gl2: 3.45,
     armor: { glacis: 50, lower: 50, side: 30, rear: 20, top: 16, turretFront: 50, turretSide: 30, turretRear: 30, mantlet: 60 },
     turret: { kind: 'box', w: 2.1, l: 2.2, th: 0.75, bustle: true } },
-  { type: 'panther', nation: 'GER', hw: 1.55, wheels: 7, wr: 0.40, tl: 6.9, th: 0.88, interleave: 0.30, skirts: true,
+  { type: 'panther', nation: 'GER', hw: 1.55, wheels: 7, wr: 0.40, tl: 6.9, th: 0.88, interleave: 0.30, skirts: true, mantletBlob: true,
     hull: { l: 6.9, w: 3.1, h: 1.1, y: 1.30 }, gl: 2.0, ga: 0.96, gl2: 4.4,
     armor: { glacis: 80, lower: 60, side: 40, rear: 40, top: 16, turretFront: 100, turretSide: 45, turretRear: 45, mantlet: 100 },
     turret: { kind: 'box', w: 2.0, l: 2.3, th: 0.75, bustle: true, z: 0.1 } },
@@ -489,7 +523,7 @@ const ROSTER = [
     hull: { l: 6.3, w: 3.4, h: 1.15, y: 1.34 }, gl: 1.8, ga: 0.16, gl2: 4.3, gr: 0.088,
     armor: { glacis: 100, lower: 100, side: 80, rear: 80, top: 25, turretFront: 100, turretSide: 80, turretRear: 80, mantlet: 120 },
     turret: { kind: 'box', w: 2.3, l: 2.5, th: 0.78, bustle: true, z: 0.15 } },
-  { type: 'stug3', nation: 'GER', hw: 1.36, wheels: 6, wr: 0.42, tl: 6.2, th: 0.86, skirts: true,
+  { type: 'stug3', nation: 'GER', hw: 1.36, wheels: 6, wr: 0.42, tl: 6.2, th: 0.86, skirts: true, mantletBlob: true,
     hull: { l: 5.9, w: 2.72, h: 1.05, y: 1.28 }, gl: 1.4, ga: 0.52, gl2: 3.45, turret: 'casemate', casH: 0.95, casA: 0.3, casL: 2.3,
     armor: { glacis: 60, lower: 50, side: 30, rear: 30, top: 16, turretSide: 30, mantlet: 80 } },
   { type: 'jagdpanther', nation: 'GER', hw: 1.55, wheels: 7, wr: 0.40, tl: 6.9, th: 0.88, interleave: 0.30, skirts: true,
@@ -503,11 +537,11 @@ const ROSTER = [
   { type: 't34', nation: 'USSR', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.2, th: 0.86,
     hull: { l: 6.0, w: 2.9, h: 1.05, y: 1.28 }, gl: 1.6, ga: 1.05, gl2: 3.3,
     armor: { glacis: 45, lower: 40, side: 45, rear: 40, top: 16, turretFront: 52, turretSide: 45, turretRear: 45, mantlet: 65 },
-    turret: { kind: 'cyl', r: 1.0, th: 0.68 } },
+    turret: { kind: 'hex', r: 1.0, th: 0.62 } },
   { type: 't3485', nation: 'USSR', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.2, th: 0.86,
     hull: { l: 6.0, w: 2.9, h: 1.05, y: 1.28 }, gl: 1.6, ga: 1.05, gl2: 3.9,
     armor: { glacis: 45, lower: 45, side: 45, rear: 45, top: 16, turretFront: 75, turretSide: 52, turretRear: 52, mantlet: 90 },
-    turret: { kind: 'cyl', r: 1.15, th: 0.72, bustle: true } },
+    turret: { kind: 'dome', r: 1.15, th: 0.7, bustle: true } },
   { type: 'kv1', nation: 'USSR', hw: 1.6, wheels: 6, wr: 0.44, tl: 6.7, th: 0.9,
     hull: { l: 6.7, w: 3.2, h: 1.15, y: 1.34 }, gl: 1.6, ga: 0.44, gl2: 3.3,
     armor: { glacis: 90, lower: 75, side: 75, rear: 70, top: 30, turretFront: 90, turretSide: 75, turretRear: 70, mantlet: 100 },
@@ -519,7 +553,7 @@ const ROSTER = [
   { type: 'is2', nation: 'USSR', hw: 1.5, wheels: 6, wr: 0.44, tl: 6.8, th: 0.9,
     hull: { l: 6.8, w: 3.0, h: 1.1, y: 1.32 }, gl: 1.7, ga: 0.52, gl2: 4.0, gr: 0.11,
     armor: { glacis: 120, lower: 90, side: 90, rear: 60, top: 20, turretFront: 100, turretSide: 90, turretRear: 90, mantlet: 120 },
-    turret: { kind: 'cyl', r: 1.1, th: 0.72, bustle: true } },
+    turret: { kind: 'dome', r: 1.1, th: 0.68, bustle: true } },
   { type: 'su85', nation: 'USSR', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.2, th: 0.86,
     hull: { l: 6.0, w: 2.9, h: 1.05, y: 1.28 }, gl: 1.6, ga: 1.05, gl2: 4.0, turret: 'casemate', casH: 0.85, casA: 0.5, casL: 2.4,
     armor: { glacis: 45, lower: 45, side: 45, rear: 45, top: 16, turretSide: 45, mantlet: 75 } },
@@ -530,7 +564,7 @@ const ROSTER = [
     hull: { l: 6.8, w: 3.0, h: 1.1, y: 1.32 }, gl: 1.7, ga: 0.44, gl2: 4.3, gr: 0.13, brake: false, turret: 'casemate', casH: 1.05, casA: 0.35, casL: 2.8,
     armor: { glacis: 100, lower: 90, side: 90, rear: 60, top: 20, turretSide: 75, mantlet: 130 } },
   // 美国
-  { type: 'm3lee', nation: 'USA', hw: 1.30, wheels: 6, wr: 0.42, tl: 6.2, th: 0.9,
+  { type: 'm3lee', nation: 'USA', hw: 1.30, wheels: 6, wr: 0.42, tl: 6.2, th: 0.9, sponson: true,
     hull: { l: 6.2, w: 2.6, h: 1.4, y: 1.42 }, gl: 1.6, ga: 0.65, gl2: 2.8,
     armor: { glacis: 51, lower: 38, side: 38, rear: 38, top: 16, turretFront: 51, turretSide: 32, turretRear: 32, mantlet: 60 },
     turret: { kind: 'cyl', r: 0.75, th: 0.55, z: 0.5 } },
@@ -543,7 +577,7 @@ const ROSTER = [
     armor: { glacis: 51, lower: 51, side: 38, rear: 38, top: 19, turretFront: 57, turretSide: 25, turretRear: 25, mantlet: 88 },
     turret: { kind: 'open', r: 1.18, th: 0.7, z: -0.2 } },
   // 英国
-  { type: 'matilda', nation: 'UK', hw: 1.28, wheels: 5, wr: 0.36, tl: 5.9, th: 0.9,
+  { type: 'matilda', nation: 'UK', hw: 1.28, wheels: 5, wr: 0.34, tl: 5.9, th: 0.9, skirts: true,
     hull: { l: 5.6, w: 2.56, h: 1.2, y: 1.36 }, gl: 1.4, ga: 0.05, gl2: 2.6, gr: 0.065,
     armor: { glacis: 78, lower: 70, side: 70, rear: 55, top: 20, turretFront: 75, turretSide: 70, turretRear: 55, mantlet: 90 },
     turret: { kind: 'cyl', r: 0.85, th: 0.62 } },
@@ -555,7 +589,7 @@ const ROSTER = [
     hull: { l: 5.9, w: 2.62, h: 1.02, y: 1.30 }, gl: 1.95, ga: 0.82, gl2: 4.5,
     armor: { glacis: 51, lower: 51, side: 38, rear: 38, top: 19, turretFront: 76, turretSide: 51, turretRear: 51, mantlet: 89 },
     turret: { kind: 'cyl', r: 1.08, th: 0.72, bustle: true } },
-  { type: 'churchill7', nation: 'UK', hw: 1.55, wheels: 6, wr: 0.36, tl: 7.2, th: 0.92,
+  { type: 'churchill7', nation: 'UK', hw: 1.55, wheels: 7, wr: 0.34, tl: 7.2, th: 0.92, skirts: true,
     hull: { l: 7.4, w: 3.1, h: 1.25, y: 1.40 }, gl: 1.8, ga: 0.05, gl2: 3.1,
     armor: { glacis: 152, lower: 100, side: 95, rear: 50, top: 25, turretFront: 152, turretSide: 95, turretRear: 95, mantlet: 152 },
     turret: { kind: 'box', w: 2.1, l: 2.2, th: 0.75 } },
@@ -583,21 +617,21 @@ const ROSTER = [
     armor: { glacis: 150, lower: 100, side: 80, rear: 80, top: 25, turretFront: 180, turretSide: 80, turretRear: 80, mantlet: 180 },
     turret: { kind: 'box', w: 2.35, l: 2.6, th: 0.78, bustle: true, z: 0.15 } },
   { type: 'ferdinand', nation: 'GER', hw: 1.6, wheels: 6, wr: 0.42, tl: 7.0, th: 0.9,
-    hull: { l: 6.8, w: 3.1, h: 1.15, y: 1.34 }, gl: 1.9, ga: 0.26, gl2: 5.3, gr: 0.09, turret: 'casemate', casH: 1.05, casA: 0.35, casL: 2.7,
+    hull: { l: 6.8, w: 3.1, h: 1.15, y: 1.34 }, gl: 1.9, ga: 0.26, gl2: 5.3, gr: 0.09, turret: 'casemate', casH: 1.05, casA: 0.35, casL: 2.7, casZ: -0.9,
     armor: { glacis: 160, lower: 100, side: 80, rear: 60, top: 25, turretSide: 80, mantlet: 200 } },
-  { type: 'is3', nation: 'USSR', hw: 1.5, wheels: 6, wr: 0.44, tl: 6.9, th: 0.9,
+  { type: 'is3', nation: 'USSR', hw: 1.5, wheels: 6, wr: 0.44, tl: 6.9, th: 0.9, pike: true,
     hull: { l: 6.9, w: 3.1, h: 1.1, y: 1.32 }, gl: 1.7, ga: 1.05, gl2: 4.1, gr: 0.11, brake: false,
     armor: { glacis: 120, lower: 120, side: 90, rear: 60, top: 20, turretFront: 160, turretSide: 110, turretRear: 90, mantlet: 170 },
-    turret: { kind: 'cyl', r: 1.15, th: 0.6, bustle: true } },
+    turret: { kind: 'dome', r: 1.15, th: 0.58, bustle: true } },
   { type: 't44', nation: 'USSR', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.2, th: 0.86,
     hull: { l: 6.1, w: 2.9, h: 1.0, y: 1.26 }, gl: 1.6, ga: 1.05, gl2: 4.0, gr: 0.085,
     armor: { glacis: 90, lower: 90, side: 75, rear: 45, top: 15, turretFront: 120, turretSide: 90, turretRear: 75, mantlet: 150 },
-    turret: { kind: 'cyl', r: 1.05, th: 0.62 } },
-  { type: 'm26', nation: 'USA', hw: 1.42, wheels: 6, wr: 0.43, tl: 6.5, th: 0.88,
+    turret: { kind: 'dome', r: 1.05, th: 0.6 } },
+  { type: 'm26', nation: 'USA', hw: 1.42, wheels: 6, wr: 0.43, tl: 6.5, th: 0.88, evac: true,
     hull: { l: 6.3, w: 2.84, h: 1.05, y: 1.28 }, gl: 1.8, ga: 0.8, gl2: 4.6, gr: 0.09,
     armor: { glacis: 76, lower: 76, side: 50, rear: 50, top: 20, turretFront: 102, turretSide: 76, turretRear: 76, mantlet: 114 },
     turret: { kind: 'cyl', r: 1.1, th: 0.7, bustle: true } },
-  { type: 't26e4', nation: 'USA', hw: 1.42, wheels: 6, wr: 0.43, tl: 6.5, th: 0.88, skirts: true,
+  { type: 't26e4', nation: 'USA', hw: 1.42, wheels: 6, wr: 0.43, tl: 6.5, th: 0.88, skirts: true, evac: true,
     hull: { l: 6.3, w: 2.84, h: 1.05, y: 1.28 }, gl: 1.8, ga: 0.8, gl2: 4.8, gr: 0.09,
     armor: { glacis: 114, lower: 90, side: 60, rear: 50, top: 20, turretFront: 140, turretSide: 89, turretRear: 76, mantlet: 180 },
     turret: { kind: 'cyl', r: 1.12, th: 0.72, bustle: true } },
@@ -605,22 +639,22 @@ const ROSTER = [
     hull: { l: 6.9, w: 3.15, h: 1.15, y: 1.36 }, gl: 1.9, ga: 0.95, gl2: 4.8, gr: 0.095,
     armor: { glacis: 102, lower: 70, side: 76, rear: 50, top: 25, turretFront: 178, turretSide: 127, turretRear: 102, mantlet: 203 },
     turret: { kind: 'box', w: 2.3, l: 2.5, th: 0.88, bustle: true } },
-  { type: 'centurion', nation: 'UK', hw: 1.48, wheels: 6, wr: 0.42, tl: 7.0, th: 0.9,
+  { type: 'centurion', nation: 'UK', hw: 1.48, wheels: 6, wr: 0.42, tl: 7.0, th: 0.9, evac: true,
     hull: { l: 6.6, w: 2.95, h: 1.1, y: 1.32 }, gl: 1.8, ga: 1.0, gl2: 4.6, gr: 0.083,
     armor: { glacis: 76, lower: 64, side: 50, rear: 38, top: 20, turretFront: 152, turretSide: 89, turretRear: 89, mantlet: 140 },
     turret: { kind: 'cyl', r: 1.12, th: 0.75, bustle: true } },
-  { type: 'type62', nation: 'CHN', hw: 1.25, wheels: 5, wr: 0.42, tl: 6.0, th: 0.82,
+  { type: 'type62', nation: 'CHN', hw: 1.25, wheels: 5, wr: 0.42, tl: 6.0, th: 0.82, pike: true, evac: true,
     hull: { l: 5.9, w: 2.5, h: 0.95, y: 1.20 }, gl: 1.5, ga: 1.05, gl2: 3.9, gr: 0.085,
     armor: { glacis: 45, lower: 35, side: 25, rear: 20, top: 12, turretFront: 60, turretSide: 40, turretRear: 35, mantlet: 90 },
-    turret: { kind: 'cyl', r: 0.95, th: 0.6 } },
-  { type: 'type59', nation: 'CHN', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.4, th: 0.88,
+    turret: { kind: 'dome', r: 0.95, th: 0.56 } },
+  { type: 'type59', nation: 'CHN', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.4, th: 0.88, pike: true, evac: true,
     hull: { l: 6.2, w: 2.9, h: 1.0, y: 1.26 }, gl: 1.7, ga: 1.05, gl2: 4.5, gr: 0.09,
     armor: { glacis: 100, lower: 100, side: 80, rear: 45, top: 20, turretFront: 130, turretSide: 100, turretRear: 80, mantlet: 160 },
-    turret: { kind: 'cyl', r: 1.1, th: 0.65 } },
-  { type: 'wz111', nation: 'CHN', hw: 1.55, wheels: 7, wr: 0.44, tl: 7.1, th: 0.92,
+    turret: { kind: 'dome', r: 1.1, th: 0.64 } },
+  { type: 'wz111', nation: 'CHN', hw: 1.55, wheels: 7, wr: 0.44, tl: 7.1, th: 0.92, pike: true, evac: true,
     hull: { l: 7.0, w: 3.1, h: 1.1, y: 1.32 }, gl: 1.9, ga: 0.79, gl2: 5.0, gr: 0.11, brake: false,
     armor: { glacis: 130, lower: 100, side: 90, rear: 60, top: 20, turretFront: 160, turretSide: 110, turretRear: 90, mantlet: 190 },
-    turret: { kind: 'cyl', r: 1.15, th: 0.7, bustle: true } },
+    turret: { kind: 'dome', r: 1.15, th: 0.68, bustle: true } },
   { type: 'chiri', nation: 'JPN', hw: 1.15, wheels: 6, wr: 0.38, tl: 6.7, th: 0.84,
     hull: { l: 6.3, w: 2.3, h: 1.1, y: 1.3 }, gl: 1.5, ga: 0.35, gl2: 3.3, gr: 0.07,
     armor: { glacis: 50, lower: 45, side: 25, rear: 20, top: 12, turretFront: 75, turretSide: 35, turretRear: 35, mantlet: 90 },
