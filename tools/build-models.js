@@ -269,6 +269,7 @@ const sphere = (r, seg = 8) => new THREE.SphereGeometry(r, seg, Math.max(4, seg 
 const sphereSeg = (r, wSeg, hSeg, phiStart, phiLen) => new THREE.SphereGeometry(r, wSeg, hSeg, phiStart, phiLen, 0, Math.PI / 2);  // 竖直上半球扇区
 
 const TRACK_C = [0.12, 0.12, 0.12], GUN_C = [0.16, 0.16, 0.15], RUBBER = [0.08, 0.08, 0.08];
+const DARK = [0.13, 0.13, 0.12], STEEL = [0.45, 0.47, 0.5], CANVAS = [0.4, 0.38, 0.3];
 const OLIVE = [0.33, 0.35, 0.22], GRAY = [0.30, 0.31, 0.34], DGRAY = [0.23, 0.24, 0.26], YGRAY = [0.43, 0.39, 0.27];
 
 /* ============ 通用行走机构(负重轮为独立可旋转节点, 履带板带滚动纹理) ============ */
@@ -323,6 +324,8 @@ function engineDeck(zoneTop, zoneRear, w, y, zC, col) {
     zoneTop.parts.push(part(box(w * 0.72, 0.05, 0.16), M4x(0, y + 0.02, zC + 0.55 - i * 0.38), [0.1, 0.1, 0.1]));
   for (const sx of [-1, 1])
     zoneRear.parts.push(part(cyl(0.09, 0.09, 0.5, 8), M4x(sx * w * 0.3, y - 0.32, zC - 0.9, 0.25, 0, 0), [0.14, 0.13, 0.12]));
+  for (const sx of [-1, 1])                                                        // 加油口盖×2
+    zoneTop.parts.push(part(cyl(0.09, 0.1, 0.06, 8), M4x(sx * w * 0.33, y + 0.05, zC - 0.25), [0.24, 0.25, 0.27]));
 }
 
 // 车灯/工具等小件(并入 hullSide)
@@ -330,7 +333,60 @@ function hullKit(zone, w, y, z, col) {
   for (const sx of [-1, 1]) {
     zone.parts.push(part(cyl(0.11, 0.11, 0.16, 8), M4x(sx * (w / 2 - 0.3), y, z, Math.PI / 2, 0, 0), [0.55, 0.52, 0.4]));
     zone.parts.push(part(box(0.34, 0.2, 0.5), M4x(sx * (w / 2 + 0.05), y - 0.45, -z * 0.5), col));
+    zone.parts.push(part(cyl(0.03, 0.03, 0.8, 6), M4x(sx * (w / 2 + 0.09), y - 0.75, z * 0.2, Math.PI / 2, 0, 0), [0.3, 0.28, 0.22]));   // 撬棍
   }
+}
+
+/* ============ V3 细节包: 观察件/工具/储物/炮塔舱盖等通用小件 ============ */
+// 车长指挥塔: 塔体 + 观察缝带 + 舱盖 + 塔顶潜望镜(s=放大倍率)
+function cupola(tRoof, x, y, z, col, s = 1) {
+  tRoof.parts.push(part(cyl(0.33 * s, 0.36 * s, 0.22 * s, 10), M4x(x, y + 0.11 * s, z), col));
+  tRoof.parts.push(part(cyl(0.375 * s, 0.375 * s, 0.07 * s, 10), M4x(x, y + 0.13 * s, z), DARK));                      // 观察缝带
+  tRoof.parts.push(part(cyl(0.31 * s, 0.31 * s, 0.05 * s, 10), M4x(x + 0.07 * s, y + 0.235 * s, z + 0.03 * s, 0, 0.35, 0), col)); // 舱盖
+  tRoof.parts.push(part(box(0.12 * s, 0.08 * s, 0.18 * s), M4x(x - 0.28 * s, y + 0.26 * s, z + 0.1 * s), DARK));        // 潜望镜
+}
+
+// 首上细节: 驾驶员潜望镜/观察缝 + 航向机枪球座 + 备用履带(并入 glacis)
+// yTop/zTop=首上顶边(与顶板交点), t=沿坡面向下距离, dy=沿板面法线外移
+function glacisKit(zone, w, yTop, zTop, ga, col, mg) {
+  const cg = Math.cos(ga), sg = Math.sin(ga);
+  const surf = (t, x, dy) => [x, yTop - cg * t + sg * dy, zTop + sg * t + cg * dy];
+  let p;
+  zone.parts.push(part(box(0.3, 0.13, 0.3), M4x(-w * 0.2, yTop + 0.1, zTop - 0.5), col));            // 驾驶员潜望镜
+  p = surf(0.3, -w * 0.2, 0.05);
+  zone.parts.push(part(box(0.24, 0.1, 0.05), M4x(p[0], p[1], p[2], -ga, 0, 0), DARK));               // 观察缝
+  p = surf(0.55, w * 0.26, 0.05);
+  zone.parts.push(part(sphere(0.12, 8), M4x(p[0], p[1], p[2]), DARK));                               // 航向机枪球座
+  if (mg) zone.parts.push(part(cyl(0.04, 0.04, 0.45, 6),
+    M4x(w * 0.26, yTop - cg * 0.55 + sg * 0.16, zTop + sg * 0.55 + cg * 0.16 + 0.14, Math.PI / 2 - 0.25, 0, 0), GUN_C));
+  p = surf(0.75, 0.02, 0.1);
+  zone.parts.push(part(box(0.42, 0.07, 0.8), M4x(p[0], p[1], p[2], -ga, 0.05, 0), TRACK_C));         // 备用履带×2
+  p = surf(0.95, w * 0.3, 0.1);
+  zone.parts.push(part(box(0.42, 0.07, 0.8), M4x(p[0], p[1], p[2], -ga, -0.04, 0), TRACK_C));
+}
+
+// 尾部细节: 消音排气筒×2+尾管 + 储物箱 + 拖钩×2 + 天线(并入 hullRear)
+function rearKit(zone, w, y, h, zR, col) {
+  for (const sx of [-1, 1]) {
+    zone.parts.push(part(cyl(0.11, 0.11, 0.72, 8), M4x(sx * w * 0.27, y + h * 0.12, zR - 0.22, 0, 0, Math.PI / 2), [0.17, 0.16, 0.14]));
+    zone.parts.push(part(cyl(0.055, 0.055, 0.34, 6), M4x(sx * w * 0.44, y + h * 0.28, zR - 0.2), [0.15, 0.14, 0.13]));
+  }
+  zone.parts.push(part(box(0.92, 0.38, 0.26), M4x(-w * 0.18, y - h * 0.18, zR - 0.14), col));        // 储物箱
+  for (const sx of [-1, 1])
+    zone.parts.push(part(cyl(0.045, 0.045, 0.24, 6), M4x(sx * w * 0.3, y - h * 0.3, zR + 0.08, Math.PI / 2, 0, 0), STEEL));  // 拖钩
+  zone.parts.push(part(cyl(0.014, 0.02, 1.35, 5), M4x(w * 0.38, y + h / 2 + 0.62, zR + 0.35, 0.1, 0, 0.06), DARK));          // 天线
+}
+
+// 炮塔顶细节: 通风罩 + 装填手舱盖 + 前部潜望镜对 + 起吊环(方塔加手枪口)
+function turretKit(tRoof, tSide, A, col) {
+  tRoof.parts.push(part(sphereSeg(0.16, 8, 5, 0, Math.PI * 2), M4x(A.boxK ? -A.hw * 0.3 : 0, A.roofY + 0.04, -A.hl * 0.45), col));
+  tRoof.parts.push(part(cyl(0.2, 0.21, 0.05, 10), M4x(A.hw * 0.5, A.roofY + 0.02, A.hl * 0.15), col));               // 装填手舱盖
+  for (const sx of [-1, 1])
+    tRoof.parts.push(part(box(0.15, 0.09, 0.2), M4x(sx * A.hw * 0.35, A.roofY + 0.08, A.hl * 0.52, -0.15, 0, 0), col));  // 潜望镜对
+  for (const sx of [-1, 1])
+    tRoof.parts.push(part(cyl(0.032, 0.032, 0.16, 6), M4x(sx * A.hw * 0.68, A.roofY + 0.08, A.hl * 0.2, 0, 0, sx * 0.9), STEEL));  // 起吊环
+  if (A.boxK) for (const sx of [-1, 1])
+    tSide.parts.push(part(cyl(0.055, 0.055, 0.04, 8), M4x(sx * (A.hw + 0.1), A.th * 0.55, -A.hl * 0.25, 0, 0, Math.PI / 2), DARK));  // 手枪口
 }
 
 /* ============ 火炮(套管+制退器) ============ */
@@ -338,6 +394,7 @@ function buildGun(pivot, r, len, col, brake, evac) {
   const gun = N('gun', { translation: pivot });
   const barrel = N('barrel', { extras: { zone: 'gun', armor: 0 } });
   barrel.parts.push(part(cyl(r * 1.45, r * 1.6, 0.55, 10), M4x(0, 0, 0.24, Math.PI / 2, 0, 0), col));          // 防危板/套管
+  barrel.parts.push(part(cyl(r * 1.7, r * 1.8, 0.26, 10), M4x(0, 0, 0.62, Math.PI / 2, 0, 0), CANVAS));        // 炮根蒙布
   barrel.parts.push(part(cyl(r, r, len - 0.5, 10), M4x(0, 0, len / 2 + 0.2, Math.PI / 2, 0, 0), col));
   if (evac) barrel.parts.push(part(cyl(r * 1.4, r * 1.4, len * 0.18, 10), M4x(0, 0, len * 0.58, Math.PI / 2, 0, 0), col));   // 抽烟装置
   if (brake) {
@@ -444,12 +501,14 @@ function buildRosterTank(T) {
     glacis.parts.push(part(box(H.w * 0.94, T.gl / Math.cos(T.ga), 0.2),
       M4x(0, H.y + H.h / 2 - Math.cos(T.ga) * T.gl / 2, H.l / 2 - 0.3 + Math.sin(T.ga) * T.gl / 2, -T.ga, 0, 0), C));
   }
+  glacisKit(glacis, H.w, H.y + H.h / 2, H.l / 2 - 0.3, T.ga, C, T.turret !== 'casemate');   // V3 首上细节
   root.children.push(glacis);
   const lower = Z('lowerPlate', T.armor.lower);
   lower.parts.push(part(box(H.w * 0.94, H.h * 0.75, 0.18), M4x(0, H.y - H.h * 0.12, H.l / 2 - 0.03, -0.22, 0, 0), C));
   root.children.push(lower);
   const rear = Z('hullRear', T.armor.rear);
   rear.parts.push(part(box(H.w, H.h, 0.18), M4x(0, H.y, -H.l / 2 + 0.02, 0.15, 0, 0), C));
+  rearKit(rear, H.w, H.y, H.h, -H.l / 2, C);                                                  // V3 尾部细节
   root.children.push(rear);
   const top = Z('hullTop', T.armor.top);
   top.parts.push(part(box(H.w, 0.12, H.l), M4x(0, H.y + H.h / 2 + 0.05, 0), C));
@@ -469,6 +528,10 @@ function buildRosterTank(T) {
     root.children.push(casS);
     const casT = Z('turretRoof', T.armor.top);
     casT.parts.push(part(box(H.w * 0.85, 0.12, (T.casL || 2.4) + 0.4), M4x(0, cy + T.casH + 0.05, H.l / 2 - 1.25 + cz), C));
+    casT.parts.push(part(cyl(0.26, 0.28, 0.06, 10), M4x(-H.w * 0.18, cy + T.casH + 0.12, H.l / 2 - 1.6 + cz), C));      // 车长舱盖
+    casT.parts.push(part(cyl(0.2, 0.22, 0.05, 10), M4x(H.w * 0.2, cy + T.casH + 0.1, H.l / 2 - 1.1 + cz), C));          // 装填手舱盖
+    casT.parts.push(part(sphereSeg(0.13, 8, 5, 0, Math.PI * 2), M4x(0, cy + T.casH + 0.14, H.l / 2 - 0.7 + cz), C));    // 通风罩
+    casT.parts.push(part(cyl(0.014, 0.02, 1.3, 5), M4x(H.w * 0.32, cy + T.casH + 0.6, H.l / 2 - 1.5 + cz, 0.08, 0, 0.05), DARK));  // 天线
     root.children.push(casT);
     root.children.push(buildGun([0, cy + T.casH * 0.6, H.l / 2 + 0.05 + cz], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
   } else {
@@ -489,7 +552,8 @@ function buildRosterTank(T) {
       tSide.parts.push(part(sphereSeg(rr, 10, 6, 2.57, 1.82), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
       tRear.parts.push(part(sphereSeg(rr, 10, 6, 4.39, 1.5), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
       tRoof.parts.push(part(cyl(rr * 0.55, rr * 0.62, 0.12, 12), M4x(0, ty + TR.th * 0.72, 0), C));
-      tRoof.parts.push(part(cyl(0.34, 0.36, 0.26, 8), M4x(rr * 0.42, ty + TR.th * 0.72 + 0.16, -0.15), C));   // 半球上指挥塔
+      cupola(tRoof, rr * 0.42, ty + TR.th * 0.72 + 0.06, -0.15, C, 0.9);                                 // 半球上指挥塔
+      turretKit(tRoof, tSide, { hw: rr * 0.52, hl: rr * 0.6, roofY: ty + TR.th * 0.72 + 0.06, boxK: false }, C);
       if (TR.bustle) tRear.parts.push(part(box(rr * 1.3, TR.th * 0.5, 0.7), M4x(0, ty, -rr - 0.3), C));
     } else if (TR.kind === 'hex') {
       // T-34/76 式六棱炮塔: 六棱柱体 + 前装甲板 + 后尾舱
@@ -497,7 +561,8 @@ function buildRosterTank(T) {
       tFront.parts.push(part(box(TR.r * 1.1, TR.th, 0.2), M4x(0, ty, TR.r * 0.72), C));
       tRear.parts.push(part(box(TR.r * 1.5, TR.th * 0.7, 0.6), M4x(0, ty - 0.05, -TR.r * 0.85), C));
       tRoof.parts.push(part(cyl(TR.r * 0.62, TR.r * 0.62, 0.1, 6), M4x(0, TR.th + 0.03, 0, 0, Math.PI / 6, 0), C));
-      tRoof.parts.push(part(cyl(0.3, 0.32, 0.2, 8), M4x(TR.r * 0.3, TR.th + 0.12, -0.1), C));
+      cupola(tRoof, TR.r * 0.3, TR.th + 0.08, -0.1, C, 0.85);
+      turretKit(tRoof, tSide, { hw: TR.r * 0.58, hl: TR.r * 0.62, roofY: TR.th + 0.08, boxK: false }, C);
       tRoof.parts.push(part(box(0.6, 0.3, 0.4), M4x(-TR.r * 0.3, TR.th + 0.06, 0.2), C));   // 双开舱门
     } else if (TR.kind === 'cyl' || TR.kind === 'open') {
       tFront.parts.push(part(cyl(TR.r * 0.94, TR.r, TR.th, 16), M4x(0, ty, 0), C));
@@ -505,8 +570,7 @@ function buildRosterTank(T) {
       tSide.parts.push(part(cyl(TR.r * 0.96, TR.r, 0.06, 16), M4x(0, TR.th + 0.02, 0), C));
       tRear.parts.push(part(box(TR.r * 1.4, TR.th * 0.6, 0.2), M4x(0, ty - 0.06, -TR.r + 0.05), C));
       if (TR.kind === 'cyl') tRoof.parts.push(part(cyl(TR.r * 0.95, TR.r * 0.95, 0.1, 16), M4x(0, TR.th + 0.06, 0), C));
-      else tRoof.parts.push(part(cyl(TR.r * 0.5, TR.r * 0.5, 0.12, 10), M4x(0, TR.th + 0.05, 0.1), C));  // 敞篷: 后部小指挥塔
-    } else {  // box
+      else tRoof.parts.push(part(cyl(TR.r * 0.5, TR.r * 0.5, 0.12, 10), M4x(0, TR.th + 0.05, 0.1), C));  // 敞篷: 后部小指挥塔    } else {  // box
       const tw = TR.w, tl = TR.l;
       tFront.parts.push(part(box(tw, TR.th, 0.2), M4x(0, ty, tl / 2 - 0.06), C));
       if (TR.bustle) tFront.parts.push(part(box(tw * 0.8, TR.th * 0.8, 0.8), M4x(0, ty, -tl / 2 - 0.4), C));
@@ -515,8 +579,14 @@ function buildRosterTank(T) {
       tRear.parts.push(part(box(tw, TR.th, 0.16), M4x(0, ty, -tl / 2 + 0.04), C));
       tRoof.parts.push(part(box(tw - 0.1, 0.1, tl - 0.1), M4x(0, TR.th + 0.05, 0), C));
     }
-    if (TR.kind !== 'dome' && TR.kind !== 'hex')
-      tRoof.parts.push(part(cyl(0.34, 0.36, 0.26, 8), M4x(TR.r ? TR.r * 0.45 : 0.5, TR.kind === 'box' ? TR.th + 0.2 : TR.th + 0.2, -0.2), C));  // 指挥塔
+    if (TR.kind === 'open') cupola(tRoof, 0, TR.th - 0.01, 0.1, C, 1.45);                    // 敞篷: 后指挥塔
+    else if (TR.kind === 'cyl') {
+      cupola(tRoof, TR.r * 0.45, TR.th + 0.11, -0.2, C);
+      turretKit(tRoof, tSide, { hw: TR.r * 0.55, hl: TR.r * 0.9, roofY: TR.th + 0.11, boxK: false }, C);
+    } else {
+      cupola(tRoof, TR.w * 0.25, TR.th + 0.1, -0.2, C);
+      turretKit(tRoof, tSide, { hw: TR.w / 2, hl: TR.l / 2, roofY: TR.th + 0.1, th: TR.th, boxK: true }, C);
+    }
     const mantlet = Z('mantlet', T.armor.mantlet);
     if (T.mantletBlob) mantlet.parts.push(part(sphere(0.5, 10).scale ? new THREE.SphereGeometry(0.48, 10, 8) : null, M4x(0, ty + 0.02, (TR.l || TR.r * 2) / 2 - 0.05, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.9, 0.8)), C));  // 猪头炮盾(黑豹/三突)
     const mR = (TR.kind === 'box' || TR.kind === 'dome' || TR.kind === 'hex') ? null : TR.r * 0.45;
