@@ -14,7 +14,7 @@ SF.CFG = {
     sherman: {
       name: 'M4 谢尔曼', hp: 900,
       maxSpeed: 13.3, reverseRatio: 0.42,     // 极速 48km/h, 倒车 42%
-      accel: 4.0, brake: 7.5, coastDrag: 1.6, // 起步迟滞与刹车滑行
+      accel: 4.0, brake: 9.5, coastDrag: 5.5, // 履带滚动阻力大: 松油门快速站住
       hullTraverse: 40 * Math.PI / 180,       // 车体回转 40°/s
       turretTraverse: 38 * Math.PI / 180,     // 炮塔回转 38°/s (独立于车体)
       gunDepression: -10 * Math.PI / 180, gunElevation: 18 * Math.PI / 180,
@@ -25,7 +25,7 @@ SF.CFG = {
     },
     medium: {
       name: '敌方中型坦克', hp: 550,
-      maxSpeed: 12.5, reverseRatio: 0.45, accel: 3.8, brake: 7, coastDrag: 1.6,
+      maxSpeed: 12.5, reverseRatio: 0.45, accel: 3.8, brake: 9, coastDrag: 5.2,
       hullTraverse: 42 * Math.PI / 180, turretTraverse: 40 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 16 * Math.PI / 180,
       gun: { pen: 95, dmg: 150, reload: 3.8, speed: 780 },
@@ -34,7 +34,7 @@ SF.CFG = {
     },
     td: {
       name: '敌方坦克歼击车', hp: 650,
-      maxSpeed: 9.7, reverseRatio: 0.4, accel: 3.0, brake: 6, coastDrag: 1.5,
+      maxSpeed: 9.7, reverseRatio: 0.4, accel: 3.0, brake: 8, coastDrag: 4.6,
       hullTraverse: 20 * Math.PI / 180, turretTraverse: 0,   // 战斗室固定: 无炮塔回转
       gunDepression: -6 * Math.PI / 180, gunElevation: 12 * Math.PI / 180,
       gun: { pen: 120, dmg: 280, reload: 8.0, speed: 1000 },
@@ -43,7 +43,7 @@ SF.CFG = {
     },
     heavy: {
       name: '敌方重型坦克', hp: 1000,
-      maxSpeed: 7.8, reverseRatio: 0.38, accel: 2.6, brake: 5.5, coastDrag: 1.4,
+      maxSpeed: 7.8, reverseRatio: 0.38, accel: 2.6, brake: 7.5, coastDrag: 4.2,
       hullTraverse: 24 * Math.PI / 180, turretTraverse: 28 * Math.PI / 180,
       gunDepression: -6 * Math.PI / 180, gunElevation: 14 * Math.PI / 180,
       gun: { pen: 110, dmg: 220, reload: 6.0, speed: 820 },
