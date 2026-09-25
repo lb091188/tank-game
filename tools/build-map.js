@@ -186,6 +186,18 @@ function coversL02(add, rng) {
   for (let i = 0; i < 22; i++) add('rock', -160 + rng() * 320, -90 + rng() * 330, rng() * 6, 0.7 + rng() * 0.6);
   // 郊区行道树
   for (let z = 300; z > 200; z -= 24) { add('tree', -150, z, rng() * 6, 0.9); add('tree', 150, z - 10, rng() * 6, 0.9); }
+  // 城市加密: 外环街区建筑 + 混凝土围墙 + 瓦砾
+  for (let gx = -246; gx <= 246; gx += 82) {
+    if (Math.abs(gx) < 130) continue;
+    for (let gz = -40; gz <= 180; gz += 70) {
+      const roll = rng();
+      if (roll < 0.5) add('barn', gx + (rng() - 0.5) * 20, gz + (rng() - 0.5) * 16, rng() < 0.5 ? 0 : Math.PI / 2, 0.85 + rng() * 0.3);
+      else if (roll < 0.8) { add('house', gx + (rng() - 0.5) * 22, gz, rng() * 3, 0.9 + rng() * 0.35); add('wall', gx + 20, gz + 22, rng() * 3, 1.1); }
+      else add('ruin', gx, gz, rng() * 3, 1.1);
+    }
+  }
+  for (let i = 0; i < 26; i++) add('rock', -250 + rng() * 500, -80 + rng() * 320, rng() * 6, 0.6 + rng() * 0.5);
+  for (let i = 0; i < 12; i++) add('wreck', -220 + rng() * 440, -60 + rng() * 300, rng() * 3);
 }
 
 /* ============ l03 山川高地 ============ */
@@ -241,6 +253,7 @@ function coversL03(add, rng) {
 /* ============ 地图定义 ============ */
 const MAPS = {
   l01: {
+    theme: 'grass',
     dir: 'l01-encounter', name: '诺曼底 · 遭遇战', seed: 20261001,
     briefing: '穿越树篱田野与干河床，肃清村庄巡逻队，随后突破北坡敌军阵地。全歼敌军即胜利。',
     terrain: terrainL01, covers: coversL01,
@@ -256,6 +269,7 @@ const MAPS = {
     ]
   },
   l02: {
+    theme: 'city',
     dir: 'l02-city', name: '废墟 · 城市巷战', seed: 20261002,
     briefing: '逐街推进，肃清街区敌军，最终攻克北广场核心阵地。残垣断壁是掩体也是坟场。',
     terrain: terrainL02, covers: coversL02,
@@ -272,6 +286,7 @@ const MAPS = {
     ]
   },
   l03: {
+    theme: 'rock',
     dir: 'l03-highland', name: '山川 · 高地争夺', seed: 20261003,
     briefing: '沿峡谷推进，夺取山间小村，翻越鞍部攻克北峰阵地。制高点决定一切。',
     terrain: terrainL03, covers: coversL03,
@@ -339,7 +354,7 @@ for (const id in MAPS) {
     _说明: '手改本文件即可调整关卡(世界坐标米, x 东西 / z 南北, 玩家在南朝北推进)',
     id: id + '-' + M.dir, name: M.name, briefing: M.briefing,
     terrain: { size: SIZE, resolution: RES, maxHeight: MAX_H },
-    lighting: M.lighting,
+    lighting: M.lighting, theme: M.theme,
     player: { spawn: [M.player.spawn[0] * S, M.player.spawn[1] * S, M.player.spawn[2]] },
     waves: M.waves.map(w => ({ ...w, enemies: w.enemies.map(e => ({ ...e, pos: [e.pos[0] * S, e.pos[1] * S], patrol: (e.patrol || []).map(q => [q[0] * S, q[1] * S]) })) })),
     repairBetweenWaves: { hpRatio: 0.35, duration: 4, text: '维修组抢修中…' },

@@ -43,6 +43,7 @@
       0.95
     ]
   },
+  "theme": "grass",
   "player": {
     "spawn": [
       0,

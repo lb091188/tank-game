@@ -15,11 +15,12 @@ SF.HUD = (() => {
     const off = document.createElement('canvas'); off.width = off.height = 180;
     const octx = off.getContext('2d');
     const T = world.terrain, N = 90;
+    const PAL = world.map.theme === 'city' ? [52, 52, 54] : world.map.theme === 'rock' ? [78, 76, 68] : [38, 62, 34];
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = -T.half + (i / N) * T.size, z = -T.half + (j / N) * T.size;
       const h = T.heightAt(x, z);
       const k = SF.Util.clamp((h - 5) / 45, 0, 1);
-      octx.fillStyle = `rgb(${Math.round(38 + k * 60)},${Math.round(62 + k * 55)},${Math.round(34 + k * 40)})`;
+      octx.fillStyle = `rgb(${Math.round(PAL[0] + k * 55)},${Math.round(PAL[1] + k * 48)},${Math.round(PAL[2] + k * 42)})`;
       octx.fillRect(i / N * 180, j / N * 180, 180 / N + 1, 180 / N + 1);
     }
     minimapBase = off;

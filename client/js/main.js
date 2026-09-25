@@ -6,7 +6,7 @@ SF.Main = (() => {
   let renderer, scene, camera, sunLight;
   let world, fx, shells;
   let camYaw = Math.PI, camPitch = 0.30, camDist = SF.CFG.camera.dist;
-  let sniper = false, mouseDown = false, shakeT = 0;
+  let sniper = false, mouseDown = false, shakeT = 0, freeLook = false;   // 右键按住: 自由视角(炮塔锁定)
   const keys = {};
   let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
   let selTank = 'sherman', selMap = 'l01';   // 出击前选择
@@ -69,7 +69,7 @@ SF.Main = (() => {
 
     // 地形与掩体
     const terrain = new SF.Terrain(SF.Assets.maps[selMap].heights, map.terrain);
-    scene.add(terrain.buildMesh());
+    scene.add(terrain.buildMesh(map.theme || 'grass'));
     const covers = new SF.Models.CoverField(map, terrain, scene);
 
     // 玩家
@@ -269,8 +269,9 @@ SF.Main = (() => {
       camYaw -= e.movementX * s;
       camPitch = U.clamp(camPitch + e.movementY * s, -0.12, 1.1);
     });
-    document.addEventListener('mousedown', (e) => { if (e.button === 0) mouseDown = true; });
-    document.addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; });
+    document.addEventListener('mousedown', (e) => { if (e.button === 0) mouseDown = true; if (e.button === 2) freeLook = true; });
+    document.addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; if (e.button === 2) freeLook = false; });
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('wheel', (e) => {
       camDist = U.clamp(camDist + Math.sign(e.deltaY) * 1.6, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
     });
@@ -324,6 +325,8 @@ SF.Main = (() => {
       input.aimYaw = Math.atan2(dx, dz);
       input.aimPitch = Math.atan2(aimPoint.pos.y - (p.y + 2.2), Math.hypot(dx, dz));
     } else { input.aimYaw = camYaw; input.aimPitch = 0; }
+    // WoT 式右键自由视角: 按住右键时炮塔锁定原方向, 相机自由查看四周
+    if (freeLook) { input.aimYaw = p.turretYaw; input.aimPitch = p.gunPitch; }
     // 固定战斗室歼击车(WoT 式): 瞄准点超出射界 → 车体自动转向瞄准点(伴随回转扩圈)
     if (p.parts.noTurret && aimPoint) {
       const arc = (p.spec.gunArc !== undefined) ? p.spec.gunArc : 10 * Math.PI / 180;

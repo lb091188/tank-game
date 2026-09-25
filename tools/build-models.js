@@ -196,6 +196,32 @@ function makeTrackTexture() {
 }
 const TRACK_PNG = makeTrackTexture();
 
+/* 环绕式履带侧影: 顶面→前诱导轮上翘→锯齿接地边→后主动轮→顶面厚度闭合 */
+function trackLoopShape(len, r, th) {
+  const s = new THREE.Shape();
+  const half = len / 2;
+  s.moveTo(half - 0.25, th);
+  s.lineTo(half + 0.30, r * 0.9);        // 前诱导轮上翘
+  s.lineTo(half + 0.06, 0.10);
+  const n = Math.max(8, Math.round((len + 0.1) / 0.42));
+  for (let i = 1; i <= n; i++) {          // 接地锯齿(链节感)
+    const x = half + 0.06 - (len + 0.16) * (i / n);
+    s.lineTo(x, i % 2 === 0 ? 0.10 : 0.19);
+  }
+  s.lineTo(-half - 0.30, r * 0.9);       // 后主动轮上翘
+  s.lineTo(-half + 0.25, th);
+  s.lineTo(-half + 0.25, th - 0.20);     // 顶面厚度
+  s.lineTo(half - 0.25, th - 0.20);
+  s.closePath();
+  return s;
+}
+function trackLoopGeo(len, r, th) {
+  const g = new THREE.ExtrudeGeometry(trackLoopShape(len, r, th), { depth: 0.55, bevelEnabled: false });
+  g.translate(0, 0, -0.275);
+  g.rotateY(-Math.PI / 2);               // 挤出厚度→车宽, 轮廓前进向→+Z
+  return g;
+}
+
 function N(name, opts = {}) {
   return { name, translation: opts.translation, extras: opts.extras, parts: [], children: opts.children || [] };
 }
@@ -264,9 +290,8 @@ function addWheel(root, x, y, z, r, thick, interleave = false) {
 function runningGear(root, tracksZone, sideX, n, r, len, trackH, interleave = 0) {
   const yWheel = r + 0.06;
   for (const sx of [-1, 1]) {
-    // 履带板(带链节滚动纹理) + 履齿(并入同一贴图网格)
-    tracksZone.parts.push(part(box(0.55, trackH, len), M4x(sx * sideX, trackH / 2 + 0.02, 0), TRACK_C, 0.85, 4.0));
-    tracksZone.parts.push(part(box(0.58, 0.1, len * 0.98), M4x(sx * sideX, trackH + 0.05, 0), TRACK_C, 0.85, 4.0));
+    // 环绕履带(真实剪影: 锯齿接地边+前后上翘导轮位), 保留链节纹理滚动
+    tracksZone.parts.push(part(trackLoopGeo(len, r, trackH), M4x(sx * sideX, 0, 0), TRACK_C, 1, 4.0));
     // 负重轮(独立节点)
     const z0 = -len / 2 + 1.15, zSpan = len - 2.3;
     for (let i = 0; i < n; i++) {
