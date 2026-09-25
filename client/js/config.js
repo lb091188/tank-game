@@ -19,6 +19,7 @@ SF.CFG = {
       turretTraverse: 38 * Math.PI / 180,     // 炮塔回转 38°/s (独立于车体)
       gunDepression: -10 * Math.PI / 180, gunElevation: 18 * Math.PI / 180,
       gun: { pen: 95, dmg: 150, reload: 3.5, speed: 750 },   // 75mm
+      sample: { l: 3.05, w: 1.45 },   // 履带接地四角采样半径(前后/左右)——地形贴合用
       dispersion: { base: 0.38, aimTime: 2.2, max: 2.2,      // 基础圈(m@100m)/缩圈时间
         move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 } // 各动作扩圈系数
     },
@@ -28,6 +29,7 @@ SF.CFG = {
       hullTraverse: 42 * Math.PI / 180, turretTraverse: 40 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 16 * Math.PI / 180,
       gun: { pen: 95, dmg: 150, reload: 3.8, speed: 780 },
+      sample: { l: 3.25, w: 1.5 },
       dispersion: { base: 0.42, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     td: {
@@ -36,6 +38,7 @@ SF.CFG = {
       hullTraverse: 20 * Math.PI / 180, turretTraverse: 0,   // 战斗室固定: 无炮塔回转
       gunDepression: -6 * Math.PI / 180, gunElevation: 12 * Math.PI / 180,
       gun: { pen: 120, dmg: 280, reload: 8.0, speed: 1000 },
+      sample: { l: 3.35, w: 1.45 },
       dispersion: { base: 0.30, aimTime: 2.6, max: 2.0, move: 2.0, hullTurn: 1.4, turretTurn: 0.5, fire: 1.8 }
     },
     heavy: {
@@ -44,6 +47,7 @@ SF.CFG = {
       hullTraverse: 24 * Math.PI / 180, turretTraverse: 28 * Math.PI / 180,
       gunDepression: -6 * Math.PI / 180, gunElevation: 14 * Math.PI / 180,
       gun: { pen: 110, dmg: 220, reload: 6.0, speed: 820 },
+      sample: { l: 3.5, w: 1.6 },
       dispersion: { base: 0.46, aimTime: 2.9, max: 2.6, move: 1.8, hullTurn: 1.2, turretTurn: 0.6, fire: 1.8 }
     }
   },

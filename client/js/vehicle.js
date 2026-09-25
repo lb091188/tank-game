@@ -85,13 +85,15 @@ SF.Tank = class {
         if (d < 4.4 && d > 0.01) { this.x = o.x + dx / d * 4.4; this.z = o.z + dz / d * 4.4; }
       }
 
-    /* --- 地形贴合(4 点采样 → 俯仰/侧倾) --- */
+    /* --- 地形贴合(履带四角采样 → 俯仰/侧倾; 凹地架桥/凸地撑中心, 不埋车) --- */
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
-    const hF = T.heightAt(this.x + s * 2.4, this.z + c * 2.4), hB = T.heightAt(this.x - s * 2.4, this.z - c * 2.4);
-    const hL = T.heightAt(this.x - c * 1.4, this.z + s * 1.4), hR = T.heightAt(this.x + c * 1.4, this.z - s * 1.4);
-    this.y = (hF + hB + hL + hR) / 4;
-    const tPitch = Math.atan2(hF - hB, 4.8), tRoll = Math.atan2(hL - hR, 2.8);
-    const sm = 1 - Math.exp(-10 * dt);
+    const SL = S.sample.l, SW = S.sample.w;
+    const hF = T.heightAt(this.x + s * SL, this.z + c * SL), hB = T.heightAt(this.x - s * SL, this.z - c * SL);
+    const hL = T.heightAt(this.x - c * SW, this.z + s * SW), hR = T.heightAt(this.x + c * SW, this.z - s * SW);
+    const hC = T.heightAt(this.x, this.z);
+    this.y = Math.max(hC, (hF + hB + hL + hR) / 4);   // 凹: 骑在四角上; 凸: 撑在中心上
+    const tPitch = Math.atan2(hF - hB, 2 * SL), tRoll = Math.atan2(hL - hR, 2 * SW);
+    const sm = 1 - Math.exp(-14 * dt);
     this.pitch = U.lerp(this.pitch, tPitch, sm); this.roll = U.lerp(this.roll, tRoll, sm);
 
     /* --- 炮塔回转(独立限速; 歼击车战斗室固定) --- */

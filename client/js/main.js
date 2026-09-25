@@ -257,13 +257,16 @@ SF.Main = (() => {
   }
 
   /* ---------- 事件接线(模拟 → 表现) ---------- */
+  const HIT_TEXT = { pen: '击穿', bounce: '跳弹', nopen: '未击穿', gun: '火炮损伤' };
+  const HIT_COLOR = { pen: '#ffb35c', bounce: '#f2f2f2', nopen: '#9aa0a6', gun: '#ffd97a' };
+  const MODULE_TAG = { track: '·履带', engine: '·发动机', ammo: '·弹药架', gun: '' };
+
   function bindBus() {
-    const COLORS = { pen: '#ffb35c', bounce: '#f2f2f2', nopen: '#9aa0a6', gun: '#ffd97a' };
     SF.Bus.on('fire', (e) => {
       e.tank.lastFireT = world.time;
       if (e.tank.isPlayer) stats.shots++;
       fx.flash(e.pos, e.tank.isPlayer ? 2.6 : 2.0);
-      SF.Audio.play('cannon', e.pos, { gain: e.tank.isPlayer ? 1 : 0.8 });
+      SF.Audio.play('cannon', e.pos, { gain: e.tank.isPlayer ? 1.8 : 1.2 });
       if (e.tank.isPlayer) shakeT = 1;
     });
     SF.Bus.on('hit', (r) => {
@@ -273,22 +276,31 @@ SF.Main = (() => {
         stats.dmg += r.dmg;
       }
       const text = { pen: `-${r.dmg}`, bounce: '跳弹', nopen: '未击穿', gun: '火炮受损' }[r.kind] || '';
-      SF.HUD.dmgNumber(r.point, text, COLORS[r.kind] || '#fff');
+      SF.HUD.dmgNumber(r.point, text, HIT_COLOR[r.kind] || '#fff');
       const snd = r.kind === 'pen' ? 'pen' : r.kind === 'bounce' ? 'bounce' : 'nopen';
-      SF.Audio.play(snd, target.isPlayer ? null : r.point, { gain: target.isPlayer ? 1 : 0.75 });
+      // 音量: 自己挨打最响; 自己打中的反馈音用慢衰减(atten 大)保证清晰
+      SF.Audio.play(snd, target.isPlayer ? null : r.point, { gain: target.isPlayer ? 1.7 : 1.0, atten: 140 });
+      // 归属分明的提示: 我打出去的 → 准星下方; 我挨打的 → 顶部红色警报
+      if (shooter && shooter.isPlayer) {
+        SF.HUD.hitFeedback(HIT_TEXT[r.kind] + (r.module ? MODULE_TAG[r.module] : ''), HIT_COLOR[r.kind]);
+        if (r.module) SF.HUD.log(`敌方${MODULE_TAG[r.module] || ''}损伤`, '#a8d0a8');
+      } else if (target.isPlayer) {
+        if (r.kind === 'pen') SF.HUD.alarm(`被击穿 -${r.dmg}` + (r.module ? ` · ${SF.CFG.armor.modules[r.module].text}` : ''));
+        else if (r.kind === 'bounce') SF.HUD.hitFeedback('跳弹', '#9fd0ff');
+      }
       if (target.isPlayer && shooter) SF.HUD.hitFrom(shooter);
       if (target.isPlayer) shakeT = Math.max(shakeT, 0.7);
-      if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 0.9 });
-      if (r.module) SF.HUD.log(SF.CFG.armor.modules[r.module].text, r.target.isPlayer ? '#e8a2a2' : '#a8d0a8');
+      if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 1.2 });
     });
-    SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) SF.Audio.play('reload', null, { gain: 0.5 }); });
+    SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) SF.Audio.play('reload', null, { gain: 1.5 }); });
     SF.Bus.on('destroyed', (e) => {
       const t = e.tank;
       fx.explosion(t.pos3);
-      SF.Audio.play('explosion', t.pos3, { gain: 1 });
+      SF.Audio.play('explosion', t.pos3, { gain: 1.3 });
       if (t.isPlayer) { loseT = 2.5; SF.HUD.showMsg('坦克被击毁…', 3); }
       else {
         stats.kills++;
+        SF.HUD.hitFeedback('击毁', '#8fd98f');
         SF.HUD.log(`击毁：${t.spec.name}`, '#8fd98f');
       }
     });

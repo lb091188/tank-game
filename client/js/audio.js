@@ -10,18 +10,18 @@ SF.Audio = (() => {
   function init() {
     ctx = SF.Assets._audioCtx;
     master = ctx.createGain();
-    master.gain.value = 0.9;
+    master.gain.value = 1.0;
     master.connect(ctx.destination);
     resume();
   }
   function resume() { if (ctx.state === 'suspended') ctx.resume(); }
 
-  // 简易空间化: 距离衰减 + 相对朝向声像
-  function spatial(pos) {
+  // 简易空间化: 距离衰减(atten 越大衰减越慢) + 相对朝向声像
+  function spatial(pos, atten) {
     if (!pos) return { gain: 1, pan: 0 };
     const dx = pos.x - listener.x, dz = pos.z - listener.z;
     const d = Math.hypot(dx, dz);
-    const gain = SF.Util.clamp(1 / (1 + d / 55), 0.06, 1);
+    const gain = SF.Util.clamp(1 / (1 + d / (atten || 55)), 0.08, 1);
     const worldAng = Math.atan2(dx, dz);
     const rel = SF.Util.angDiff(listener.yaw, worldAng);
     return { gain, pan: SF.Util.clamp(Math.sin(rel), -0.9, 0.9) };
@@ -31,7 +31,7 @@ SF.Audio = (() => {
     const buf = SF.Assets.sounds[name];
     if (!buf || !ctx) return;
     if (voices > 14) return;                       // 声音上限
-    const { gain, pan } = spatial(pos);
+    const { gain, pan } = spatial(pos, opts.atten);
     const src = ctx.createBufferSource();
     src.buffer = buf;
     if (opts.rate) src.playbackRate.value = opts.rate;

@@ -66,6 +66,26 @@ SF.HUD = (() => {
     hitDirT = 1.0;
   }
 
+  // WoT 式命中判定提示: 准星下方显示"我打出去的结果"(击穿/跳弹/未击穿…)
+  let hitFbT = 0;
+  function hitFeedback(text, color) {
+    const el = $('hitFeedback');
+    el.textContent = text;
+    el.style.color = color || '#fff';
+    el.style.opacity = 1;
+    el.style.fontSize = text.length > 6 ? '20px' : '26px';
+    hitFbT = 1.4;
+  }
+
+  // 我方警报(与"打出去的结果"区分): 被击穿 / 我方模块损伤, 顶部红色横幅
+  let alarmT = 0;
+  function alarm(text) {
+    const el = $('alarm');
+    el.textContent = '⚠ ' + text;
+    el.style.opacity = 1;
+    alarmT = 2.6;
+  }
+
   function log(text, color) {
     const el = document.createElement('div');
     el.textContent = text;
@@ -117,6 +137,25 @@ SF.HUD = (() => {
 
     // 受击方向淡出
     if (hitDirT > 0) { hitDirT -= dt; $('hitDir').style.opacity = Math.max(0, hitDirT); }
+    // 命中提示淡出(前 0.9s 常显, 后 0.5s 渐隐)
+    if (hitFbT > 0) { hitFbT -= dt; $('hitFeedback').style.opacity = hitFbT > 0.5 ? 1 : hitFbT * 2; }
+    // 警报淡出
+    if (alarmT > 0) { alarmT -= dt; $('alarm').style.opacity = Math.min(1, alarmT); }
+
+    // 装填环形读条(跟随准心) + 倒计时秒数
+    const ring = $('reloadRing'), rctx = ring.getContext('2d');
+    const rl2 = player.reloadT > 0 ? player.reloadT / player.spec.gun.reload : 0;
+    rctx.clearRect(0, 0, 76, 76);
+    const rt = $('reloadText');
+    if (rl2 > 0) {
+      ring.style.display = rt.style.display = 'block';
+      rctx.lineWidth = 5;
+      rctx.strokeStyle = 'rgba(10,12,8,.55)';
+      rctx.beginPath(); rctx.arc(38, 38, 33, 0, Math.PI * 2); rctx.stroke();
+      rctx.strokeStyle = '#c8b26a';
+      rctx.beginPath(); rctx.arc(38, 38, 33, -Math.PI / 2, -Math.PI / 2 + (1 - rl2) * Math.PI * 2); rctx.stroke();
+      rt.textContent = player.reloadT.toFixed(1);
+    } else { ring.style.display = rt.style.display = 'none'; }
 
     // 小地图
     const cv = $('minimap'), ctx = cv.getContext('2d');
@@ -180,5 +219,5 @@ SF.HUD = (() => {
       `造成伤害 <b>${Math.round(stats.dmg)}</b>`;
   }
 
-  return { init, update, dmgNumber, hitFrom, log, showMsg, endGame, project };
+  return { init, update, dmgNumber, hitFrom, hitFeedback, alarm, log, showMsg, endGame, project };
 })();

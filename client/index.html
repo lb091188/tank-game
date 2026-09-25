@@ -44,6 +44,10 @@
   #crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: #f2ecd8; border-radius: 50%; box-shadow: 0 0 3px #000; }
   #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(242,236,216,.75); }
   #crosshair::before { left: -14px; right: -14px; top: 1px; height: 1px; background: transparent; border-top: 1px dashed rgba(242,236,216,.35); }
+  #hitFeedback { position: absolute; left: 50%; top: 57%; transform: translateX(-50%); font-size: 26px; font-weight: bold; letter-spacing: 3px; text-shadow: 0 1px 4px #000, 0 0 10px rgba(0,0,0,.8); opacity: 0; }
+  #alarm { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #ff6b5a; text-shadow: 0 1px 4px #000, 0 0 12px rgba(200,40,20,.6); opacity: 0; transition: opacity .15s; }
+  #reloadRing { position: absolute; left: 50%; top: 50%; margin: -38px; display: none; }
+  #reloadText { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-size: 15px; color: #c8b26a; text-shadow: 0 1px 3px #000; display: none; font-variant-numeric: tabular-nums; }
   #aimCircle { position: absolute; border: 1.5px solid rgba(255,255,255,.8); border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,.6), inset 0 0 4px rgba(0,0,0,.4); }
   #aimCircle.aimed { border-color: rgba(150,230,140,.9); }
 
@@ -92,7 +96,11 @@
   <div id="dmgLayer"></div>
   <div id="markers"></div>
   <div id="aimCircle"></div>
+  <canvas id="reloadRing" width="76" height="76"></canvas>
+  <div id="reloadText"></div>
   <div id="crosshair"></div>
+  <div id="hitFeedback"></div>
+  <div id="alarm"></div>
   <div id="hitDir"></div>
   <div id="bottomBar" class="panel">
     <div id="hpBar"><div id="hpFill"></div></div>
