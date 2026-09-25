@@ -14,7 +14,7 @@ SF.Main = (() => {
   const spotted = new Set();
   let waveIdx = 0, waveEnemies = [], repairT = 0, repairDone = false, gameOver = false, loseT = -1;
   let stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
-  let aimPoint = null;
+  let aimPoint = null, gunAim = null;
 
   /* ---------- 场景 ---------- */
   function buildScene() {
@@ -71,7 +71,7 @@ SF.Main = (() => {
     shells = new SF.Shells(scene, fx);
     world.shells = shells;
 
-    SF.Game = { scene, camera, renderer, world, fx, get uiState() { return { aimPoint, sniper, spotted, keys }; } };
+    SF.Game = { scene, camera, renderer, world, fx, get uiState() { return { aimPoint, gunAim, sniper, spotted, keys }; } };
     // 测试钩子: 无 rAF 环境下手动推进模拟与渲染(自动化测试用)
     SF.Game.test = {
       step(n = 1) { for (let i = 0; i < n; i++) step(SF.CFG.sim.dt); },
@@ -154,18 +154,13 @@ SF.Main = (() => {
 
   // 沿相机中心视线求瞄准点: 地形解析步进 + 掩体/坦克 raycast
   const _ray = new THREE.Raycaster();
-  function computeAim() {
-    const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    const origin = camera.position.clone();
-    let best = null, bestT = 1e9;
-
-    // 地形
-    let t = 2, prevY = 1e9;
-    for (; t < 900; t += 2) {
+  function findRayHit(origin, dir, maxDist = 900) {
+    let best = null, bestT = maxDist;
+    // 地形(步进采样 + 二分细化)
+    let t = 2;
+    for (; t < bestT; t += 2) {
       const px = origin.x + dir.x * t, py = origin.y + dir.y * t, pz = origin.z + dir.z * t;
-      const h = world.terrain.heightAt(px, pz);
-      if (py <= h) {  // 二分细化
+      if (py <= world.terrain.heightAt(px, pz)) {
         let lo = t - 2, hi = t;
         for (let k = 0; k < 8; k++) {
           const mid = (lo + hi) / 2;
@@ -174,17 +169,30 @@ SF.Main = (() => {
         bestT = hi; best = new THREE.Vector3(origin.x + dir.x * hi, origin.y + dir.y * hi, origin.z + dir.z * hi);
         break;
       }
-      prevY = py;
       if (t > 500 && py > 160 && dir.y > 0) break;
     }
     // 掩体与敌坦克
     const objs = [world.covers.group];
     for (const e of world.enemies) if (e.alive) objs.push(...e.parts.zones);
-    _ray.set(origin, dir); _ray.far = Math.min(bestT, 900);
+    _ray.set(origin, dir); _ray.far = Math.min(bestT, maxDist);
     const hits = _ray.intersectObjects(objs, true);
     if (hits.length && hits[0].distance < bestT) { bestT = hits[0].distance; best = hits[0].point; }
+    return best ? { pos: best, dist: bestT } : null;
+  }
 
-    aimPoint = best ? { pos: best, dist: bestT } : null;
+  // 相机瞄准点(鼠标中心) + 炮管实际指向点(双准星: 散布圈跟炮走, 追赶后与中心合拢)
+  function computeAim() {
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    aimPoint = findRayHit(camera.position.clone(), camDir);
+
+    const p = world.player;
+    if (p.alive) {
+      p.group.updateMatrixWorld(true);
+      const mz = p.muzzleWorld(), gd = p.gunDir();
+      const hit = findRayHit(mz, gd);
+      gunAim = hit || { pos: mz.clone().addScaledVector(gd, 400), dist: 400 };   // 打天时取炮向 400m 虚拟点, 保证圈始终存在
+    } else gunAim = null;
   }
 
   /* ---------- 输入 ---------- */
@@ -297,7 +305,7 @@ SF.Main = (() => {
       if (target.isPlayer) shakeT = Math.max(shakeT, 0.7);
       if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 1.2 });
     });
-    SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) { SF.Audio.play('reload', null, { gain: 1.5 }); SF.Audio.playVoice('v_reload'); } });
+    SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) SF.Audio.play('reload', null, { gain: 1.5 }); });
     let missLast = -9;   // 未命中提示节流(基于模拟时间)
     SF.Bus.on('playerMiss', () => {
       if (world.time - missLast > 0.6) { SF.HUD.hitFeedback('未命中', '#8a8f94'); SF.Audio.playVoice('v_miss'); missLast = world.time; }

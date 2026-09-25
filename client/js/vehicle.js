@@ -86,11 +86,12 @@ SF.Tank = class {
         if (d < 4.4 && d > 0.01) { this.x = o.x + dx / d * 4.4; this.z = o.z + dz / d * 4.4; }
       }
 
-    /* --- 地形贴合(履带四角采样 → 俯仰/侧倾/高度; 全部平滑防颠簸) --- */
+    /* --- 地形贴合(履带四角采样 → 俯仰/侧倾/高度; 全部平滑防颠簸) ---
+       车体局部系: 前进+Z, 左舷+X(经 yaw 旋转后: 左舷方向 = (cos yaw, -sin yaw)) */
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
     const SL = S.sample.l, SW = S.sample.w;
     const hF = T.heightAt(this.x + s * SL, this.z + c * SL), hB = T.heightAt(this.x - s * SL, this.z - c * SL);
-    const hL = T.heightAt(this.x - c * SW, this.z + s * SW), hR = T.heightAt(this.x + c * SW, this.z - s * SW);
+    const hL = T.heightAt(this.x + c * SW, this.z - s * SW), hR = T.heightAt(this.x - c * SW, this.z + s * SW);
     const hC = T.heightAt(this.x, this.z);
     const targetY = Math.max(hC, (hF + hB + hL + hR) / 4);   // 凹: 骑在四角上; 凸: 撑在中心上
     const tPitch = Math.atan2(hF - hB, 2 * SL), tRoll = Math.atan2(hL - hR, 2 * SW);

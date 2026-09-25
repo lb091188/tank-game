@@ -29,23 +29,24 @@ SF.HUD = (() => {
     return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
   }
 
-  // 动态准星圈: 用瞄准点处半径(米)投影为屏幕像素
-  function updateAimCircle(player, aimPoint) {
+  // 双准星(WoT 式): 中心点=鼠标/相机瞄准; 散布圈=炮管实际指向(炮塔回转时滞后追赶) + 最小像素保证不开镜也可见
+  function updateAimCircle(player, uiState) {
     const circle = $('aimCircle');
-    if (!player.alive || !aimPoint) { circle.style.display = 'none'; return; }
+    if (!player.alive || !uiState.gunAim) { circle.style.display = 'none'; return; }
+    const center = project(uiState.gunAim.pos);
+    if (!center) { circle.style.display = 'none'; return; }
     circle.style.display = 'block';
-    const distAim = aimPoint.pos.distanceTo(SF.Game.camera.position);
-    const radiusM = Math.max(0.4, player.disp / 100 * distAim);   // 散布半径(米) @ 瞄准距离
-    // 取垂直于视线的横向向量做屏幕投影
+    // 散布半径(米)@炮管指向距离 → 屏幕像素
     const cam = SF.Game.camera;
-    const toAim = aimPoint.pos.clone().sub(cam.position).normalize();
+    const toAim = uiState.gunAim.pos.clone().sub(cam.position).normalize();
     const right = new THREE.Vector3().crossVectors(toAim, cam.up).normalize();
-    const a = project(aimPoint.pos), b = project(aimPoint.pos.clone().addScaledVector(right, radiusM));
-    if (!a || !b) { circle.style.display = 'none'; return; }
-    const rPx = Math.max(10, Math.hypot(b.x - a.x, b.y - a.y));
+    const radiusM = Math.max(0.4, player.disp / 100 * uiState.gunAim.dist);
+    const b = project(uiState.gunAim.pos.clone().addScaledVector(right, radiusM));
+    let rPx = b ? Math.hypot(b.x - center.x, b.y - center.y) : 30;
+    rPx = Math.max(24, rPx);                      // 最小可见半径
     circle.style.width = circle.style.height = (rPx * 2) + 'px';
-    circle.style.left = (window.innerWidth / 2 - rPx) + 'px';
-    circle.style.top = (window.innerHeight / 2 - rPx) + 'px';
+    circle.style.left = (center.x - rPx) + 'px';
+    circle.style.top = (center.y - rPx) + 'px';
     circle.classList.toggle('aimed', player.disp < player.spec.dispersion.base * 1.35);
   }
 
@@ -123,7 +124,7 @@ SF.HUD = (() => {
       .filter(k => player.modules[k] > 0)
       .map(k => `<span class="mod">${SF.CFG.armor.modules[k].text}</span>`).join('');
 
-    updateAimCircle(player, uiState.aimPoint);
+    updateAimCircle(player, uiState);
 
     // 伤害数字上浮
     for (const d of dmgFloats) {
