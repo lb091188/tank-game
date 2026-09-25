@@ -81,6 +81,60 @@ SF.Models = (() => {
       c2.position.y = 4.9 * s;
       g.add(trunk, c1, c2);
       col = { ...col, blocksShells: false, r: 0.9, h: 1.6 }; // 树干挡车不挡弹
+    } else if (c.type === 'barn') {
+      const s = (c.scale || 1);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(11 * s, 5, 7.5 * s), lambert([0.62, 0.42, 0.3]));
+      body.position.y = 2.5;
+      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(11.8 * s, 0.3, 4.6 * s), lambert([0.35, 0.22, 0.16]));
+      roof1.position.set(0, 6.0, 1.9 * s); roof1.rotation.x = 0.6;
+      const roof2 = roof1.clone(); roof2.position.z = -1.9 * s; roof2.rotation.x = -0.6;
+      g.add(body, roof1, roof2);
+      col = { ...col, r: 6.6 * s, h: 7 };
+    } else if (c.type === 'ruin') {
+      const s = (c.scale || 1);
+      const brick = lambert([0.55, 0.44, 0.38]), dark = lambert([0.42, 0.34, 0.3]);
+      const w1 = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 3.2, 0.5), brick); w1.position.set(0, 1.6, 0);
+      const w2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2.2, 4 * s), brick); w2.position.set(-3 * s, 1.1, 2 * s);
+      const w3 = new THREE.Mesh(new THREE.BoxGeometry(2.2 * s, 1.3, 0.45), dark); w3.position.set(1.8 * s, 0.65, -0.8);
+      const rub = new THREE.Mesh(new THREE.BoxGeometry(4.5 * s, 0.5, 2.6), dark); rub.position.set(0.6, 0.25, 0.6);
+      g.add(w1, w2, w3, rub);
+      col = { ...col, r: 3.4 * s, h: 3.4 };
+    } else if (c.type === 'wall') {
+      const s = (c.scale || 1);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(5.5 * s, 1.25, 0.55), lambert([0.46, 0.44, 0.4]));
+      m.position.y = 0.62;
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(5.7 * s, 0.16, 0.7), lambert([0.38, 0.37, 0.34]));
+      cap.position.y = 1.3;
+      g.add(m, cap);
+      col = { ...col, r: 2.5 * s, h: 1.5 };
+    } else if (c.type === 'haystack') {
+      const s = (c.scale || 1);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(1.7 * s, 2.0 * s, 2.7 * s, 10), lambert([0.62, 0.5, 0.27]));
+      m.position.y = 1.35 * s;
+      const cap2 = new THREE.Mesh(new THREE.ConeGeometry(1.75 * s, 1.1 * s, 10), lambert([0.55, 0.43, 0.22]));
+      cap2.position.y = 3.1 * s;
+      g.add(m, cap2);
+      col = { ...col, r: 2.2 * s, h: 3.6 };
+    } else if (c.type === 'wreck') {
+      const s = (c.scale || 1);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.1, 6.2), lambert([0.13, 0.13, 0.12]));
+      body.position.y = 0.75; body.rotation.z = 0.06;
+      const tur = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.8, 2.4), lambert([0.11, 0.11, 0.1]));
+      tur.position.set(0.35, 1.7, 0.4); tur.rotation.y = 0.9;
+      const gunB = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.8, 6), lambert([0.1, 0.1, 0.09]));
+      gunB.rotation.set(Math.PI / 2, 0, 0.5); gunB.position.set(0.9, 1.4, 1.5);
+      const track1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 6.3), lambert([0.09, 0.09, 0.08]));
+      track1.position.set(-1.55, 0.35, 0);
+      const track2 = track1.clone(); track2.position.x = 1.55;
+      g.add(body, tur, gunB, track1, track2);
+      g.rotation.z = 0.03;
+      col = { ...col, r: 3.0, h: 2.2 };
+    } else if (c.type === 'bush') {
+      const s = (c.scale || 1);
+      const m = new THREE.Mesh(new THREE.SphereGeometry(1.15 * s, 7, 5), lambert([0.16, 0.3, 0.14]));
+      m.scale.y = 0.75; m.position.y = 0.7 * s;
+      g.add(m);
+      col = { ...col, blocksMove: false, blocksShells: false, r: 1.0, h: 1.4 }; // 纯视觉
     }
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     return { group: g, col };
