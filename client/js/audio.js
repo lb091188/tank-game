@@ -83,23 +83,43 @@ SF.Audio = (() => {
   function setListener(x, z, yaw) { listener = { x, z, yaw }; }
   function state() { return engineGain ? { rate: +engineRate.toFixed(2), gain: +engineGain.gain.value.toFixed(3), lp: Math.round(engineLP.frequency.value) } : null; }
 
-  // 中文战斗语音: 非空间化, 常亮; 全局节流 0.65s 防播报重叠(重要语音可打断)
-  let voiceLast = -9;
+  // 中文战斗语音: 浏览器系统 TTS 实时合成(零下载/零版权, 用玩家自己系统的中文语音)
+  // 说明: speechSynthesis 输出无法被页面静默录制(安全模型), 即时合成本身无延迟, 无需缓存
+  const VOICE_TEXT = {
+    v_pen: '击穿', v_nopen: '未能击穿', v_bounce: '跳弹', v_miss: '未命中',
+    v_kill: '目标击毁', v_hitpen: '警告，装甲被击穿',
+    v_track: '履带断裂', v_ammo: '弹药架受损', v_engine: '发动机受损', v_gun: '火炮受损', v_reload: '装填完毕'
+  };
+  let zhVoice = null, voicesReady = false;
+  function pickVoice() {
+    if (typeof speechSynthesis === 'undefined') return;
+    const vs = speechSynthesis.getVoices();
+    if (!vs.length) return;
+    voicesReady = true;
+    zhVoice = vs.find(v => /yunjian|kangkang|huihui/i.test(v.name) && /zh/i.test(v.lang))   // 优先男声/常见中文语音
+      || vs.find(v => /^zh([-_]CN)?/i.test(v.lang))
+      || null;
+  }
+  if (typeof speechSynthesis !== 'undefined') {
+    pickVoice();
+    speechSynthesis.onvoiceschanged = pickVoice;
+  }
   function playVoice(name, important = false) {
-    if (!ctx) return;
-    const on = !SF.CFG.audio || SF.CFG.audio.voice !== false;
-    if (!on) return;
-    const now = ctx.currentTime;
-    if (!important && now - voiceLast < 0.65) return;
-    voiceLast = now;
-    const buf = SF.Assets.sounds[name];
-    if (!buf) return;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const g = ctx.createGain();
-    g.gain.value = 1.15;
-    src.connect(g); g.connect(master);
-    src.start();
+    if (!SF.CFG.audio || SF.CFG.audio.voice === false) return;
+    if (typeof speechSynthesis === 'undefined') return;
+    const text = VOICE_TEXT[name];
+    if (!text) return;
+    try {
+      if (!voicesReady) pickVoice();
+      if (voicesReady && !zhVoice) return;         // 系统无中文语音 → 静默跳过(文字提示仍在)
+      if (!important && speechSynthesis.speaking) return;  // 常规播报不排队堆积
+      if (important) speechSynthesis.cancel();     // 重要播报打断当前
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'zh-CN';
+      if (zhVoice) u.voice = zhVoice;
+      u.rate = 1.08; u.pitch = 0.92;
+      speechSynthesis.speak(u);
+    } catch (e) { }
   }
 
   return { init, play, playVoice, startEngine, setEngine, startAmbient, setListener, resume, state };

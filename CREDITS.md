@@ -13,9 +13,10 @@
 | 履带断裂 | `audio/track.wav` | 同上 | Brian MacIntosh | CC0 |
 | 装填完成 | `audio/reload.wav` | 同上 | Brian MacIntosh | CC0 |
 | 环境风声 | `audio/wind.wav` | 程序合成（tools/build-audio.js） | 本项目 | 项目自身 |
-| 中文战斗语音 ×11 | `audio/voice/v_*.mp3` | edge-tts 生成（zh-CN-YunjianNeural 神经语音） | 微软 Azure 神经语音 | **仅限个人/非商用使用**（edge-tts 走微软在线服务；商业发行需换自录或购买授权的语音） |
+| 装填完成音效 | `audio/reload.wav` | 程序合成（炮闩机械声） | 本项目 | 项目自身 |
+| 中文战斗语音 | （无音频文件） | 运行时由浏览器系统 TTS（speechSynthesis）实时合成 | 玩家系统自带语音 | 无版权问题（不分发任何语音素材） |
 
 - 引擎音经过 playbackRate 变调处理（随车速 0.88–1.62 倍速），属对原素材的使用性修改。
-- 语音重新生成方法：`python3 -c "..."`（见 git 历史或用 edge-tts，VOICE=zh-CN-YunjianNeural）。
-- 若商业发行：CC-BY 素材（引擎循环）必须在游戏内或发行说明中保留署名；CC0 无义务但建议保留本文件；**语音需替换为自有版权音源**。
+- 语音走玩家系统 TTS 实时合成，游戏不携带任何语音文件；系统缺少中文语音时自动静默（文字提示不受影响）。
+- 若商业发行：CC-BY 素材（引擎循环）必须在游戏内或发行说明中保留署名；CC0 无义务但建议保留本文件。
 - 备用合成音源在 `audio/synth/`（由 tools/build-audio.js 生成），与开源音源互不影响。

@@ -78,16 +78,12 @@ SF.Assets = (() => {
       track(loadGLB(`assets/models/${file}.glb`).then(g => { A.models[MODEL_FILES[file]] = g.scene; }));
 
     // 音效(开源音源, 见 CREDITS.md; cannon 是 ogg, 其余 wav; 缺失仅警告不阻断)
+    // 中文战斗语音不走音频文件: 运行时用浏览器系统 TTS 实时合成(audio.js playVoice)
     const sounds = ['cannon.ogg', 'pen.wav', 'bounce.wav', 'nopen.wav', 'track.wav', 'reload.wav', 'explosion.wav', 'wind.wav', 'engine-loop.wav'];
     for (const s of sounds) {
       const key = s.replace(/\.(wav|ogg)$/, '');
       track(loadSound(audioCtx, `assets/audio/${s}`).then(b => { A.sounds[key] = b; })
         .catch(() => console.warn(`音效缺失(跳过): ${s}`)));
-    }
-    // 中文战斗语音(edge-tts 生成, voice/ 子目录)
-    for (const v of ['v_pen', 'v_nopen', 'v_bounce', 'v_miss', 'v_kill', 'v_hitpen', 'v_track', 'v_ammo', 'v_engine', 'v_gun', 'v_reload']) {
-      track(loadSound(audioCtx, `assets/audio/voice/${v}.mp3`).then(b => { A.sounds[v] = b; })
-        .catch(() => console.warn(`语音缺失(跳过): ${v}`)));
     }
 
     let done = 0;
