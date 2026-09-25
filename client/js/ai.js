@@ -184,7 +184,8 @@ SF.AI = class {
       const lead = P.leadSkill;                              // 预判能力(性格差异)
       const predX = aimAt.x + (aimAt.vx || 0) * flightT * lead;
       const predZ = aimAt.z + (aimAt.vz || 0) * flightT * lead;
-      const ty = world.terrain.heightAt(player.x, player.z) + 1.2;
+      // 高纪律 AI 打弱点(首下), 其余瞄车体中心
+      const ty = world.terrain.heightAt(player.x, player.z) + (P.aimPatience >= 0.85 ? 0.7 : 1.2);
       const dy = ty - (t.y + 2.0), dh = Math.hypot(predX - t.x, predZ - t.z);
       this.input.aimYaw = Math.atan2(predX - t.x, predZ - t.z);
       this.input.aimPitch = SF.Util.clamp(Math.atan2(dy, Math.max(dh, 1)), t.spec.gunDepression, t.spec.gunElevation);

@@ -20,7 +20,16 @@
   /* 标题屏 */
   #titleScreen { position: fixed; inset: 0; background: linear-gradient(rgba(18,20,14,.92), rgba(18,20,14,.96)); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 90; }
   #titleScreen h1 { color: #d8c887; font-size: 52px; letter-spacing: 14px; margin-bottom: 6px; }
-  #titleScreen h2 { color: #9aa08a; font-weight: normal; letter-spacing: 4px; margin-bottom: 40px; }
+  #titleScreen h2 { color: #9aa08a; font-weight: normal; letter-spacing: 4px; margin-bottom: 22px; }
+  .pickLabel { color: #8b9080; font-size: 13px; letter-spacing: 3px; margin: 12px 0 8px; }
+  .cards { display: flex; gap: 10px; }
+  .card { width: 170px; padding: 12px 14px; background: rgba(255,255,255,.045); border: 1px solid rgba(200,178,106,.25); border-radius: 6px; cursor: pointer; text-align: left; transition: all .12s; }
+  .card:hover { background: rgba(255,255,255,.08); }
+  .card.sel { border-color: #c8b26a; background: rgba(200,178,106,.14); box-shadow: 0 0 12px rgba(200,178,106,.25); }
+  .card b { display: block; color: #e6ddba; font-size: 15px; margin-bottom: 4px; }
+  .card i { display: inline-block; font-style: normal; font-size: 11px; color: #14160f; background: #c8b26a; border-radius: 3px; padding: 1px 7px; margin-bottom: 6px; }
+  .card span { display: block; color: #b3b8a5; font-size: 12px; }
+  .card em { display: block; font-style: normal; color: #7f8574; font-size: 11px; margin-top: 5px; }
   #controls { color: #b8bda9; font-size: 15px; line-height: 2; background: rgba(255,255,255,.04); padding: 18px 34px; border-radius: 8px; margin-bottom: 36px; }
   #controls b { color: #e0d6a8; display: inline-block; min-width: 130px; }
   #btnStart { font-size: 20px; padding: 14px 64px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
@@ -127,8 +136,12 @@
 
 <div id="titleScreen">
   <h1>钢 铁 前 沿</h1>
-  <h2>第一关 · 遭遇战 — M4 谢尔曼</h2>
-  <div id="controls">
+  <h2>单机战役 · 选择你的坦克与战场</h2>
+  <div class="pickLabel">坦 克</div>
+  <div id="garageRow" class="cards"></div>
+  <div class="pickLabel">战 场</div>
+  <div id="mapRow" class="cards"></div>
+  <div id="controls" style="margin-top:26px">
     <b>W / S</b>前进 · 倒车（倒车更慢，可伸缩炮）<br>
     <b>A / D</b>车体转向（可原地转向）<br>
     <b>鼠标</b>炮塔瞄准 — 点击画面锁定鼠标<br>

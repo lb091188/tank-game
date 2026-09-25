@@ -115,7 +115,9 @@ SF.Tank = class {
       this.turretYaw = U.angMoveToward(this.turretYaw, input.aimYaw, S.turretTraverse * dt);
       this.lastTurretRate = U.angDiff(before, this.turretYaw) / dt;
     }
-    this.gunPitch = U.moveToward(this.gunPitch, U.clamp(input.aimPitch, S.gunDepression, S.gunElevation), 1.2 * dt);
+    /* --- 炮管俯仰: 限制相对车体(WoT 逻辑: 上坡压缩世界俯角, 下坡/坡顶扩大) --- */
+    const relPitch = input.aimPitch - this.pitch;
+    this.gunPitch = U.moveToward(this.gunPitch, U.clamp(relPitch, S.gunDepression, S.gunElevation), 1.2 * dt);
 
     /* --- 缩圈/扩圈 --- */
     const D = S.dispersion;
@@ -139,7 +141,7 @@ SF.Tank = class {
     this.group.position.set(this.x, this.y, this.z);
     this.group.rotation.set(-this.pitch, this.yaw, this.roll, 'YXZ');
     if (this.parts.turret) this.parts.turret.rotation.y = SF.Util.angDiff(this.yaw, this.turretYaw);
-    if (this.parts.gun) this.parts.gun.rotation.x = -this.gunPitch + this.pitch;  // 补偿车体俯仰
+    if (this.parts.gun) this.parts.gun.rotation.x = -this.gunPitch;  // gunPitch 已是车体相对角
   }
 
   muzzleWorld() {

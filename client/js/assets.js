@@ -3,7 +3,7 @@
 window.SF = window.SF || {};
 
 SF.Assets = (() => {
-  const A = { models: {}, map: null, sounds: {}, mapDir: 'assets/maps/l01-encounter' };
+  const A = { models: {}, maps: {}, sounds: {} };
 
   function fetchErr(url) { throw new Error(`资源加载失败(文件缺失?): ${url}`); }
 
@@ -63,17 +63,19 @@ SF.Assets = (() => {
     const jobs = [];
     const track = (p) => jobs.push(p);
 
-    // 地图数据
-    const mapPromise = (async () => {
-      A.map = await fetchJSON(`${A.mapDir}/map.json`);
-      A.heights = await loadHeightmap(`${A.mapDir}/heightmap.png`, A.map.terrain);
-    })();
-    track(mapPromise);
+    // 地图数据(全部预载, 出击前可任选)
+    for (const m of SF.CFG.maps) {
+      track((async () => {
+        const json = await fetchJSON(`assets/maps/${m.dir}/map.json`);
+        const heights = await loadHeightmap(`assets/maps/${m.dir}/heightmap.png`, json.terrain);
+        A.maps[m.id] = { json, heights };
+      })());
+    }
 
     // 模型
     const audioCtx = A._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     // 模型(文件名 → 引擎类型名)
-    const MODEL_FILES = { 'm4-sherman': 'sherman', 'enemy-medium': 'medium', 'enemy-td': 'td', 'enemy-heavy': 'heavy' };
+    const MODEL_FILES = { 'm4-sherman': 'sherman', 'm4a3e8': 'sherman76', 'm4a3e2-jumbo': 'jumbo', 'm18-hellcat': 'hellcat', 'enemy-medium': 'medium', 'enemy-td': 'td', 'enemy-heavy': 'heavy' };
     for (const file in MODEL_FILES)
       track(loadGLB(`assets/models/${file}.glb`).then(g => { A.models[MODEL_FILES[file]] = g.scene; }));
 

@@ -322,11 +322,68 @@ function buildGun(pivot, r, len, col, brake) {
   return gun;
 }
 
-/* ============ 四型坦克(V2) ============ */
 
-function buildSherman() {
+function buildHellcat() {
   const C = OLIVE;
-  const root = N('sherman', { extras: { type: 'sherman' } });
+  const root = N('hellcat', { extras: { type: 'hellcat' } });
+  const tracks = Z('tracks', 10);
+  runningGear(root, tracks, 1.02, 5, 0.46, 6.4, 0.76, 0);
+  root.children.push(tracks);
+
+  const hw = 1.18, hy = 0.98, hl = 6.2, sh = 0.72;
+  const hullSide = Z('hullSide', 13);   // 薄甲: 侧面 13mm
+  hullSide.parts.push(part(box(0.14, sh, hl), M4x(-hw, hy, 0), C));
+  hullSide.parts.push(part(box(0.14, sh, hl), M4x(hw, hy, 0), C));
+  hullSide.parts.push(part(box(0.14, 0.4, 1.6), M4x(-hw + 0.08, hy + sh / 2 + 0.16, 1.6, 0, 0.5, 0), C));  // 前侧斜
+  hullSide.parts.push(part(box(0.14, 0.4, 1.6), M4x(hw - 0.08, hy + sh / 2 + 0.16, 1.6, 0, -0.5, 0), C));
+  fenders(hullSide, hw, hy + sh / 2 + 0.04, 5.9, C);
+  root.children.push(hullSide);
+
+  const glacis = Z('glacis', 25);       // 25mm@47°
+  glacis.parts.push(part(box(2.3, 1.5, 0.16), M4x(0, hy + sh / 2 - Math.cos(0.82) * 0.75, hl / 2 - 0.26 + Math.sin(0.82) * 0.75, -0.82, 0, 0), C));
+  root.children.push(glacis);
+  const lower = Z('lowerPlate', 19);
+  lower.parts.push(part(box(2.3, sh * 0.72, 0.16), M4x(0, hy - sh * 0.12, hl / 2 - 0.02, -0.3, 0, 0), C));
+  root.children.push(lower);
+  const rear = Z('hullRear', 13);
+  rear.parts.push(part(box(2.4, sh, 0.14), M4x(0, hy, -hl / 2 + 0.02, 0.3, 0, 0), C));
+  engineDeck(rear, rear, 2.4, hy + sh / 2, -hl / 2 + 1.0, C);   // 排气并入尾部
+  root.children.push(rear);
+  const top = Z('hullTop', 10);
+  top.parts.push(part(box(2.4, 0.1, hl), M4x(0, hy + sh / 2 + 0.05, 0), C));
+  root.children.push(top);
+
+  // 后置小炮塔(敞篷感用低矮圆柱)
+  const T = { ring: [0, 1.66, -0.85], w: 1.5, l: 1.8, h: 0.6 };
+  const turret = N('turret', { translation: T.ring });
+  const ty = T.h / 2;
+  const tFront = Z('turretFront', 60);
+  tFront.parts.push(part(cyl(0.78, 0.84, T.h, 14), M4x(0, ty, 0), C));
+  turret.children.push(tFront);
+  const tSide = Z('turretSide', 25);
+  tSide.parts.push(part(cyl(0.8, 0.84, 0.05, 14), M4x(0, T.h + 0.02, 0), C));
+  turret.children.push(tSide);
+  const tRear = Z('turretRear', 19);
+  tRear.parts.push(part(box(1.1, 0.4, 0.24), M4x(0, ty - 0.05, -0.95), C));
+  turret.children.push(tRear);
+  const tRoof = Z('turretRoof', 10);
+  tRoof.parts.push(part(cyl(0.77, 0.77, 0.08, 14), M4x(0, T.h + 0.05, 0), C));   // 敞篷: 仅前部小顶棚
+  tRoof.parts.push(part(box(0.9, 0.08, 0.7), M4x(0, T.h + 0.1, 0.55), C));
+  turret.children.push(tRoof);
+  const mantlet = Z('mantlet', 90);
+  mantlet.parts.push(part(cyl(0.38, 0.38, 0.28, 12), M4x(0, ty + 0.02, T.l / 2 + 0.04, Math.PI / 2, 0, 0), C));
+  turret.children.push(mantlet);
+  turret.children.push(buildGun([0, 0.3, 0.9], 0.068, 3.4, GUN_C, true));
+  root.children.push(turret);
+  return root;
+}
+
+/* ============ 坦克清单(V2) ============ */
+
+function buildSherman(opts = {}) {
+  const OT = opts.type || 'sherman';
+  const C = OLIVE;
+  const root = N(OT, { extras: { type: OT } });
 
   const tracks = Z('tracks', 20);
   runningGear(root, tracks, 1.06, 6, 0.42, 6.15, 0.84); tracks.trackTex = true;
@@ -340,6 +397,10 @@ function buildSherman() {
   // 首上侧斜甲(车头两侧切角)
   hullSide.parts.push(part(box(0.16, sh * 0.9, 1.1), M4x(-hw + 0.12, hy, hl / 2 - 0.35, 0, 0.5, 0), C));
   hullSide.parts.push(part(box(0.16, sh * 0.9, 1.1), M4x(hw - 0.12, hy, hl / 2 - 0.35, 0, -0.5, 0), C));
+  if (opts.jumbo) {   // E2 突击型附加装甲
+    for (const sx of [-1, 1]) hullSide.parts.push(part(box(0.1, 0.72, 4.6), M4x(sx * (hw + 0.14), hy - 0.05, -0.2), C));
+    hullSide.parts.push(part(box(2.5, 0.62, 0.14), M4x(0, hy + sh / 2 - 0.62, hl / 2 + 0.2, -0.82, 0, 0), C));  // 首上附加板
+  }
   fenders(hullSide, hw, hy + sh / 2 + 0.05, 5.6, C);
   hullKit(hullSide, 2.62, hy + sh / 2 + 0.2, hl / 2 - 0.15, C);
   root.children.push(hullSide);
@@ -391,9 +452,9 @@ function buildSherman() {
   tRoof.parts.push(part(cyl(0.05, 0.05, 0.4, 6), M4x(0.75, T.h + 0.25, -0.55, 0, 0, 0.35), GUN_C));    // 高机座
   turret.children.push(tRoof);
   const mantlet = Z('mantlet', 89);
-  mantlet.parts.push(part(cyl(0.46, 0.46, 0.34, 14), M4x(0, ty + 0.02, T.l / 2 + 0.05, Math.PI / 2, 0, 0), C)); // 圆形炮盾
+  mantlet.parts.push(part(cyl(opts.jumbo ? 0.58 : 0.46, opts.jumbo ? 0.58 : 0.46, 0.34, 14), M4x(0, ty + 0.02, T.l / 2 + 0.05, Math.PI / 2, 0, 0), C)); // 圆形炮盾(E2 加厚)
   turret.children.push(mantlet);
-  turret.children.push(buildGun([0, 0.40, 1.10], 0.075, 2.6, GUN_C, true));
+  turret.children.push(buildGun([0, 0.40, 1.10], opts.gunR || 0.075, opts.gunLen || 2.6, GUN_C, opts.brake !== false));
   root.children.push(turret);
   return root;
 }
@@ -595,7 +656,10 @@ function buildHeavy() {
 
 /* ============ 主流程 ============ */
 const TANKS = [
-  { file: 'm4-sherman.glb', build: buildSherman, zones: ['tracks','glacis','lowerPlate','hullSide','hullRear','hullTop','turretFront','turretSide','turretRear','turretRoof','mantlet','gun'] },
+  { file: 'm4-sherman.glb', build: () => buildSherman() },
+  { file: 'm4a3e8.glb', build: () => buildSherman({ type: 'sherman76', gunR: 0.07, gunLen: 3.15 }) },
+  { file: 'm4a3e2-jumbo.glb', build: () => buildSherman({ type: 'jumbo', jumbo: true }) },
+  { file: 'm18-hellcat.glb', build: buildHellcat },
   { file: 'enemy-medium.glb', build: buildMedium },
   { file: 'enemy-td.glb', build: buildTD },
   { file: 'enemy-heavy.glb', build: buildHeavy }

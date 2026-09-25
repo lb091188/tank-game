@@ -9,6 +9,7 @@ SF.Main = (() => {
   let sniper = false, mouseDown = false, shakeT = 0;
   const keys = {};
   let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
+  let selTank = 'sherman', selMap = 'l01';   // 出击前选择
   let keySeen = false, hintShown = false;   // 键盘诊断: 是否收到过按键
   let spottedTimer = 0;
   const spotted = new Set();
@@ -18,7 +19,7 @@ SF.Main = (() => {
 
   /* ---------- 场景 ---------- */
   function buildScene() {
-    const map = SF.Assets.map, L = map.lighting;
+    const map = SF.Assets.maps[selMap].json, L = map.lighting;
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -57,13 +58,13 @@ SF.Main = (() => {
     scene.add(new THREE.HemisphereLight(new THREE.Color(...L.ambientColor), 0x39412e, L.ambient));
 
     // 地形与掩体
-    const terrain = new SF.Terrain(SF.Assets.heights, map.terrain);
+    const terrain = new SF.Terrain(SF.Assets.maps[selMap].heights, map.terrain);
     scene.add(terrain.buildMesh());
     const covers = new SF.Models.CoverField(map, terrain, scene);
 
     // 玩家
     const [sx, sz, syaw] = map.player.spawn;
-    const player = new SF.Tank(map.player.model, { x: sx, z: sz, yaw: syaw, isPlayer: true });
+    const player = new SF.Tank(selTank, { x: sx, z: sz, yaw: syaw, isPlayer: true });
     scene.add(player.group);
 
     world = { terrain, covers, player, enemies: [], tanks: [player], time: 0, map };
@@ -406,6 +407,7 @@ SF.Main = (() => {
       return;
     }
     document.getElementById('loading').style.display = 'none';
+    buildPicker();
     document.getElementById('titleScreen').style.display = 'flex';
 
     document.getElementById('btnStart').addEventListener('click', () => {
@@ -428,6 +430,27 @@ SF.Main = (() => {
       running = true; lastT = performance.now();
       requestAnimationFrame(loop);
     });
+  }
+
+  // 出击前车库: 选坦克 + 选地图
+  function buildPicker() {
+    const g = document.getElementById('garageRow'), m = document.getElementById('mapRow');
+    g.innerHTML = ''; m.innerHTML = '';
+    for (const t of SF.CFG.garage) {
+      const v = SF.CFG.vehicles[t.type];
+      const el = document.createElement('div');
+      el.className = 'card' + (t.type === selTank ? ' sel' : '');
+      el.innerHTML = `<b>${v.name}</b><i>${t.tag}</i><span>${t.desc}</span><em>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · 极速 ${Math.round(v.maxSpeed * 3.6)}</em>`;
+      el.onclick = () => { selTank = t.type; [...g.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); };
+      g.appendChild(el);
+    }
+    for (const mp of SF.CFG.maps) {
+      const el = document.createElement('div');
+      el.className = 'card' + (mp.id === selMap ? ' sel' : '');
+      el.innerHTML = `<b>${mp.name}</b><span>${mp.desc}</span>`;
+      el.onclick = () => { selMap = mp.id; [...m.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); };
+      m.appendChild(el);
+    }
   }
 
   return { start };
