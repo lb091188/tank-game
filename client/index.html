@@ -16,6 +16,8 @@
   #loadBarBox { width: 320px; height: 8px; background: #2a2d22; border-radius: 4px; overflow: hidden; }
   #loadBar { height: 100%; width: 0; background: linear-gradient(90deg, #8a7a3e, #c8b26a); transition: width .2s; }
   #loadTip { color: #7d8070; margin-top: 14px; font-size: 13px; }
+  #tipOnLoad { color: #5f6355; margin-top: 10px; font-size: 12px; max-width: 460px; text-align: center; padding: 0 20px; }
+  #tipOnTitle { color: #7d8070; font-size: 13px; margin: 4px auto 18px; max-width: 480px; min-height: 18px; text-align: center; padding: 0 16px; }
 
   /* 标题屏 */
   #titleScreen { position: fixed; inset: 0; background: linear-gradient(rgba(18,20,14,.92), rgba(18,20,14,.96)); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 90; }
@@ -88,6 +90,7 @@
   #alarm { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #ff6b5a; text-shadow: 0 1px 4px #000, 0 0 12px rgba(200,40,20,.6); opacity: 0; transition: opacity .15s; }
   #reloadRing { position: absolute; left: 50%; top: 50%; margin: -38px; display: none; }
   #reloadText { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-size: 15px; color: #c8b26a; text-shadow: 0 1px 3px #000; display: none; font-variant-numeric: tabular-nums; }
+  #distText { position: absolute; left: 50%; top: calc(50% + 66px); transform: translateX(-50%); font-size: 13px; color: #9aa0a6; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; }
   #aimCircle { position: absolute; border: 1.5px solid rgba(255,255,255,.8); border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,.6), inset 0 0 4px rgba(0,0,0,.4); }
   #aimCircle.aimed { border-color: rgba(150,230,140,.9); }
 
@@ -139,6 +142,7 @@
   <div id="markers"></div>
   <div id="aimCircle"></div>
   <canvas id="reloadRing" width="76" height="76"></canvas>
+  <div id="distText"></div>
   <div id="reloadText"></div>
   <div id="crosshair"></div>
   <div id="detectLamp">💡</div>
@@ -194,6 +198,7 @@
   <h1>钢 铁 前 沿</h1>
   <div id="loadBarBox"><div id="loadBar"></div></div>
   <div id="loadTip">准备加载…</div>
+  <div id="tipOnLoad"></div>
 </div>
 
 <div id="titleScreen">
@@ -203,14 +208,8 @@
   <div id="garageRow" class="cards"></div>
   <div class="pickLabel">战 场</div>
   <div id="mapRow" class="cards"></div>
-  <div id="controls" style="margin-top:26px">
-    <b>W / S</b>前进 · 倒车（倒车更慢，可伸缩炮）<br>
-    <b>A / D</b>车体转向（可原地转向）<br>
-    <b>鼠标</b>炮塔瞄准 — 点击画面锁定鼠标<br>
-    <b>左键</b>开炮　<b>滚轮</b>缩放　<b>Shift</b>狙击镜<br>
-    <b>提示</b>停车缩圈再开炮 · 打首下与侧面 · 歼击车正面硬要绕侧
-  </div>
-  <button id="btnStart">出 击</button>
+  <div id="tipOnTitle"></div>
+  <button id="btnStart" style="margin-top:8px">出 击</button>
   <button id="btnMp">⚔ 联机对战</button>
 </div>
 

@@ -490,8 +490,36 @@ SF.Main = (() => {
   }, 300);
 
   /* ---------- 启动 ---------- */
+  // 小 tip: 每条最多显示 2 次(跨会话记忆), 加载屏与首页各一条
+  const TIPS = [
+    '停车等缩圈（圈变绿）再开炮，命中率大增',
+    '打不穿正面？瞄首下（车体最下缘）或绕到侧面',
+    '歼击车正面很硬，绕侧是唯一解',
+    '坡顶只露炮塔（卖头）能骗走敌人炮弹',
+    '💡 灯泡亮起 = 你被敌人看见了，快找掩体',
+    '散布圈跟着炮管走：圈没合拢、没对正就别开炮',
+    '下坡俯角更大；上坡时几乎打不到坡下近处',
+    '按 Tab 查看任务详情与残敌清单',
+    '松油门坦克很快站住——急停对炮是基本功',
+    '倒车只有前进四成速度，倒车伸缩要掐好距离',
+    '被点亮后附近敌人会无线电呼叫支援，转移要快',
+    '联机对战：房主 npm start 后把控制台 WS 地址填进联机设置'
+  ];
+  function showTip(elId) {
+    let shown = {};
+    try { shown = JSON.parse(localStorage.getItem('sf_tips') || '{}'); } catch (e) { }
+    const pool = TIPS.map((t, i) => i).filter(i => (shown[i] || 0) < 2);
+    if (!pool.length) return;
+    const i = pool[(Math.random() * pool.length) | 0];
+    shown[i] = (shown[i] || 0) + 1;
+    try { localStorage.setItem('sf_tips', JSON.stringify(shown)); } catch (e) { }
+    const el = document.getElementById(elId);
+    if (el) el.textContent = '💡 ' + TIPS[i];
+  }
+
   async function start() {
     const bar = document.getElementById('loadBar'), tip = document.getElementById('loadTip');
+    showTip('tipOnLoad');
     try {
       await SF.Assets.load((done, total) => {
         bar.style.width = (done / total * 100) + '%';
@@ -502,6 +530,7 @@ SF.Main = (() => {
       return;
     }
     document.getElementById('loading').style.display = 'none';
+    showTip('tipOnTitle');
     buildPicker();
     document.getElementById('titleScreen').style.display = 'flex';
 

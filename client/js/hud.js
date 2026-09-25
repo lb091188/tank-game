@@ -157,6 +157,9 @@ SF.HUD = (() => {
       rctx.beginPath(); rctx.arc(38, 38, 33, -Math.PI / 2, -Math.PI / 2 + (1 - rl2) * Math.PI * 2); rctx.stroke();
       rt.textContent = player.reloadT.toFixed(1);
     } else { ring.style.display = rt.style.display = 'none'; }
+    // 炮口至瞄准点距离(WoT 式准星距离读数)
+    const dEl = $('distText');
+    dEl.textContent = uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '';
 
     // 小地图
     const cv = $('minimap'), ctx = cv.getContext('2d');
