@@ -140,7 +140,7 @@ SF.HUD = (() => {
     // 玩家箭头
     const [px, py] = worldToMap(player.x, player.z, T);
     ctx.save();
-    ctx.translate(px, py); ctx.rotate(player.yaw);
+    ctx.translate(px, py); ctx.rotate(-player.yaw);   // 画布顺时针为正, 与世界 yaw 相反
     ctx.fillStyle = '#7fd67f';
     ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.2, 5); ctx.lineTo(-4.2, 5); ctx.closePath(); ctx.fill();
     ctx.restore();

@@ -244,7 +244,8 @@ SF.Main = (() => {
     const p = world.player;
     const input = {
       throttle: (keys.KeyW || keys.ArrowUp ? 1 : 0) + (keys.KeyS || keys.ArrowDown ? -1 : 0),
-      steer: (keys.KeyD || keys.ArrowRight ? 1 : 0) + (keys.KeyA || keys.ArrowLeft ? -1 : 0),
+      // 注意: yaw 增大 = 向左转(俯视逆时针), 所以 A=+1 / D=-1
+      steer: (keys.KeyA || keys.ArrowLeft ? 1 : 0) + (keys.KeyD || keys.ArrowRight ? -1 : 0),
       fire: mouseDown
     };
     if (aimPoint) {
