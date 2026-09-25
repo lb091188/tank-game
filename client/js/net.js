@@ -43,7 +43,7 @@ SF.Net = (() => {
   const createRoom = (name, tank) => send({ t: 'create', name, tank });
   const joinRoom = (room, name, tank) => send({ t: 'join', room: String(room).trim(), name, tank });
   const setReady = (v, tank) => send({ t: 'ready', v, tank });
-  const startMatch = (map) => send({ t: 'start', map });
+  const startMatch = (map, mode) => send({ t: 'start', map, mode: mode || 'dm' });
 
   // 对战中: 本地输入 30Hz 上行
   function startInputLoop(getInput) {
@@ -79,7 +79,7 @@ SF.Net = (() => {
         hp: pb[8], alive: !!pb[9]
       };
     }
-    return { poses: out, timeLeft: b.data.st, scores: b.data.sc };
+    return { poses: out, timeLeft: b.data.st, scores: b.data.sc, wv: b.data.wv, dt: b.data.dt };
   }
 
   function resetSnaps() { snaps.length = 0; }

@@ -13,10 +13,11 @@ SF.Main = (() => {
   let lastSpottedT = -99, wasDetected = false;   // 点亮机制(2s 宽限)
   // 联机死斗(主机权威): mode=host 房主跑模拟; client 幽灵插值; sp 单机
   const MP = SF.Game_mp = {
-    mode: 'sp', myId: 0, mapId: 'l01', players: [],          // [{id,name,tank,host}]
-    tanks: new Map(),                                         // id → Tank(主机真实模拟 / 客户端幽灵)
+    mode: 'sp', gameMode: 'dm', myId: 0, mapId: 'l01', players: [],   // [{id,name,tank,host}]
+    tanks: new Map(),                                         // id → Tank(主机真实模拟 / 客户端幽灵 / coop AI)
     inputs: new Map(),                                        // 主机: 远端玩家输入
-    scores: new Map(), respawn: [], timeLeft: 180, snapT: 0
+    scores: new Map(), respawn: [], timeLeft: 180, snapT: 0,
+    waveInfo: null, aiId: 100                                 // coop: AI 实体 id 从 100 起
   };
   let keySeen = false, hintShown = false;   // 键盘诊断: 是否收到过按键
   let spottedTimer = 0;
@@ -82,11 +83,15 @@ SF.Main = (() => {
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
       aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected,
-      mission: (SF.Game_mp.mode === 'sp' && world.map) ? {
-        idx: waveIdx, total: world.map.waves.length,
-        name: (world.map.waves[waveIdx] || {}).name || '',
-        kills: stats.kills, totalEnemies: stats.total
-      } : null
+      mission: (() => {
+        if (!world.map) return null;
+        if (SF.Game_mp.mode === 'sp') return { idx: waveIdx, total: world.map.waves.length, name: (world.map.waves[waveIdx] || {}).name || '', kills: stats.kills, totalEnemies: stats.total };
+        if (SF.Game_mp.gameMode === 'coop') {
+          if (SF.Game_mp.mode === 'host') return { idx: waveIdx, total: world.map.waves.length, name: (world.map.waves[waveIdx] || {}).name || '', kills: stats.kills, totalEnemies: stats.total };
+          return SF.Game_mp.waveInfo;
+        }
+        return null;
+      })()
     }; } };
   
   // 测试钩子: 无 rAF 环境下手动推进模拟与渲染(自动化测试用)
@@ -101,20 +106,30 @@ SF.Main = (() => {
   function spawnWave(i) {
     const wave = world.map.waves[i];
     if (!wave) return;
+    const aiSpawned = [];
+    let pt = TIER_NUM[(SF.CFG.vehicles[selTank] || {}).tier] || 5;
+    if (MP.mode !== 'sp')
+      for (const pl of MP.players) pt = Math.max(pt, TIER_NUM[(SF.CFG.vehicles[pl.tank] || {}).tier] || 5);
+    const waveBand = i === 0 ? [pt - 1, pt] : [pt, pt + 1];
     waveEnemies = wave.enemies.map(def => {
       // 出生点随机化: 范围内随机平移(守位单位 ±12m, 机动单位 ±30m), 巡逻点随之平移, 避开掩体
       const jr = def.hold ? 12 : 30;
       const dx = (Math.random() - 0.5) * 2 * jr, dz = (Math.random() - 0.5) * 2 * jr;
       let ex = U.clamp(def.pos[0] + dx, -430, 430), ez = U.clamp(def.pos[1] + dz, -430, 430);
       [ex, ez] = world.covers.collide(ex, ez, 2.6);
-      const t = new SF.Tank(def.type, { x: ex, z: ez, yaw: (def.yaw !== undefined ? def.yaw : Math.PI) + (Math.random() - 0.5) * 0.4 });
+      const CLS_OF_LEGACY = { medium: 'MT', td: 'TD', heavy: 'HT' };
+      const cls = CLS_OF_LEGACY[def.type] || (SF.CFG.vehicles[def.type] || {}).cls || 'MT';
+      const type = pickTierTank(cls, waveBand);
+      const t = new SF.Tank(type, { x: ex, z: ez, yaw: (def.yaw !== undefined ? def.yaw : Math.PI) + (Math.random() - 0.5) * 0.4 });
       const def2 = { ...def, patrol: (def.patrol || []).map(w => [w[0] + (ex - def.pos[0]), w[1] + (ez - def.pos[1])]) };
       t.ai = new SF.AI(t, def2);
       scene.add(t.group);
       world.tanks.push(t);
+      if (MP.mode !== 'sp') { t.netId = MP.aiId++; t.team = 1; t._isAI = true; MP.tanks.set(t.netId, t); aiSpawned.push({ id: t.netId, type }); }
       return t;
     });
     world.enemies = waveEnemies;
+    if (MP.mode !== 'sp') SF.Net.send({ t: 'ev', k: 'aiWave', d: { list: aiSpawned } });
     stats.total += waveEnemies.length;
     SF.HUD.showMsg(`第 ${i + 1} 波 · ${wave.name}`, 3);
     SF.HUD.log(`遭遇：${wave.name}`, '#e8c977');
@@ -127,7 +142,8 @@ SF.Main = (() => {
       if (!repairDone) {
         repairDone = true; repairT = world.map.repairBetweenWaves.duration;
         const heal = Math.round(world.player.spec.hp * world.map.repairBetweenWaves.hpRatio);
-        world.player.hp = Math.min(world.player.spec.hp, world.player.hp + heal);
+        if (MP.mode === 'sp') world.player.hp = Math.min(world.player.spec.hp, world.player.hp + heal);
+        else for (const [id, t] of MP.tanks) if (id < 100 && t.alive) t.hp = Math.min(t.spec.hp, t.hp + heal);
         SF.HUD.showMsg(world.map.repairBetweenWaves.text + ` (+${heal} HP)`, repairT);
       }
       if (repairT > 0) return;
@@ -135,6 +151,10 @@ SF.Main = (() => {
       spawnWave(waveIdx);
     } else if (!gameOver) {
       gameOver = true;
+      if (MP.mode === 'host') {
+        const scores = MP.players.map(pl => [pl.id, pl.name, MP.scores.get(pl.id) || 0]);
+        SF.Net.send({ t: 'end', scores, win: true });
+      }
       SF.HUD.endGame(true, stats);
     }
   }
@@ -275,6 +295,21 @@ SF.Main = (() => {
 
   const IDLE_INPUT = (t) => ({ throttle: 0, steer: 0, aimYaw: t.turretYaw, aimPitch: t.gunPitch, fire: false });
 
+  // 敌军等级匹配: 按参战玩家最高等级, 同类别选邻近等级敌车(开 VIII 级不再割草 III 级)
+  const TIER_NUM = { III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8 };
+  function pickTierTank(cls, band) {
+    for (let w = 0; w < 4; w++) {
+      const lo = Math.max(3, band[0] - w), hi = Math.min(8, band[1] + w);
+      const pool = [];
+      for (const k in SF.CFG.vehicles) {
+        const v = SF.CFG.vehicles[k];
+        if (v.tier && v.cls === cls && TIER_NUM[v.tier] >= lo && TIER_NUM[v.tier] <= hi) pool.push(k);
+      }
+      if (pool.length) return pool[(Math.random() * pool.length) | 0];
+    }
+    return 'pz4';
+  }
+
   function playerInput() {
     const p = world.player;
     const input = {
@@ -349,7 +384,7 @@ SF.Main = (() => {
       SF.Audio.play('explosion', t.pos3, { gain: 1.3 });
       if (SF.Game_mp.mode !== 'sp') {
         // 死斗: 无失败流程, 主机为阵亡者(含自己)排队重生
-        if (SF.Game_mp.mode === 'host' && t.netId) SF.Game_mp.respawn.push({ id: t.netId, t: 5 });
+        if (SF.Game_mp.mode === 'host' && t.netId && !t._isAI) SF.Game_mp.respawn.push({ id: t.netId, t: 5 });
         if (t.isPlayer) SF.HUD.showMsg('被击毁 · 5 秒后重生', 3);
         else { SF.HUD.hitFeedback('击毁', '#8fd98f'); SF.Audio.playVoice('v_kill', true); }
         return;
@@ -403,6 +438,7 @@ SF.Main = (() => {
         }
       }
       MP.respawn = MP.respawn.filter(r => r.t > 0);
+      if (MP.gameMode === 'coop') for (const e of world.enemies) e.update(e.ai.update(dt, world), dt, world);
       MP.timeLeft -= dt;
       if (MP.timeLeft <= 0 && !gameOver) endMatch();
     } else {
@@ -412,7 +448,7 @@ SF.Main = (() => {
 
     shells.update(dt, world);
 
-    if (MP.mode === 'sp') {
+    if (MP.mode === 'sp' || (MP.mode === 'host' && MP.gameMode === 'coop')) {
       if (repairT > 0) repairT -= dt;
       checkWave();
     }
@@ -438,8 +474,12 @@ SF.Main = (() => {
     }
     let enemySeesMe = false;
     if (MP.mode === 'host') {
-      for (const [id, t] of MP.tanks)
-        if (id !== MP.myId && t.alive && U.dist2d(p.x, p.z, t.x, t.z) < SF.CFG.player.viewRange && SF.losClear(world, p.x, p.z, t.x, t.z)) { enemySeesMe = true; break; }
+      if (MP.gameMode === 'coop') {
+        for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow && e.ai.lastTargetId === p.netId) { enemySeesMe = true; break; }
+      } else {
+        for (const [id, t] of MP.tanks)
+          if (id !== MP.myId && t.alive && U.dist2d(p.x, p.z, t.x, t.z) < SF.CFG.player.viewRange && SF.losClear(world, p.x, p.z, t.x, t.z)) { enemySeesMe = true; break; }
+      }
     } else {
       for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow) { enemySeesMe = true; break; }
     }
@@ -593,7 +633,16 @@ SF.Main = (() => {
       tn[id] = [+t.x.toFixed(2), +t.z.toFixed(2), +t.y.toFixed(2), 0, +t.yaw.toFixed(3), +t.turretYaw.toFixed(3), +t.gunPitch.toFixed(3), +t.speed.toFixed(2), Math.round(t.hp), t.alive ? 1 : 0];
     const sc = {};
     for (const [id, k] of MP.scores) sc[id] = k;
-    SF.Net.send({ t: 'snap', st: Math.max(0, Math.round(MP.timeLeft)), tn, sc });
+    const msg = { t: 'snap', st: Math.max(0, Math.round(MP.timeLeft)), tn, sc };
+    if (MP.gameMode === 'coop') {
+      msg.wv = [waveIdx, world.map.waves.length, (world.map.waves[waveIdx] || {}).name || '',
+        [...MP.scores.entries()].filter(([id]) => id < 100).reduce((s2, [, k]) => s2 + k, 0), stats.total];
+      const dtMap = {};
+      for (const [id] of MP.tanks) if (id < 100)
+        for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow && e.ai.lastTargetId === id) { dtMap[id] = 1; break; }
+      msg.dt = dtMap;
+    }
+    SF.Net.send(msg);
   }
 
   /* ---------- 联机: 客户端帧(幽灵插值 + 死亡表现) ---------- */
@@ -602,11 +651,15 @@ SF.Main = (() => {
     if (!snap) return;
     for (const [id, t] of MP.tanks) {
       const pose = snap.poses[id];
-      if (pose) t.ghostPose(pose, dt);
+      if (pose) {
+        t.ghostPose(pose, dt);
+        if (t._awaitPose) { t._awaitPose = false; t.group.visible = true; }
+      }
     }
     MP.timeLeft = snap.timeLeft;
     if (snap.scores) for (const id in snap.scores) MP.scores.set(+id, snap.scores[id]);
-    // 本地点亮判定(对幽灵位置做 LOS)
+    if (snap.wv) MP.waveInfo = { idx: snap.wv[0], total: snap.wv[1], name: snap.wv[2], kills: snap.wv[3], totalEnemies: snap.wv[4] };
+    // 点亮: 主机裁决(dt 表)分发; 小地图红点用本地 LOS
     const p = world.player;
     spottedTimer -= dt;
     if (spottedTimer <= 0) {
@@ -616,16 +669,23 @@ SF.Main = (() => {
         if (id !== MP.myId && t.alive && U.dist2d(p.x, p.z, t.x, t.z) < SF.CFG.player.viewRange && SF.losClear(world, p.x, p.z, t.x, t.z))
           spotted.add(t);
     }
-    if (spotted.size > 0) lastSpottedT = world.time;
-    const detected = p.alive && (world.time - lastSpottedT < 2.0);
-    if (detected && !wasDetected) SF.Audio.play('beep', null, { gain: 1.1 });
-    wasDetected = detected;
+    const detected = MP.gameMode === 'coop' ? (p.alive && !!(snap.dt && snap.dt[MP.myId]))
+                                            : (p.alive && spotted.size > 0);
+    if (detected) lastSpottedT = world.time;
+    const dNow = p.alive && (world.time - lastSpottedT < 2.0);
+    if (dNow && !wasDetected) SF.Audio.play('beep', null, { gain: 1.1 });
+    wasDetected = dNow;
     world.time += 0;   // 时钟由 step 推进
   }
 
   function updateMpHud() {
     const el = document.getElementById('mpBar');
     if (!el || MP.mode === 'sp') return;
+    if (MP.gameMode === 'coop') {
+      el.textContent = `🤝 合作闯关 · 我的击杀 ${MP.scores.get(MP.myId) || 0}`;
+      el.style.display = 'block';
+      return;
+    }
     const mm = Math.floor(MP.timeLeft / 60), ss = String(Math.floor(MP.timeLeft % 60)).padStart(2, '0');
     const rows = MP.players.map(pl => `${pl.id === MP.myId ? '★' : ''}${pl.name} ${MP.scores.get(pl.id) || 0}`).join(' · ');
     el.textContent = `⏱ ${mm}:${ss}   ${rows}`;
@@ -657,6 +717,15 @@ SF.Main = (() => {
       if (m.k === 'fire') SF.Bus.emit('fire', { tank: proxyTank(d.id), pos: new THREE.Vector3(...d.p), dir: new THREE.Vector3(0, 0, 1) });
       else if (m.k === 'hit') {
         SF.Bus.emit('hit', { shooter: proxyTank(d.s), target: proxyTank(d.g), kind: d.kind, dmg: d.dmg, module: d.module || null, point: new THREE.Vector3(...d.p) });
+      } else if (m.k === 'aiWave') {
+        for (const it of d.list) {
+          const g = new SF.Tank(it.type, { x: 0, z: 0, netId: it.id, team: 1 });
+          g.group.visible = false; g._awaitPose = true;
+          scene.add(g.group);
+          MP.tanks.set(it.id, g);
+          world.enemies.push(g);
+        }
+        SF.HUD.log(`敌军出现：${d.list.length} 辆`, '#e8c977');
       } else if (m.k === 'kill') {
         const t = MP.tanks.get(d.id);
         if (t && t.alive) { t.alive = false; }
@@ -668,8 +737,8 @@ SF.Main = (() => {
       gameOver = true;
       const rows = m.scores.map(([id, name, k]) => `<div style="color:${id === MP.myId ? '#ffd97a' : '#b9bfa8'}">${id === MP.myId ? '★ ' : ''}${name} — ${k} 击杀</div>`).join('');
       document.getElementById('overlay').style.display = 'flex';
-      document.getElementById('endTitle').textContent = '对战结束';
-      document.getElementById('endTitle').style.color = '#d8c887';
+      document.getElementById('endTitle').textContent = m.win ? '✓ 任务完成' : '对战结束';
+      document.getElementById('endTitle').style.color = m.win ? '#8fd98f' : '#d8c887';
       document.getElementById('endStats').innerHTML = `<div style="font-size:20px;line-height:2.2">${rows}</div>`;
       SF.Net.stopInputLoop();
     });
@@ -694,6 +763,8 @@ SF.Main = (() => {
     MP.myId = init.you;
     MP.players = init.players;
     MP.mapId = init.map || 'l01';
+    MP.gameMode = init.mode === 'coop' ? 'coop' : 'dm';
+    MP.waveInfo = null; MP.aiId = 100;
     for (const pl of MP.players) MP.scores.set(pl.id, 0);
     document.getElementById('titleScreen').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
@@ -703,9 +774,8 @@ SF.Main = (() => {
     selMap = mapSel.id;
     selTank = (init.players.find(pl => pl.id === init.you) || {}).tank || 'sherman';
 
-    // 场景(无 AI 波次)
-    spawnWave = () => { };
-    checkWave = () => { };
+    // 场景: coop 主机保留波次流程(主机跑 AI), 其余关闭单机流程
+    if (!(MP.gameMode === 'coop' && role === 'host')) { spawnWave = () => { }; checkWave = () => { }; }
     buildScene();
 
     // 死斗出生池: 地图中心外围 8 点
@@ -726,7 +796,7 @@ SF.Main = (() => {
       const isMe = pl.id === MP.myId;
       const t = new SF.Tank(pl.tank, {
         x: sp[0], z: sp[1], yaw: Math.PI,
-        netId: pl.id, team: 100 + pl.id,          // 死斗: 人人一队(可互相伤害)
+        netId: pl.id, team: MP.gameMode === 'coop' ? 0 : 100 + pl.id,   // 死斗人人一队; 合作同一阵营
         isPlayer: isMe
       });
       t._isRemote = !isMe;
@@ -737,6 +807,19 @@ SF.Main = (() => {
     }
     world.enemies = [];
     world.player._yInit = false;
+    if (MP.gameMode === 'coop') {
+      MP.timeLeft = 9999;
+      if (role === 'host') {
+        world.mpTargets = [];
+        for (const [id, t] of MP.tanks) if (id < 100) world.mpTargets.push(t);
+        // 恢复被上面 world.tanks=[t] 重置掉的 AI(buildScene 的 spawnWave 已生成并广播)
+        world.enemies = [...MP.tanks.entries()].filter(([id]) => id >= 100).map(([, t]) => t);
+        world.tanks.push(...world.enemies);
+      }
+    } else {
+      MP.timeLeft = 180;
+      if (role === 'client') for (const [id, t] of MP.tanks) if (id !== MP.myId) world.enemies.push(t);   // DM 客户端: 准星可吸附敌坦克
+    }
 
     SF.HUD.init(world);
     bindInput();

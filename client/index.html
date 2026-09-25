@@ -183,6 +183,7 @@
     <div id="roomCodeShow"></div>
     <div id="playerList"></div>
     <div id="hostPanel">
+      <div class="row"><label>模式</label><select id="mpMode"><option value="dm">死斗 · 互殴 3分钟</option><option value="coop">合作 · 组队闯关</option></select></div>
       <div class="row"><label>地图</label><select id="mpMap"></select></div>
       <div class="row" style="justify-content:center"><button id="btnMpStart" class="mbtn gold">开 始 对 战</button></div>
     </div>
@@ -215,7 +216,7 @@
   <div id="mapRow" class="cards"></div>
   <div id="tipOnTitle"></div>
   <button id="btnStart" style="margin-top:8px">出 击</button>
-  <button id="btnMp">⚔ 联机对战</button>
+  <button id="btnMp" style="display:none">⚔ 联机对战</button>
 </div>
 
 <script src="js/vendor/three.min.js"></script>
@@ -234,7 +235,7 @@
 <script src="js/main.js"></script>
 <script>
 document.getElementById('btnRestart').addEventListener('click', () => location.reload());
-SF.Lobby.bind();
+if (SF.CFG.multiplayer) { document.getElementById('btnMp').style.display = 'block'; SF.Lobby.bind(); }
 </script>
 </body>
 </html>

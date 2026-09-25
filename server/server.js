@@ -97,7 +97,7 @@ wss.on('connection', (ws) => {
       case 'start': {          // 仅房主
         if (!me || !me.host) break;
         room.started = true;
-        broadcast(room, { t: 'start', map: m.map, seed: Math.random(), players: roomState(room) });
+        broadcast(room, { t: 'start', map: m.map, mode: m.mode || 'dm', seed: Math.random(), players: roomState(room) });
         console.log(`[房间${ws._code}] 开战 ${m.map}`);
         break;
       }

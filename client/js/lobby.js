@@ -54,7 +54,7 @@ SF.Lobby = (() => {
       if (started) return;
       started = true;
       $('lobbyScreen').style.display = 'none';
-      SF_StartMP(isHost ? 'host' : 'client', { you: myId, players: m.players, map: m.map });
+      SF_StartMP(isHost ? 'host' : 'client', { you: myId, players: m.players, map: m.map, mode: m.mode });
     });
     SF.Net.on('disconnect', () => { if (!started) $('lobbyTip').textContent = '与服务器断开'; });
   }
@@ -94,7 +94,7 @@ SF.Lobby = (() => {
       const unready = players.filter(p => !p.ready);
       if (unready.length) { $('lobbyTip').textContent = `还有 ${unready.length} 人未准备`; return; }
       if (players.length < 2) { $('lobbyTip').textContent = '至少需要 2 名玩家'; return; }
-      SF.Net.startMatch(($('mpMap') && $('mpMap').value) || 'l01');
+      SF.Net.startMatch(($('mpMap') && $('mpMap').value) || 'l01', ($('mpMode') && $('mpMode').value) || 'dm');
     });
     $('btnMpBack').addEventListener('click', () => location.reload());
   }

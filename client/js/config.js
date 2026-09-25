@@ -450,6 +450,8 @@ SF.CFG = {
 
   player: { viewRange: 445 },   // WoT 级视野上限
 
+  multiplayer: false,   // 联机入口开关(单机发布版关闭; 改 true 恢复标题屏联机按钮)
+
   // 出击前可选的坦克与地图(配合标题界面车库)
   garage: [],   // CFG 定义后由下方生成
   maps: [

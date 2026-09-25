@@ -11,6 +11,17 @@ SF.losClear = function (world, ax, az, bx, bz) {
   return world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len) < 0;
 };
 
+// AI 目标选择: 合作模式多名玩家 → 锁定最近存活者; 单机 → world.player
+function nearestTarget(world, from) {
+  if (world.mpTargets && world.mpTargets.length) {
+    let best = null, bd = 1e9;
+    for (const t of world.mpTargets)
+      if (t.alive) { const d = SF.Util.dist2d(from.x, from.z, t.x, t.z); if (d < bd) { bd = d; best = t; } }
+    if (best) return best;
+  }
+  return world.player;
+}
+
 SF.AI = class {
   constructor(tank, def) {
     const U = SF.Util;
@@ -44,7 +55,7 @@ SF.AI = class {
 
     // 听觉: 玩家在附近开炮 → 大致方位
     SF.Bus.on('fire', (e) => {
-      if (this.tank.alive && e.tank.isPlayer) {
+      if (this.tank.alive && (e.tank.isPlayer || e.tank.team === 0)) {   // 合作: 任何玩家开炮都会被听见
         const d = SF.Util.dist2d(this.tank.x, this.tank.z, e.tank.x, e.tank.z);
         if (d < SF.CFG.ai.hearingRange)
           this.heard = { x: e.tank.x + (Math.random() - 0.5) * 24, z: e.tank.z + (Math.random() - 0.5) * 24 };
@@ -54,7 +65,7 @@ SF.AI = class {
 
   /* ---------- 感知 ---------- */
   perceive(world) {
-    const player = world.player;
+    const player = nearestTarget(world, this.tank);
     const wasSeen = this.seen;
     this.seen = false;
     if (player && player.alive) {
@@ -62,6 +73,7 @@ SF.AI = class {
       if (d < SF.CFG.ai.viewRange && SF.losClear(world, this.tank.x, this.tank.z, player.x, player.z)) {
         this.seen = true;
         this.lastSeen = { x: player.x, z: player.z, vx: player.velX || 0, vz: player.velZ || 0, t: world.time };
+        this.lastTargetId = player.netId || 0;
         if (!wasSeen && this.state !== 'combat')
           this.reactT = SF.CFG.ai.reactionTime * (1 + (1 - this.p.aimPatience));  // 反应延迟
         // 无线电呼叫支援(冷却)
@@ -111,7 +123,7 @@ SF.AI = class {
 
   /* ---------- 主逻辑 ---------- */
   update(dt, world) {
-    const U = SF.Util, t = this.tank, player = world.player, P = this.p;
+    const U = SF.Util, t = this.tank, player = nearestTarget(world, this.tank), P = this.p;
     if (!t.alive) return;
     this.input.fire = false;
 
