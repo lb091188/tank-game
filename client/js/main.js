@@ -629,11 +629,16 @@ SF.Main = (() => {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('titleScreen').style.display = 'flex';
     showTip('tipOnTitle');
+    // 恢复上次选择的坦克与地图
+    selTank = localStorage.getItem('sf_mp_tank') || selTank;
+    selMap = localStorage.getItem('sf_map') || selMap;
+    if (!SF.CFG.vehicles[selTank]) selTank = 'sherman';
+    if (!SF.CFG.maps.find(m => m.id === selMap)) selMap = 'l01';
     buildGaragePreview();
     buildPicker();
 
     document.getElementById('btnStart').addEventListener('click', () => {
-      if (garagePV) { garagePV.active = false; clearInterval(garagePV.timer); garagePV.renderer.dispose(); document.getElementById('garageView').innerHTML = ''; garagePV = null; }
+      disposeGarage();
       document.getElementById('titleScreen').style.display = 'none';
       document.getElementById('hud').style.display = 'block';
       SF.Audio.init();
@@ -655,43 +660,108 @@ SF.Main = (() => {
     });
   }
 
-  /* ---------- 车库 3D 预览: 展台 + 灯光 + 缓慢旋转 ---------- */
+  /* ---------- 车库 3D 预览: 全屏车库场景 + 展台坦克居中 + 随地图切换风格 ---------- */
   let garagePV = null;
+  function disposeGarage() {
+    if (!garagePV) return;
+    garagePV.active = false; clearInterval(garagePV.timer);
+    if (garagePV.onResize) removeEventListener('resize', garagePV.onResize);
+    garagePV.renderer.dispose();
+    document.getElementById('garageView').innerHTML = '';
+    garagePV = null;
+  }
+  // 三张地图各配一套同风格车库(地面/墙面/灯光/雾色)
+  const GARAGE_THEMES = {
+    l01: { bg: 0x27301c, ground: 0x363e27, wall: 0x4c4030, wallDark: 0x3b3426, beam: 0x332a1e,
+           lamp: 0xffd9a0, crate: 0x4d4a2e, barrel: 0x5c4028, hemi: [0xcad8a8, 0x222a18, 0.85], key: [0xffe2b0, 1.35], rim: [0x9fc4e8, 0.4] },
+    l02: { bg: 0x1a1b20, ground: 0x43454c, wall: 0x37383e, wallDark: 0x2c2d33, beam: 0x27282e,
+           lamp: 0xe8f0ff, crate: 0x3e4148, barrel: 0x4a4238, hemi: [0xaab6cc, 0x16171c, 0.8], key: [0xeaf0ff, 1.3], rim: [0xffa060, 0.5] },
+    l03: { bg: 0x1b1916, ground: 0x4c4739, wall: 0x3d3a30, wallDark: 0x322f28, beam: 0x2b2923,
+           lamp: 0xcfe2ff, crate: 0x463d2f, barrel: 0x514536, hemi: [0xa8bcc8, 0x1b1915, 0.75], key: [0xdfeaff, 1.3], rim: [0xffc080, 0.45] }
+  };
+
+  function disposeGroup(root) {
+    root.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
+    });
+  }
+
+  function buildGarageEnv(th) {
+    const g = new THREE.Group();
+    const mat = c => new THREE.MeshLambertMaterial({ color: c });
+    const add = (m, x, y, z) => { m.position.set(x, y, z); g.add(m); return m; };
+    const ground = add(new THREE.Mesh(new THREE.CircleGeometry(60, 48), mat(th.ground)), 0, 0, 0);
+    ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+    add(new THREE.Mesh(new THREE.BoxGeometry(46, 10, 0.8), mat(th.wall)), 0, 5, -12);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 8, 30), mat(th.wallDark)), -14, 4, 2);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 8, 30), mat(th.wallDark)), 14, 4, 2);
+    for (const x of [-12, -4, 4, 12]) add(new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.52, 10, 10), mat(th.beam)), x, 5, -10.4);
+    for (const z of [-7, -1, 5]) add(new THREE.Mesh(new THREE.BoxGeometry(34, 0.55, 0.7), mat(th.beam)), 0, 9.4, z);
+    // 后墙灯带: 深色灯罩 + 自发光灯板(工业灯风格)
+    const lampMat = new THREE.MeshBasicMaterial({ color: th.lamp });
+    const housMat = mat(th.beam);
+    for (const x of [-10, 0, 10]) {
+      add(new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.6, 0.3), housMat), x, 6.85, -11.45);
+      add(new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.34, 0.18), lampMat), x, 6.5, -11.4);
+    }
+    // 车库杂物: 木箱堆 + 油桶(摆在两侧, 不挡展台)
+    const crateMat = mat(th.crate), barrelMat = mat(th.barrel);
+    for (const [x, z, s, ry] of [[-10.6, -6.4, 1.1, 0.35], [-9.3, -7.5, 0.9, -0.2], [-10.0, -6.8, 0.75, 0.1]]) {
+      const c = add(new THREE.Mesh(new THREE.BoxGeometry(1.25 * s, 0.95 * s, 1.25 * s), crateMat), x, 0.48 * s, z);
+      c.rotation.y = ry;
+    }
+    const cTop = add(new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 1.0), crateMat), -10.2, 1.3, -6.9);
+    cTop.rotation.y = 0.6;
+    for (const [x, z] of [[11.4, -5.4], [12.3, -6.9], [11.9, -4.5]]) {
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.15, 10), barrelMat), x, 0.575, z);
+    }
+    return g;
+  }
+
   function buildGaragePreview() {
     if (garagePV) return;
     const holder = document.getElementById('garageView');
-    const w = holder.clientWidth || 680, h = holder.clientHeight || 320;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(w, h);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     holder.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    const cam = new THREE.PerspectiveCamera(36, w / h, 0.1, 100);
-    cam.position.set(6.6, 3.4, 8.8);
-    cam.lookAt(0, 1.2, 0);
-    scene.add(new THREE.HemisphereLight(0x9aa7bf, 0x26291e, 0.95));
-    const key = new THREE.DirectionalLight(0xfff2d8, 1.35);
-    key.position.set(4, 7, 3);
+    scene.fog = new THREE.Fog(0x27301c, 20, 80);
+    const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 160);
+    cam.position.set(9.6, 4.6, 14.2);
+    cam.lookAt(0, 1.05, 0);
+    const hemi = new THREE.HemisphereLight(0xcad8a8, 0x222a18, 0.85);
+    const key = new THREE.DirectionalLight(0xffe2b0, 1.35);
+    key.position.set(4, 8, 3.5);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = key.shadow.camera.bottom = -6;
-    key.shadow.camera.right = key.shadow.camera.top = 6;
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(0x8fa8e0, 0.55);
-    rim.position.set(-5, 3.5, -4);
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = key.shadow.camera.bottom = -7;
+    key.shadow.camera.right = key.shadow.camera.top = 7;
+    scene.add(hemi, key);
+    const rim = new THREE.DirectionalLight(0x9fc4e8, 0.4);
+    rim.position.set(-6, 4, -5);
     scene.add(rim);
     // 展台: 深色圆盘 + 金环
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.05, 3.3, 0.22, 44), new THREE.MeshLambertMaterial({ color: 0x1b1d16 }));
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.05, 3.3, 0.22, 48), new THREE.MeshLambertMaterial({ color: 0x1b1d16 }));
     disc.receiveShadow = true;
     scene.add(disc);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(3.08, 3.32, 44), new THREE.MeshBasicMaterial({ color: 0xc8b26a, side: THREE.DoubleSide }));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(3.08, 3.32, 48), new THREE.MeshBasicMaterial({ color: 0xc8b26a, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.115;
     scene.add(ring);
 
-    garagePV = { renderer, scene, cam, tankGroup: null, turret: null, gun: null, active: true, lastT: 0 };
+    garagePV = { renderer, scene, cam, hemi, key, rim, env: null, tankGroup: null, turret: null, gun: null, active: true, lastT: 0 };
+    const onResize = () => {
+      renderer.setSize(innerWidth, innerHeight);
+      cam.aspect = innerWidth / innerHeight;
+      cam.updateProjectionMatrix();
+    };
+    addEventListener('resize', onResize);
+    garagePV.onResize = onResize;
+    setGarageTheme(selMap);
 
     const tick = () => {
       if (!garagePV.active) return;
@@ -706,6 +776,19 @@ SF.Main = (() => {
     };
     garagePV.timer = setInterval(tick, 33);
     tick();
+  }
+
+  function setGarageTheme(id) {
+    if (!garagePV || !garagePV.active) return;
+    const th = GARAGE_THEMES[id] || GARAGE_THEMES.l01;
+    if (garagePV.env) { garagePV.scene.remove(garagePV.env); disposeGroup(garagePV.env); }
+    garagePV.env = buildGarageEnv(th);
+    garagePV.scene.add(garagePV.env);
+    garagePV.scene.fog.color.setHex(th.bg);
+    garagePV.renderer.setClearColor(th.bg);
+    garagePV.hemi.color.setHex(th.hemi[0]); garagePV.hemi.groundColor.setHex(th.hemi[1]); garagePV.hemi.intensity = th.hemi[2];
+    garagePV.key.color.setHex(th.key[0]); garagePV.key.intensity = th.key[1];
+    garagePV.rim.color.setHex(th.rim[0]); garagePV.rim.intensity = th.rim[1];
   }
 
   function setGarageTank(type) {
@@ -739,9 +822,10 @@ SF.Main = (() => {
       const el = document.createElement('div');
       el.className = 'card' + (mp.id === selMap ? ' sel' : '');
       el.innerHTML = `<b>${mp.name}</b><span>${mp.desc}</span>`;
-      el.onclick = () => { selMap = mp.id; [...m.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); };
+      el.onclick = () => { selMap = mp.id; localStorage.setItem('sf_map', mp.id); [...m.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); setGarageTheme(mp.id); };
       m.appendChild(el);
     }
+    setGarageTank(selTank);   // 初始渲染上次选择的坦克
   }
 
   /* ---------- 联机: 主机快照广播(20Hz) ---------- */
@@ -891,6 +975,7 @@ SF.Main = (() => {
     MP.gameMode = init.mode === 'coop' ? 'coop' : 'dm';
     MP.waveInfo = null; MP.aiId = 100;
     for (const pl of MP.players) MP.scores.set(pl.id, 0);
+    disposeGarage();
     document.getElementById('titleScreen').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
     SF.Audio.init(); SF.Audio.startEngine(); SF.Audio.startAmbient();
