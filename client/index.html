@@ -20,9 +20,15 @@
   #tipOnTitle { color: #7d8070; font-size: 13px; margin: 4px auto 18px; max-width: 480px; min-height: 18px; text-align: center; padding: 0 16px; }
 
   /* 标题屏 */
-  #titleScreen { position: fixed; inset: 0; background: linear-gradient(rgba(18,20,14,.92), rgba(18,20,14,.96)); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 90; }
-  #titleScreen h1 { color: #d8c887; font-size: 52px; letter-spacing: 14px; margin-bottom: 6px; }
-  #titleScreen h2 { color: #9aa08a; font-weight: normal; letter-spacing: 4px; margin-bottom: 22px; }
+  #titleScreen { position: fixed; inset: 0; background: linear-gradient(rgba(18,20,14,.92), rgba(18,20,14,.96)); display: none; flex-direction: column; align-items: center; overflow-y: auto; justify-content: flex-start; padding: 20px 0; z-index: 90; }
+  #titleScreen h1 { color: #d8c887; font-size: 38px; letter-spacing: 12px; margin-bottom: 2px; }
+  #titleScreen h2 { color: #9aa08a; font-weight: normal; letter-spacing: 3px; margin-bottom: 6px; font-size: 15px; }
+  #garageView { position: relative; width: min(700px, 74vw); height: 300px; margin: 0 auto 2px; flex-shrink: 0; }
+  #garageView canvas { position: absolute; inset: 0; }
+  #garageStats { position: absolute; left: 14px; bottom: 12px; padding: 8px 14px; text-align: left; z-index: 2; }
+  #garageStats b { display: block; color: #e8dcae; font-size: 17px; letter-spacing: 1px; }
+  #garageStats span { color: #a8ad99; font-size: 12px; }
+  #btnRow { display: flex; gap: 14px; justify-content: center; margin-top: 14px; }
   .pickLabel { color: #8b9080; font-size: 13px; letter-spacing: 3px; margin: 12px 0 8px; }
   .cards { display: flex; gap: 10px; }
   #garageRow { flex-wrap: wrap; max-height: 210px; overflow-y: auto; max-width: 1000px; margin: 0 auto; padding: 8px 12px; row-gap: 10px;
@@ -41,7 +47,10 @@
   .card em { display: block; font-style: normal; color: #7f8574; font-size: 11px; margin-top: 5px; }
   #controls { color: #b8bda9; font-size: 15px; line-height: 2; background: rgba(255,255,255,.04); padding: 18px 34px; border-radius: 8px; margin-bottom: 36px; }
   #controls b { color: #e0d6a8; display: inline-block; min-width: 130px; }
-  #btnStart { font-size: 20px; padding: 14px 64px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
+  #btnStart { font-size: 19px; padding: 12px 58px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
+  #btnRow #btnMp { display: none; margin: 0; font-size: 15px; padding: 12px 30px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 3px; cursor: pointer; }
+  #btnRow #btnMp:hover { background: #2e3325; }
+  #btnRow #btnMp.on { display: inline-block; }
   #btnStart:hover { filter: brightness(1.15); }
   #btnMp { display: block; margin: 18px auto 0; font-size: 15px; padding: 9px 38px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 4px; cursor: pointer; }
   #btnMp:hover { background: #2e3325; }
@@ -217,13 +226,16 @@
 <div id="titleScreen">
   <h1>钢 铁 前 沿</h1>
   <h2>单机战役 · 选择你的坦克与战场</h2>
+  <div id="garageView"><div id="garageStats" class="panel"></div></div>
   <div class="pickLabel">坦 克</div>
   <div id="garageRow" class="cards"></div>
   <div class="pickLabel">战 场</div>
   <div id="mapRow" class="cards"></div>
   <div id="tipOnTitle"></div>
-  <button id="btnStart" style="margin-top:8px">出 击</button>
-  <button id="btnMp" style="display:none">⚔ 联机对战</button>
+  <div id="btnRow">
+    <button id="btnStart">出 击</button>
+    <button id="btnMp" style="display:none">⚔ 联机对战</button>
+  </div>
 </div>
 
 <script src="js/vendor/three.min.js"></script>
@@ -242,7 +254,7 @@
 <script src="js/main.js"></script>
 <script>
 document.getElementById('btnRestart').addEventListener('click', () => location.reload());
-if (SF.CFG.multiplayer) { document.getElementById('btnMp').style.display = 'block'; SF.Lobby.bind(); }
+if (SF.CFG.multiplayer) { document.getElementById('btnMp').classList.add('on'); SF.Lobby.bind(); }
 </script>
 </body>
 </html>

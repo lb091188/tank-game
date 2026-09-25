@@ -627,11 +627,13 @@ SF.Main = (() => {
       return;
     }
     document.getElementById('loading').style.display = 'none';
-    showTip('tipOnTitle');
-    buildPicker();
     document.getElementById('titleScreen').style.display = 'flex';
+    showTip('tipOnTitle');
+    buildGaragePreview();
+    buildPicker();
 
     document.getElementById('btnStart').addEventListener('click', () => {
+      if (garagePV) { garagePV.active = false; clearInterval(garagePV.timer); garagePV.renderer.dispose(); document.getElementById('garageView').innerHTML = ''; garagePV = null; }
       document.getElementById('titleScreen').style.display = 'none';
       document.getElementById('hud').style.display = 'block';
       SF.Audio.init();
@@ -653,6 +655,74 @@ SF.Main = (() => {
     });
   }
 
+  /* ---------- 车库 3D 预览: 展台 + 灯光 + 缓慢旋转 ---------- */
+  let garagePV = null;
+  function buildGaragePreview() {
+    if (garagePV) return;
+    const holder = document.getElementById('garageView');
+    const w = holder.clientWidth || 680, h = holder.clientHeight || 320;
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    holder.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(36, w / h, 0.1, 100);
+    cam.position.set(6.6, 3.4, 8.8);
+    cam.lookAt(0, 1.2, 0);
+    scene.add(new THREE.HemisphereLight(0x9aa7bf, 0x26291e, 0.95));
+    const key = new THREE.DirectionalLight(0xfff2d8, 1.35);
+    key.position.set(4, 7, 3);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.left = key.shadow.camera.bottom = -6;
+    key.shadow.camera.right = key.shadow.camera.top = 6;
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x8fa8e0, 0.55);
+    rim.position.set(-5, 3.5, -4);
+    scene.add(rim);
+    // 展台: 深色圆盘 + 金环
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.05, 3.3, 0.22, 44), new THREE.MeshLambertMaterial({ color: 0x1b1d16 }));
+    disc.receiveShadow = true;
+    scene.add(disc);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(3.08, 3.32, 44), new THREE.MeshBasicMaterial({ color: 0xc8b26a, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.115;
+    scene.add(ring);
+
+    garagePV = { renderer, scene, cam, tankGroup: null, turret: null, gun: null, active: true, lastT: 0 };
+
+    const tick = () => {
+      if (!garagePV.active) return;
+      const dt = Math.min(0.05, (performance.now() - garagePV.lastT) / 1000 || 0.033);
+      garagePV.lastT = performance.now();
+      if (garagePV.tankGroup) {
+        garagePV.tankGroup.rotation.y += dt * 0.2;
+        if (garagePV.turret) garagePV.turret.rotation.y += dt * 0.13;
+        if (garagePV.gun) garagePV.gun.rotation.x = -0.05;
+      }
+      renderer.render(scene, cam);
+    };
+    garagePV.timer = setInterval(tick, 33);
+    tick();
+  }
+
+  function setGarageTank(type) {
+    if (!garagePV || !garagePV.active) return;
+    if (garagePV.tankGroup) garagePV.scene.remove(garagePV.tankGroup);
+    const parts = SF.Models.makeTank(type);
+    parts.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    garagePV.scene.add(parts.root);
+    garagePV.tankGroup = parts.root;
+    garagePV.turret = parts.turret;
+    garagePV.gun = parts.gun;
+    const v = SF.CFG.vehicles[type];
+    document.getElementById('garageStats').innerHTML =
+      `<b>${v.name}</b><span>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · 装填 ${v.gun.reload}s · 极速 ${Math.round(v.maxSpeed * 3.6)} km/h</span>`;
+    garagePV.renderer.render(garagePV.scene, garagePV.cam);
+  }
+
   // 出击前车库: 选坦克 + 选地图
   function buildPicker() {
     const g = document.getElementById('garageRow'), m = document.getElementById('mapRow');
@@ -662,7 +732,7 @@ SF.Main = (() => {
       const el = document.createElement('div');
       el.className = 'card' + (t.type === selTank ? ' sel' : '');
       el.innerHTML = `<b>${v.name}</b><i>${t.tag}</i><span>${t.desc}</span><em>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · 极速 ${Math.round(v.maxSpeed * 3.6)}</em>`;
-      el.onclick = () => { selTank = t.type; localStorage.setItem('sf_mp_tank', t.type); [...g.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); };
+      el.onclick = () => { selTank = t.type; localStorage.setItem('sf_mp_tank', t.type); [...g.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); setGarageTank(t.type); };
       g.appendChild(el);
     }
     for (const mp of SF.CFG.maps) {
