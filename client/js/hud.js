@@ -115,7 +115,7 @@ SF.HUD = (() => {
 
     // 状态条
     $('hpFill').style.width = (player.hp / player.spec.hp * 100) + '%';
-    $('hpText').textContent = `${Math.ceil(player.hp)} / ${player.spec.hp}`;
+    $('hpText').textContent = `${player.spec.name}　${Math.ceil(player.hp)} / ${player.spec.hp}`;
     const rl = player.reloadT > 0 ? player.reloadT / player.spec.gun.reload : 0;
     $('reloadFill').style.width = ((1 - rl) * 100) + '%';
     $('reloadFill').classList.toggle('loading', rl > 0);

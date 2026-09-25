@@ -98,7 +98,7 @@ function terrainL01(x, z) {
   const gap = Math.min(ss(60, 100, Math.abs(Math.abs(x) - 100)), 1);
   h += gauss(z + 230, 42) * 20 * (1 - gap * 0.85) * ss(320, 220, -z - 0);
   for (const c of CRATERS1) h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d;
-  const spawnFlat = ss(75, 30, Math.hypot(x, z - 335));
+  const spawnFlat = ss(115, 72, Math.hypot(x, z - 335));
   h = h * (1 - spawnFlat) + 6.5 * spawnFlat;
   const vil = ss(95, 45, Math.abs(x)) * ss(90, 50, Math.abs(z - 10));
   h = h * (1 - vil * 0.6) + 7.5 * (vil * 0.6);
@@ -156,7 +156,7 @@ function terrainL02(x, z) {
   h += gauss(z + 250, 60) * 6 * ss(200, 60, -z);                        // 北侧抬升(防区高地)
   const plaza = ss(90, 30, Math.hypot(x * 0.9, z + 130));              // 北广场略高台阶
   h = h * (1 - plaza * 0.5) + (h + 1.2) * plaza * 0.5;
-  const spawnFlat = ss(80, 30, Math.hypot(x, z - 330));
+  const spawnFlat = ss(115, 72, Math.hypot(x, z - 330));
   h = h * (1 - spawnFlat) + 6 * spawnFlat;
   const bx = Math.max(Math.abs(x) - (352 + 18 * n4(0.2, (z + 400) / SIZE)), 0);
   const bz = Math.max(Math.abs(z) - (352 + 18 * n4((x + 400) / SIZE, 0.8)), 0);
@@ -203,7 +203,7 @@ function terrainL03(x, z) {
   h -= gauss(z - riverZ, 26) * 2.2 * (1 - ss(70, 130, Math.abs(x)));
   // 北峰高地(阵地) 与南坡
   h += gauss(Math.hypot(x * 0.8, z + 250), 90) * 16;
-  const spawnFlat = ss(70, 28, Math.hypot(x - 0, z - 325));
+  const spawnFlat = ss(110, 70, Math.hypot(x - 0, z - 325));
   h = h * (1 - spawnFlat) + 6 * spawnFlat;
   // 中部山间小村台地
   const vil = ss(40, 16, Math.hypot(x + 20, z - 40));

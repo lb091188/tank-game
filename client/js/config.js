@@ -365,6 +365,33 @@ SF.CFG = {
       sample: { l: 3.25, w: 1.3 },
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
+    type62: {
+      name: '62式轻型坦克', nation: 'CHN', cls: 'LT', tier: 'VII', hp: 900,
+      maxSpeed: 16.67, reverseRatio: 0.45, accel: 5.4, brake: 10, coastDrag: 5.6,
+      hullTraverse: 46 * Math.PI / 180, turretTraverse: 44 * Math.PI / 180,
+      gunDepression: -5 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
+      gun: { pen: 145, dmg: 180, reload: 6.3, speed: 792 },
+      sample: { l: 2.95, w: 1.4 },
+      dispersion: { base: 0.38, aimTime: 2.1, max: 2.2, move: 1.6, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
+    },
+    type59: {
+      name: '59式中型坦克', nation: 'CHN', cls: 'MT', tier: 'VIII', hp: 1450,
+      maxSpeed: 13.89, reverseRatio: 0.45, accel: 4.6, brake: 9.5, coastDrag: 5.4,
+      hullTraverse: 44 * Math.PI / 180, turretTraverse: 42 * Math.PI / 180,
+      gunDepression: -7 * Math.PI / 180, gunElevation: 16 * Math.PI / 180,
+      gun: { pen: 175, dmg: 250, reload: 7.8, speed: 895 },
+      sample: { l: 3.1, w: 1.6 },
+      dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
+    },
+    wz111: {
+      name: 'WZ-111 重型坦克', nation: 'CHN', cls: 'HT', tier: 'VIII', hp: 1550,
+      maxSpeed: 12.5, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
+      hullTraverse: 34 * Math.PI / 180, turretTraverse: 34 * Math.PI / 180,
+      gunDepression: -5 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
+      gun: { pen: 190, dmg: 440, reload: 12.5, speed: 900 },
+      sample: { l: 3.6, w: 1.7 },
+      dispersion: { base: 0.44, aimTime: 2.6, max: 2.5, move: 1.6, hullTurn: 1.2, turretTurn: 0.6, fire: 1.8 }
+    },
     medium: {
       name: '敌方中型坦克', hp: 550,
       maxSpeed: 12.5, reverseRatio: 0.45, accel: 3.8, brake: 9, coastDrag: 5.2,
@@ -421,7 +448,7 @@ SF.CFG = {
   // 相机灵敏度: 数值=每像素弧度; 觉得快→调小, 慢→调大(参考: 0.0009 约为鼠标垫横扫一圈)
   camera: { dist: 15, minDist: 6.5, maxDist: 30, height: 4.0, pitch: 0.30, fov: 55, sniperFov: 15, sens: 0.0009, sniperSens: 0.25 },
 
-  player: { viewRange: 420 },   // WoT 级视野(350-445m 区间)
+  player: { viewRange: 445 },   // WoT 级视野上限
 
   // 出击前可选的坦克与地图(配合标题界面车库)
   garage: [],   // CFG 定义后由下方生成
@@ -446,8 +473,9 @@ SF.CFG = {
   const sel = ['sherman', 'sherman76', 'jumbo', 'hellcat', 'pz3', 'pz4', 'panther', 'tiger1', 'stug3', 'jagdpanther',
     'bt7', 't34', 't3485', 'kv1', 'kv2', 'is2', 'su85', 'su100', 'isu152', 'm3lee', 'm10', 'm36',
     'matilda', 'cromwell', 'firefly', 'churchill7', 'b1bis', 'somua', 'chiha', 'chinu',
-    'tiger2', 'ferdinand', 'is3', 't44', 'm26', 't26e4', 't29', 'centurion', 'chiri'];
-  const FLAG = { USA: '🇺🇸', GER: '🇩🇪', USSR: '🇷🇺', UK: '🇬🇧', FRA: '🇫🇷', JPN: '🇯🇵' };
+    'tiger2', 'ferdinand', 'is3', 't44', 'm26', 't26e4', 't29', 'centurion', 'chiri',
+    'type62', 'type59', 'wz111'];
+  const FLAG = { USA: '🇺🇸', GER: '🇩🇪', USSR: '🇷🇺', UK: '🇬🇧', FRA: '🇫🇷', JPN: '🇯🇵', CHN: '🇨🇳' };
   SF.CFG.garage = sel.filter(t => SF.CFG.vehicles[t]).map(t => {
     const v = SF.CFG.vehicles[t];
     return { type: t, tag: (v.nation ? FLAG[v.nation] + ' ' : '') + (v.tier || '') + '级' + (v.cls || ''), desc: v.name };

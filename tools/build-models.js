@@ -382,7 +382,7 @@ function buildHellcat() {
 /* ============ 二战坦克库: 通用参数化生成器 ============ */
 const NATION_COLOR = {
   GER: [0.33, 0.34, 0.36], USSR: [0.30, 0.33, 0.22], USA: [0.34, 0.35, 0.23],
-  UK: [0.35, 0.33, 0.24], FRA: [0.36, 0.35, 0.30], JPN: [0.45, 0.42, 0.30]
+  UK: [0.35, 0.33, 0.24], FRA: [0.36, 0.35, 0.30], JPN: [0.45, 0.42, 0.30], CHN: [0.29, 0.32, 0.25]
 };
 
 /* 车体/炮塔/装甲/行走机构 全参数化; 数值为史实量级(公开史实, 非任何游戏数据) */
@@ -609,6 +609,18 @@ const ROSTER = [
     hull: { l: 6.6, w: 2.95, h: 1.1, y: 1.32 }, gl: 1.8, ga: 1.0, gl2: 4.6, gr: 0.083,
     armor: { glacis: 76, lower: 64, side: 50, rear: 38, top: 20, turretFront: 152, turretSide: 89, turretRear: 89, mantlet: 140 },
     turret: { kind: 'cyl', r: 1.12, th: 0.75, bustle: true } },
+  { type: 'type62', nation: 'CHN', hw: 1.25, wheels: 5, wr: 0.42, tl: 6.0, th: 0.82,
+    hull: { l: 5.9, w: 2.5, h: 0.95, y: 1.20 }, gl: 1.5, ga: 1.05, gl2: 3.9, gr: 0.085,
+    armor: { glacis: 45, lower: 35, side: 25, rear: 20, top: 12, turretFront: 60, turretSide: 40, turretRear: 35, mantlet: 90 },
+    turret: { kind: 'cyl', r: 0.95, th: 0.6 } },
+  { type: 'type59', nation: 'CHN', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.4, th: 0.88,
+    hull: { l: 6.2, w: 2.9, h: 1.0, y: 1.26 }, gl: 1.7, ga: 1.05, gl2: 4.5, gr: 0.09,
+    armor: { glacis: 100, lower: 100, side: 80, rear: 45, top: 20, turretFront: 130, turretSide: 100, turretRear: 80, mantlet: 160 },
+    turret: { kind: 'cyl', r: 1.1, th: 0.65 } },
+  { type: 'wz111', nation: 'CHN', hw: 1.55, wheels: 7, wr: 0.44, tl: 7.1, th: 0.92,
+    hull: { l: 7.0, w: 3.1, h: 1.1, y: 1.32 }, gl: 1.9, ga: 0.79, gl2: 5.0, gr: 0.11, brake: false,
+    armor: { glacis: 130, lower: 100, side: 90, rear: 60, top: 20, turretFront: 160, turretSide: 110, turretRear: 90, mantlet: 190 },
+    turret: { kind: 'cyl', r: 1.15, th: 0.7, bustle: true } },
   { type: 'chiri', nation: 'JPN', hw: 1.15, wheels: 6, wr: 0.38, tl: 6.7, th: 0.84,
     hull: { l: 6.3, w: 2.3, h: 1.1, y: 1.3 }, gl: 1.5, ga: 0.35, gl2: 3.3, gr: 0.07,
     armor: { glacis: 50, lower: 45, side: 25, rear: 20, top: 12, turretFront: 75, turretSide: 35, turretRear: 35, mantlet: 90 },
