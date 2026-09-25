@@ -193,7 +193,9 @@ SF.Main = (() => {
     document.addEventListener('pointerlockchange', () => { });
     document.addEventListener('mousemove', (e) => {
       if (document.pointerLockElement !== canvas) return;
-      const s = SF.CFG.camera.sens * (sniper ? 0.3 : 1);
+      // 指针锁定偶发的大跳变(>300px)丢弃, 防画面猛甩
+      if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
+      const s = SF.CFG.camera.sens * (sniper ? SF.CFG.camera.sniperSens : 1);
       camYaw -= e.movementX * s;
       camPitch = U.clamp(camPitch + e.movementY * s, -0.12, 1.1);
     });
