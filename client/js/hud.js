@@ -207,17 +207,19 @@ SF.HUD = (() => {
 
     // 任务进程(单机 PVE): 简略条 + Tab 详细面板
     if (uiState.mission) {
-      const SYM = { medium: '◇', td: '△', heavy: '●' };
+      const SYM = { LT: '◇', MT: '◈', TD: '△', HT: '●' };
+      const DEF_CLS = { medium: 'MT', td: 'TD', heavy: 'HT', sherman: 'MT', sherman76: 'MT', jumbo: 'HT', hellcat: 'TD' };
+      const clsOf = (e) => (e.spec && e.spec.cls) || DEF_CLS[e.type] || 'MT';
       const groups = {};
-      for (const e of world.enemies) if (e.alive) groups[e.type] = (groups[e.type] || 0) + 1;
+      for (const e of world.enemies) if (e.alive) { const c = clsOf(e); groups[c] = (groups[c] || 0) + 1; }
       const m = uiState.mission;
       const symLine = Object.entries(groups).map(([t, n]) => `<span class="sym">${SYM[t] || '◆'}×${n}</span>`).join('') || '<span class="sym" style="color:#8fd98f">已肃清</span>';
       $('missionBar').style.display = 'block';
       $('missionBar').innerHTML = `任务 ${m.idx + 1}/${m.total}　残敌 ${symLine}`;
       const detail = $('missionDetail');
       if (detail.style.display === 'block') {
-        const rows = Object.entries(groups).map(([t, n]) =>
-          `<div class="row"><span>${SYM[t] || '◆'} ${SF.CFG.vehicles[t] ? SF.CFG.vehicles[t].name : t}</span><span>×${n}</span></div>`).join('');
+        const rows = Object.entries(groups).map(([c, n]) =>
+          `<div class="row"><span>${SYM[c] || '◆'} ${c === 'MT' ? '中型坦克' : c === 'HT' ? '重型坦克' : c === 'TD' ? '歼击车' : '轻型坦克'}</span><span>×${n}</span></div>`).join('');
         detail.innerHTML = `<h4>${m.name}</h4>${rows || '<div style="color:#8fd98f">本波已肃清</div>'}<div class="k">已击毁 ${m.kills} / ${m.totalEnemies}　·　Tab 收起</div>`;
       }
     }

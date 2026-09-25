@@ -105,7 +105,7 @@ SF.Main = (() => {
       // 出生点随机化: 范围内随机平移(守位单位 ±12m, 机动单位 ±30m), 巡逻点随之平移, 避开掩体
       const jr = def.hold ? 12 : 30;
       const dx = (Math.random() - 0.5) * 2 * jr, dz = (Math.random() - 0.5) * 2 * jr;
-      let ex = U.clamp(def.pos[0] + dx, -330, 330), ez = U.clamp(def.pos[1] + dz, -330, 330);
+      let ex = U.clamp(def.pos[0] + dx, -430, 430), ez = U.clamp(def.pos[1] + dz, -430, 430);
       [ex, ez] = world.covers.collide(ex, ez, 2.6);
       const t = new SF.Tank(def.type, { x: ex, z: ez, yaw: (def.yaw !== undefined ? def.yaw : Math.PI) + (Math.random() - 0.5) * 0.4 });
       const def2 = { ...def, patrol: (def.patrol || []).map(w => [w[0] + (ex - def.pos[0]), w[1] + (ez - def.pos[1])]) };
@@ -677,7 +677,7 @@ SF.Main = (() => {
     MP.spawnPool = [];
     for (let i = 0; i < 8; i++) {
       const a = i / 8 * Math.PI * 2;
-      let sx = Math.cos(a) * 240, sz = Math.sin(a) * 240;
+      let sx = Math.cos(a) * 310, sz = Math.sin(a) * 310;
       [sx, sz] = world.covers.collide(sx, sz, 3);
       MP.spawnPool.push([sx, sz]);
     }

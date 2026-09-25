@@ -9,7 +9,9 @@ const path = require('path');
 const zlib = require('zlib');
 
 const ROOT = path.join(__dirname, '..', 'client', 'assets', 'maps');
-const SIZE = 800, RES = 256, MAX_H = 70;
+const SIZE = 1000;              // WoT 标准地图尺寸 1000×1000m
+const S = 1.25;                 // 布局坐标缩放(原 800m 设计 ×1.25)
+const RES = 288, MAX_H = 70;
 
 /* ---------- 噪声/工具 ---------- */
 function mulberry32(seed) {
@@ -246,11 +248,11 @@ const MAPS = {
     player: { spawn: [0, 335, Math.PI] },
     waves: [
       { name: '村庄巡逻队', enemies: [
-        { type: 'medium', pos: [-28, -12], yaw: Math.PI, personality: 'flanker', patrol: [[-28, -12], [32, 6], [-24, 38]] },
-        { type: 'medium', pos: [36, 18], yaw: Math.PI, personality: 'flanker', patrol: [[36, 18], [8, 44], [46, 48]] } ] },
+        { type: 'pz4', pos: [-28, -12], yaw: Math.PI, personality: 'flanker', patrol: [[-28, -12], [32, 6], [-24, 38]] },
+        { type: 'pz4', pos: [36, 18], yaw: Math.PI, personality: 'flanker', patrol: [[36, 18], [8, 44], [46, 48]] } ] },
       { name: '北坡阵地', enemies: [
-        { type: 'td', pos: [58, -242], yaw: -2.55, personality: 'sniper', hold: true },
-        { type: 'heavy', pos: [-16, -268], yaw: 3.14, personality: 'hold', patrol: [[-16, -268], [14, -262]] } ] }
+        { type: 'stug3', pos: [58, -242], yaw: -2.55, personality: 'sniper', hold: true },
+        { type: 'tiger1', pos: [-16, -268], yaw: 3.14, personality: 'hold', patrol: [[-16, -268], [14, -262]] } ] }
     ]
   },
   l02: {
@@ -261,12 +263,12 @@ const MAPS = {
     player: { spawn: [0, 300, Math.PI] },
     waves: [
       { name: '街区巡逻队', enemies: [
-        { type: 'medium', pos: [-90, 60], yaw: Math.PI, personality: 'flanker', patrol: [[-90, 60], [-51, 60], [-51, -2], [-90, -2]] },
-        { type: 'medium', pos: [90, 20], yaw: Math.PI, personality: 'flanker', patrol: [[90, 20], [51, 20], [51, 98], [90, 98]] } ] },
+        { type: 't34', pos: [-90, 60], yaw: Math.PI, personality: 'flanker', patrol: [[-90, 60], [-51, 60], [-51, -2], [-90, -2]] },
+        { type: 't34', pos: [90, 20], yaw: Math.PI, personality: 'flanker', patrol: [[90, 20], [51, 20], [51, 98], [90, 98]] } ] },
       { name: '广场核心阵地', enemies: [
-        { type: 'heavy', pos: [0, -178], yaw: 3.14, personality: 'hold', hold: true },
-        { type: 'td', pos: [78, -120], yaw: 2.2, personality: 'sniper', hold: true },
-        { type: 'medium', pos: [-78, -118], yaw: -2.2, personality: 'flanker', patrol: [[-78, -118], [-40, -80], [-78, -40]] } ] }
+        { type: 'churchill7', pos: [0, -178], yaw: 3.14, personality: 'hold', hold: true },
+        { type: 'su100', pos: [78, -120], yaw: 2.2, personality: 'sniper', hold: true },
+        { type: 't3485', pos: [-78, -118], yaw: -2.2, personality: 'flanker', patrol: [[-78, -118], [-40, -80], [-78, -40]] } ] }
     ]
   },
   l03: {
@@ -277,12 +279,12 @@ const MAPS = {
     player: { spawn: [0, 322, Math.PI] },
     waves: [
       { name: '峡谷巡逻队', enemies: [
-        { type: 'medium', pos: [-24, 80], yaw: Math.PI, personality: 'flanker', patrol: [[-24, 80], [30, 60], [-10, 130]] },
-        { type: 'medium', pos: [30, -10], yaw: Math.PI, personality: 'flanker', patrol: [[30, -10], [-28, 0], [26, 40]] } ] },
+        { type: 'cromwell', pos: [-24, 80], yaw: Math.PI, personality: 'flanker', patrol: [[-24, 80], [30, 60], [-10, 130]] },
+        { type: 'firefly', pos: [30, -10], yaw: Math.PI, personality: 'flanker', patrol: [[30, -10], [-28, 0], [26, 40]] } ] },
       { name: '高地守军', enemies: [
-        { type: 'td', pos: [-140, 10], yaw: 1.35, personality: 'sniper', hold: true },
-        { type: 'td', pos: [140, -190], yaw: -1.2, personality: 'sniper', hold: true },
-        { type: 'heavy', pos: [0, -258], yaw: 3.14, personality: 'hold', hold: true } ] }
+        { type: 'su100', pos: [-140, 10], yaw: 1.35, personality: 'sniper', hold: true },
+        { type: 'm36', pos: [140, -190], yaw: -1.2, personality: 'sniper', hold: true },
+        { type: 'is2', pos: [0, -258], yaw: 3.14, personality: 'hold', hold: true } ] }
     ]
   }
 };
@@ -295,8 +297,10 @@ for (const id in MAPS) {
   const rng = mulberry32(M.seed);
   const H = new Float32Array(RES * RES);
   for (let j = 0; j < RES; j++)
-    for (let i = 0; i < RES; i++)
-      H[j * RES + i] = M.terrain(-SIZE / 2 + (i / (RES - 1)) * SIZE, -SIZE / 2 + (j / (RES - 1)) * SIZE);
+    for (let i = 0; i < RES; i++) {
+      const wx = -SIZE / 2 + (i / (RES - 1)) * SIZE, wz = -SIZE / 2 + (j / (RES - 1)) * SIZE;
+      H[j * RES + i] = M.terrain(wx / S, wz / S);   // 等比放大: 同样的山, 更宽的坡与更长的视线
+    }
   // 平滑(保留边界陡峭)
   for (let pass = 0; pass < 2; pass++) {
     const src = Float32Array.from(H);
@@ -311,7 +315,8 @@ for (const id in MAPS) {
   }
   // 坡度自检(出生点→敌阵主轴)
   const sampleH = (x, z) => {
-    const fi = clamp((x + SIZE / 2) / SIZE, 0, 1) * (RES - 1), fj = clamp((z + SIZE / 2) / SIZE, 0, 1) * (RES - 1);
+    x /= S; z /= S;
+    const fi = clamp((x + 400) / 800, 0, 1) * (RES - 1), fj = clamp((z + 400) / 800, 0, 1) * (RES - 1);
     const i = Math.floor(fi), j = Math.floor(fj), tx = fi - i, tz = fj - j;
     const a = H[j * RES + i], b = H[j * RES + i + 1], c = H[(j + 1) * RES + i], d = H[(j + 1) * RES + i + 1];
     return a + (b - a) * tx + (c - a + (a - b - c + d) * tx) * tz;
@@ -327,14 +332,16 @@ for (const id in MAPS) {
     }
   // 掩体
   const covers = [];
-  const add = (type, x, z, yaw = 0, scale = 1) => covers.push({ type, x: +x.toFixed(1), z: +z.toFixed(1), yaw: +yaw.toFixed(2), scale: +scale.toFixed(2) });
+  const add0 = (type, x, z, yaw = 0, scale = 1) => covers.push({ type, x: +(x * S).toFixed(1), z: +(z * S).toFixed(1), yaw: +yaw.toFixed(2), scale: +scale.toFixed(2) });
+  const add = add0;
   M.covers(add, rng);
   const mapJson = {
     _说明: '手改本文件即可调整关卡(世界坐标米, x 东西 / z 南北, 玩家在南朝北推进)',
     id: id + '-' + M.dir, name: M.name, briefing: M.briefing,
     terrain: { size: SIZE, resolution: RES, maxHeight: MAX_H },
-    lighting: M.lighting, player: M.player,
-    waves: M.waves,
+    lighting: M.lighting,
+    player: { spawn: [M.player.spawn[0] * S, M.player.spawn[1] * S, M.player.spawn[2]] },
+    waves: M.waves.map(w => ({ ...w, enemies: w.enemies.map(e => ({ ...e, pos: [e.pos[0] * S, e.pos[1] * S], patrol: (e.patrol || []).map(q => [q[0] * S, q[1] * S]) })) })),
     repairBetweenWaves: { hpRatio: 0.35, duration: 4, text: '维修组抢修中…' },
     covers,
     objectives: { winText: '敌军全歼 · 任务完成', loseText: '坦克被击毁 · 任务失败' }
