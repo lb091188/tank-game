@@ -25,7 +25,12 @@
   #titleScreen h2 { color: #9aa08a; font-weight: normal; letter-spacing: 4px; margin-bottom: 22px; }
   .pickLabel { color: #8b9080; font-size: 13px; letter-spacing: 3px; margin: 12px 0 8px; }
   .cards { display: flex; gap: 10px; }
-  #garageRow { flex-wrap: wrap; max-height: 200px; overflow-y: auto; }
+  #garageRow { flex-wrap: wrap; max-height: 210px; overflow-y: auto; max-width: 950px; margin: 0 auto; padding: 8px 12px; row-gap: 10px;
+    scrollbar-width: thin; scrollbar-color: #6f6230 rgba(14,16,11,.6); }
+  #garageRow::-webkit-scrollbar { width: 8px; }
+  #garageRow::-webkit-scrollbar-track { background: rgba(14,16,11,.6); border-radius: 4px; }
+  #garageRow::-webkit-scrollbar-thumb { background: #6f6230; border-radius: 4px; }
+  #garageRow::-webkit-scrollbar-thumb:hover { background: #c8b26a; }
   #garageRow .card { width: 148px; padding: 8px 10px; }
   .card { width: 170px; padding: 12px 14px; background: rgba(255,255,255,.045); border: 1px solid rgba(200,178,106,.25); border-radius: 6px; cursor: pointer; text-align: left; transition: all .12s; }
   .card:hover { background: rgba(255,255,255,.08); }
