@@ -28,6 +28,8 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true   # 仓库未开通 Pages 时自动创建(需 pages:write 权限, 上方已声明)
 
       - name: Upload client (游戏本体, 资产全为相对路径可直接子路径部署)
         uses: actions/upload-pages-artifact@v3
