@@ -208,14 +208,41 @@ SF.Tank = class {
     return result;
   }
 
+  // 被击毁 → 残骸形态: 沉降侧倾(悬挂塌) + 炮塔歪斜卡死 + 炮管下垂 + 烧漆斑驳 + 烟与余烬
   _deathFx(dt) {
-    // 摧毁后: 变暗 + 冒烟计时
-    if (!this._deadTinted) {
-      this._deadTinted = true;
-      this.group.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.multiplyScalar(0.35); } });
+    if (!this._wreck) {
+      this._wreck = {
+        t: 0, y0: this.y,
+        roll0: this.roll, rollT: this.roll + (Math.random() < 0.5 ? -1 : 1) * (0.07 + Math.random() * 0.09),
+        tur0: this.parts.turret ? this.parts.turret.rotation.y : 0,
+        turT: this.parts.turret ? (Math.random() - 0.5) * 1.2 : 0,
+        gun0: this.parts.gun ? this.parts.gun.rotation.x : 0,
+        gunT: this.parts.gun ? this.parts.gun.rotation.x + 0.05 + Math.random() * 0.06 : 0,
+        tinted: false
+      };
+    }
+    const w = this._wreck;
+    w.t += dt;
+    const e = 1 - Math.pow(1 - Math.min(1, w.t / 1.2), 3);   // 缓出沉降
+    this.y = w.y0 - 0.22 * e;
+    this.roll = w.roll0 + (w.rollT - w.roll0) * e;
+    if (this.parts.turret) this.parts.turret.rotation.y = w.tur0 + (w.turT - w.tur0) * e;
+    if (this.parts.gun) this.parts.gun.rotation.x = w.gun0 + (w.gunT - w.gun0) * e;
+    if (!w.tinted && w.t > 0.6) {
+      w.tinted = true;
+      this.group.traverse(o => {           // 烧黑斑驳: 每件网格随机深浅
+        if (o.isMesh && o.material) {
+          o.material = o.material.clone();
+          o.material.color.multiplyScalar(0.24 + Math.random() * 0.14);
+        }
+      });
     }
     this.smokeT -= dt;
-    if (this.smokeT <= 0 && SF.Game && SF.Game.fx) { SF.Game.fx.smoke(this.x, this.y + 2, this.z); this.smokeT = 0.5; }
+    if (this.smokeT <= 0 && SF.Game && SF.Game.fx) {
+      SF.Game.fx.smoke(this.x, this.y + 2, this.z, 1.5);
+      if (w.t < 12) SF.Game.fx.burst(new THREE.Vector3(this.x + (Math.random() - 0.5), this.y + 1.6, this.z + (Math.random() - 0.5)), [1, 0.5, 0.12], 3, 2.5, 1.2);  // 余烬火星
+      this.smokeT = w.t < 12 ? 0.55 : 1.1;
+    }
   }
 };
 

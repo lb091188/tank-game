@@ -335,7 +335,7 @@ SF.Main = (() => {
     p.velX = (p.x - prevX) / dt; p.velZ = (p.z - prevZ) / dt;
 
     for (const e of world.enemies)
-      if (e.alive) e.update(e.ai.update(dt, world), dt, world);
+      e.update(e.ai.update(dt, world), dt, world);   // 死亡车辆也要更新(残骸沉降/冒烟), update 内部分支处理
 
     shells.update(dt, world);
 
