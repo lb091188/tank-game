@@ -162,6 +162,10 @@ SF.HUD = (() => {
 
     // 狙击镜
     $('sniperOverlay').style.display = uiState.sniper ? 'block' : 'none';
+
+    // 按键指示器(诊断用: 按下应点亮)
+    document.querySelectorAll('#keypad span').forEach(s =>
+      s.classList.toggle('on', !!(uiState.keys && uiState.keys[s.dataset.k])));
   }
 
   function endGame(win, stats) {

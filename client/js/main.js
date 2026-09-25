@@ -9,6 +9,7 @@ SF.Main = (() => {
   let sniper = false, mouseDown = false, shakeT = 0;
   const keys = {};
   let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
+  let keySeen = false, hintShown = false;   // 键盘诊断: 是否收到过按键
   let spottedTimer = 0;
   const spotted = new Set();
   let waveIdx = 0, waveEnemies = [], repairT = 0, repairDone = false, gameOver = false, loseT = -1;
@@ -70,7 +71,7 @@ SF.Main = (() => {
     shells = new SF.Shells(scene, fx);
     world.shells = shells;
 
-    SF.Game = { scene, camera, renderer, world, fx, get uiState() { return { aimPoint, sniper, spotted }; } };
+    SF.Game = { scene, camera, renderer, world, fx, get uiState() { return { aimPoint, sniper, spotted, keys }; } };
     // 测试钩子: 无 rAF 环境下手动推进模拟与渲染(自动化测试用)
     SF.Game.test = {
       step(n = 1) { for (let i = 0; i < n; i++) step(SF.CFG.sim.dt); },
@@ -187,9 +188,25 @@ SF.Main = (() => {
   }
 
   /* ---------- 输入 ---------- */
+  // 键名归一: 优先 e.code, 缺失时回退 e.key(部分内嵌浏览器/输入法环境 code 为空)
+  const KEY_ALIAS = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', arrowup: 'ArrowUp', arrowleft: 'ArrowLeft', arrowdown: 'ArrowDown', arrowright: 'ArrowRight', shift: 'Shift' };
+  function keyOf(e) {
+    if (e.code) {
+      if (/^Key[WASD]$/.test(e.code) || /^Arrow(Up|Down|Left|Right)$/.test(e.code)) return e.code;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') return 'Shift';
+    }
+    const k = (e.key || '').toLowerCase();
+    return KEY_ALIAS[k] || null;
+  }
+
   function bindInput() {
     const canvas = renderer.domElement;
-    canvas.addEventListener('click', () => { if (!gameOver) canvas.requestPointerLock(); SF.Audio.resume(); });
+    canvas.tabIndex = -1;
+    canvas.addEventListener('click', () => {
+      canvas.focus();
+      if (!gameOver) canvas.requestPointerLock();
+      SF.Audio.resume();
+    });
     document.addEventListener('pointerlockchange', () => { });
     document.addEventListener('mousemove', (e) => {
       if (document.pointerLockElement !== canvas) return;
@@ -204,13 +221,18 @@ SF.Main = (() => {
     document.addEventListener('wheel', (e) => {
       camDist = U.clamp(camDist + Math.sign(e.deltaY) * 1.6, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
     });
-    document.addEventListener('keydown', (e) => {
-      keys[e.code] = true;
-      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') sniper = !sniper;
-      // 方向键/空格防止页面滚动
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-    });
-    document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+    // 键盘: window 捕获阶段监听(最先收到, 不被其他处理器截断)
+    window.addEventListener('keydown', (e) => {
+      const k = keyOf(e);
+      if (!k) return;
+      keySeen = true;
+      if (k === 'Shift') { if (!e.repeat) sniper = !sniper; keys.Shift = true; return; }
+      keys[k] = true;
+      if (/^Arrow/.test(k) || k === 'Space') e.preventDefault();
+    }, true);
+    window.addEventListener('keyup', (e) => { const k = keyOf(e); if (k) keys[k] = false; }, true);
+    // 失焦清键, 防卡键
+    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; });
     window.addEventListener('resize', () => {
       camera.aspect = innerWidth / innerHeight;
       camera.updateProjectionMatrix();
@@ -308,6 +330,11 @@ SF.Main = (() => {
     fx.update(dtReal);
     SF.Audio.setEngine(Math.abs(world.player.speed) / world.player.spec.maxSpeed, keys.KeyW || keys.KeyS ? 1 : 0);
     SF.HUD.update(dtReal, world, SF.Game.uiState);
+    // 键盘诊断: 8 秒内没收到任何按键 → 提示点击画面获取焦点
+    if (!keySeen && !hintShown && world.time > 8) {
+      hintShown = true;
+      SF.HUD.showMsg('未检测到键盘输入——请点击一下游戏画面', 6);
+    }
     renderer.render(scene, camera);
   }
 
