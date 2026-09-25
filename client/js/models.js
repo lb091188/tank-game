@@ -9,7 +9,7 @@ SF.Models = (() => {
     const src = SF.Assets.models[type];
     if (!src) throw new Error(`未知坦克类型: ${type}`);
     const root = src.clone(true);
-    const parts = { root, turret: null, gun: null, muzzle: null, zones: [] };
+    const parts = { root, turret: null, gun: null, muzzle: null, zones: [], wheels: [], trackTex: null };
     root.traverse(o => {
       if (o.isMesh) {
         o.castShadow = true;
@@ -19,13 +19,23 @@ SF.Models = (() => {
           o.material.needsUpdate = true;
         }
         const zone = o.userData && o.userData.zone;  // GLTFLoader 把节点 extras 放进 userData
-        if (zone) { parts.zones.push(o); }
+        if (zone) {
+          parts.zones.push(o);
+          if (zone === 'tracks' && o.material) {     // 履带滚动纹理: 每车独立材质/纹理实例(offset 独立)
+            o.material = o.material.clone();
+            if (o.material.map) {
+              o.material.map = o.material.map.clone();
+              o.material.map.needsUpdate = true;
+              parts.trackTex = o.material.map;
+            }
+          }
+        }
+        if (o.userData && o.userData.wheelR) parts.wheels.push({ node: o, r: o.userData.wheelR });  // 独立旋转轮
       } else if (o.name === 'turret') parts.turret = o;
       else if (o.name === 'gun') parts.gun = o;
       else if (o.name === 'muzzle') parts.muzzle = o;
     });
     parts.noTurret = !parts.turret;
-    // 敌我识别色: 玩家橄榄已建模; 敌方在车顶加识别条(便于读局势) — 敌方模型本身是灰系
     return parts;
   }
 

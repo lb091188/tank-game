@@ -210,6 +210,7 @@ SF.Shells = class {
           });
         } else {
           this.fx.impact(hitType === 'ground' ? 'ground' : 'cover', p);
+          if (sh.owner.isPlayer) SF.Bus.emit('playerMiss', { point: p });   // 打飞了也要有反馈
         }
         this._kill(sh);
         continue;

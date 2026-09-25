@@ -12,13 +12,14 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const THREE = require('../client/js/vendor/three.min.js');
 
 const OUT_DIR = path.join(__dirname, '..', 'client', 'assets', 'models');
 
 /* ============ 最小 GLB (glTF 2.0) 编码器(带 COLOR_0) ============ */
 
-function writeGLB(filePath, rootNode) {
+function writeGLB(filePath, rootNode, trackPng) {
   const gltfNodes = [], meshes = [], materials = [], accessors = [], bufferViews = [];
   const binChunks = [];
   let binLength = 0;
@@ -51,15 +52,21 @@ function writeGLB(filePath, rootNode) {
     return accessors.length - 1;
   }
 
+  let useTexture = false;
   function emitNode(node) {
     const glNode = { name: node.name };
     if (node.extras) glNode.extras = node.extras;
     if (node.translation) glNode.translation = node.translation;
     if (node.parts && node.parts.length) {
-      const pos = [], nor = [], col = [], idx = [];
+      const pos = [], nor = [], col = [], uvs = [], idx = [];
+      const hasUV = !!node.trackTex;
       for (const p of node.parts) {
         const base = pos.length / 3;
-        for (let i = 0; i < p.positions.length; i++) { pos.push(p.positions[i]); nor.push(p.normals[i]); col.push(p.colors[i]); }
+        const pu = p.uvs || new Array((p.positions.length / 3) * 2).fill(0);  // 缺 UV 部件补零
+        for (let i = 0; i < p.positions.length; i++) {
+          pos.push(p.positions[i]); nor.push(p.normals[i]); col.push(p.colors[i]);
+          if (hasUV) uvs.push(pu[i * 2], pu[i * 2 + 1]);
+        }
         for (let i = 0; i < p.positions.length / 3; i++) idx.push(base + i);
       }
       const posArr = new Float32Array(pos), norArr = new Float32Array(nor), colArr = new Float32Array(col);
@@ -68,12 +75,16 @@ function writeGLB(filePath, rootNode) {
       const norAcc = addAccessor(norArr, 5126, 'VEC3', norArr.length / 3, false);
       const colAcc = addAccessor(colArr, 5126, 'VEC3', colArr.length / 3, false);
       const idxAcc = addAccessor(idxArr, idxArr instanceof Uint32Array ? 5125 : 5123, 'SCALAR', idxArr.length, false);
-      materials.push({
+      const attributes = { POSITION: posAcc, NORMAL: norAcc, COLOR_0: colAcc };
+      if (hasUV) attributes.TEXCOORD_0 = addAccessor(new Float32Array(uvs), 5126, 'VEC2', uvs.length / 2, false);
+      const mat = {
         name: node.name + '_mat',
         pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0.15, roughnessFactor: 0.8 },
         doubleSided: true
-      });
-      meshes.push({ primitives: [{ attributes: { POSITION: posAcc, NORMAL: norAcc, COLOR_0: colAcc }, indices: idxAcc, material: materials.length - 1 }] });
+      };
+      if (hasUV) { mat.pbrMetallicRoughness.baseColorTexture = { index: 0 }; useTexture = true; }
+      materials.push(mat);
+      meshes.push({ primitives: [{ attributes, indices: idxAcc, material: materials.length - 1 }] });
       glNode.mesh = meshes.length - 1;
     }
     gltfNodes.push(glNode);
@@ -96,6 +107,11 @@ function writeGLB(filePath, rootNode) {
     nodes: gltfNodes, meshes, materials, accessors, bufferViews,
     buffers: [{ byteLength: binLength }]
   };
+  if (useTexture && trackPng) {   // 履带滚动纹理(数据内嵌, REPEAT 平铺)
+    json.samplers = [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }];
+    json.images = [{ mimeType: 'image/png', uri: 'data:image/png;base64,' + trackPng.toString('base64') }];
+    json.textures = [{ sampler: 0, source: 0 }];
+  }
 
   let jsonBuf = Buffer.from(JSON.stringify(json), 'utf8');
   const jsonPad = (4 - (jsonBuf.length % 4)) % 4;
@@ -126,6 +142,59 @@ function hash3(x, y, z) {
   return h - Math.floor(h);
 }
 
+/* ---------- 履带链节贴图(64×64 RGB PNG, 沿车长 REPEAT 平铺, 运行时滚动 offset) ---------- */
+function crc32(buf) {
+  let c, table = crc32.table;
+  if (!table) {
+    table = crc32.table = new Int32Array(256);
+    for (let n = 0; n < 256; n++) {
+      c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c;
+    }
+  }
+  c = -1;
+  for (let i = 0; i < buf.length; i++) c = (c >>> 8) ^ table[(c ^ buf[i]) & 0xff];
+  return (c ^ -1) >>> 0;
+}
+function pngChunk(type, data) {
+  const b = Buffer.alloc(8 + data.length + 4);
+  b.writeUInt32BE(data.length, 0);
+  b.write(type, 4, 'ascii');
+  data.copy(b, 8);
+  b.writeUInt32BE(crc32(b.subarray(4, 8 + data.length)), 8 + data.length);
+  return b;
+}
+function makeTrackTexture() {
+  const W = 64, H = 64;
+  const raw = Buffer.alloc(H * (1 + W * 3));
+  for (let y = 0; y < H; y++) {
+    const row = y * (1 + W * 3);
+    raw[row] = 0;
+    for (let x = 0; x < W; x++) {
+      const link = (x % 8) < 6;                       // 8px = 一节链节, 6px 链板 + 2px 缝
+      let r = 26, g = 26, b = 28;                     // 缝隙暗色
+      if (link) {
+        r = g = b = 52 + Math.round(hash3(x, y, 7) * 10);   // 链板 + 微噪声
+        if (y >= 26 && y <= 38) r = g = b = 74;       // 中部导向齿
+        if (y < 4 || y > 59) r = g = b = 40;          // 上下边缘暗
+        if ((x % 8) < 1 || (x % 8) > 4) r += 8;       // 链节边缘微亮(销轴)
+      }
+      raw[row + 1 + x * 3] = r; raw[row + 1 + x * 3 + 1] = g; raw[row + 1 + x * 3 + 2] = b;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4);
+  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
+    pngChunk('IEND', Buffer.alloc(0))
+  ]);
+}
+const TRACK_PNG = makeTrackTexture();
+
 function N(name, opts = {}) {
   return { name, translation: opts.translation, extras: opts.extras, parts: [], children: opts.children || [] };
 }
@@ -133,8 +202,8 @@ function Z(name, armor) {
   return { name, extras: { zone: name, armor }, parts: [], children: [] };
 }
 
-// 部件: 应用矩阵后计算每顶点颜色
-function part(geo, m, color, camoScale = 0.85) {
+// 部件: 应用矩阵后计算每顶点颜色; tileZ>0 时生成沿车长平铺的 UV(履带滚动纹理用)
+function part(geo, m, color, camoScale = 0.85, tileZ = 0) {
   let g = geo.index ? geo.toNonIndexed() : geo;
   if (m) g = g.clone().applyMatrix4(m);
   const P = g.attributes.position.array, Nr = g.attributes.normal.array;
@@ -148,7 +217,16 @@ function part(geo, m, color, camoScale = 0.85) {
     const k = (patch ? camoScale : 1) * dirt * noise;
     colors[i * 3] = base[0] * k; colors[i * 3 + 1] = base[1] * k; colors[i * 3 + 2] = base[2] * k;
   }
-  return { positions: Array.from(P), normals: Array.from(Nr), colors };
+  let uvs = null;
+  if (tileZ > 0) {
+    uvs = new Array((P.length / 3) * 2);
+    const UV = g.attributes.uv ? g.attributes.uv.array : null;
+    for (let i = 0; i < P.length / 3; i++) {
+      uvs[i * 2] = P[i * 3 + 2] / tileZ;                        // u 沿车长平铺(tileZ 米一循环)
+      uvs[i * 2 + 1] = UV ? UV[i * 2 + 1] : (P[i * 3 + 1] > 0 ? 1 : 0);
+    }
+  }
+  return { positions: Array.from(P), normals: Array.from(Nr), colors, uvs };
 }
 
 const M4x = (x, y, z, rx = 0, ry = 0, rz = 0, s = 1) =>
@@ -164,30 +242,36 @@ const sphere = (r, seg = 8) => new THREE.SphereGeometry(r, seg, Math.max(4, seg 
 const TRACK_C = [0.12, 0.12, 0.12], GUN_C = [0.16, 0.16, 0.15], RUBBER = [0.08, 0.08, 0.08];
 const OLIVE = [0.33, 0.35, 0.22], GRAY = [0.30, 0.31, 0.34], DGRAY = [0.23, 0.24, 0.26], YGRAY = [0.43, 0.39, 0.27];
 
-/* ============ 通用行走机构 ============ */
-// zone: 收纳部件的分区;  sideX: 履带中心x;  n轮 r 半径;  len 履带长; 交错轮 interleave
-function runningGear(zone, sideX, n, r, len, trackH, camoCol, interleave = 0) {
+/* ============ 通用行走机构(负重轮为独立可旋转节点, 履带板带滚动纹理) ============ */
+// 轮子节点 extras.wheelR = 半径, 引擎按 speed/r 旋转; 履带板 UV 沿车长平铺, 引擎滚动纹理 offset
+let wheelSeq = 0;
+function addWheel(root, x, y, z, r, thick, interleave = false) {
+  const w = N(`wheel${wheelSeq++}`, { translation: [x, y, z], extras: { wheelR: r } });
+  w.parts.push(part(cyl(r, r, thick, 12), M4x(0, 0, 0, 0, 0, Math.PI / 2), [0.2, 0.21, 0.22]));
+  w.parts.push(part(cyl(r * (interleave ? 0.7 : 0.55), r * (interleave ? 0.7 : 0.55), thick + 0.05, 10), M4x(0, 0, 0, 0, 0, Math.PI / 2), RUBBER));
+  root.children.push(w);
+  return w;
+}
+
+function runningGear(root, tracksZone, sideX, n, r, len, trackH, interleave = 0) {
   const yWheel = r + 0.06;
   for (const sx of [-1, 1]) {
-    // 履带板
-    zone.parts.push(part(box(0.55, trackH, len), M4x(sx * sideX, trackH / 2 + 0.02, 0), TRACK_C));
-    zone.parts.push(part(box(0.58, 0.1, len * 0.98), M4x(sx * sideX, trackH + 0.05, 0), TRACK_C)); // 履齿
-    // 负重轮(含橡胶缘)
+    // 履带板(带链节滚动纹理) + 履齿(并入同一贴图网格)
+    tracksZone.parts.push(part(box(0.55, trackH, len), M4x(sx * sideX, trackH / 2 + 0.02, 0), TRACK_C, 0.85, 4.0));
+    tracksZone.parts.push(part(box(0.58, 0.1, len * 0.98), M4x(sx * sideX, trackH + 0.05, 0), TRACK_C, 0.85, 4.0));
+    // 负重轮(独立节点)
     const z0 = -len / 2 + 1.15, zSpan = len - 2.3;
     for (let i = 0; i < n; i++) {
       const zz = z0 + (zSpan * i) / Math.max(1, n - 1);
-      const off = interleave ? (i % 2 === 0 ? -1 : 1) * interleave : 0;
-      zone.parts.push(part(cyl(r, r, 0.34, 12), M4x(sx * sideX + off * 0, yWheel, zz, 0, 0, Math.PI / 2), [0.2, 0.21, 0.22]));
-      zone.parts.push(part(cyl(r * 0.55, r * 0.55, 0.38, 10), M4x(sx * sideX, yWheel, zz, 0, 0, Math.PI / 2), RUBBER));
-      if (interleave) zone.parts.push(part(cyl(r * 0.8, r * 0.8, 0.3, 10), M4x(sx * sideX + sx * 0.42, yWheel, zz + interleave * 1.6, 0, 0, Math.PI / 2), [0.18, 0.19, 0.2]));
+      addWheel(root, sx * sideX, yWheel, zz, r, 0.34);
+      if (interleave) addWheel(root, sx * sideX + sx * 0.42, yWheel, zz + interleave * 1.6, r * 0.8, 0.3, true);
     }
-    // 诱导轮(前, 略高) 与 主动轮(后, 略高)
-    for (const [zz, rr] of [[len / 2 - 0.45, r * 1.05], [-len / 2 + 0.45, r * 1.05]]) {
-      zone.parts.push(part(cyl(rr, rr, 0.4, 12), M4x(sx * sideX, yWheel + 0.12, zz, 0, 0, Math.PI / 2), [0.19, 0.2, 0.21]));
-    }
-    // 托带轮
-    zone.parts.push(part(cyl(0.11, 0.11, 0.3, 8), M4x(sx * sideX, trackH + 0.16, -len * 0.25, 0, 0, Math.PI / 2), [0.18, 0.19, 0.2]));
-    zone.parts.push(part(cyl(0.11, 0.11, 0.3, 8), M4x(sx * sideX, trackH + 0.16, len * 0.25, 0, 0, Math.PI / 2), [0.18, 0.19, 0.2]));
+    // 诱导轮(前) / 主动轮(后): 独立节点
+    addWheel(root, sx * sideX, yWheel + 0.12, len / 2 - 0.45, r * 1.05, 0.4);
+    addWheel(root, sx * sideX, yWheel + 0.12, -len / 2 + 0.45, r * 1.05, 0.4);
+    // 托带轮(并入履带板网格, 不旋转)
+    tracksZone.parts.push(part(cyl(0.11, 0.11, 0.3, 8), M4x(sx * sideX, trackH + 0.16, -len * 0.25, 0, 0, Math.PI / 2), [0.18, 0.19, 0.2]));
+    tracksZone.parts.push(part(cyl(0.11, 0.11, 0.3, 8), M4x(sx * sideX, trackH + 0.16, len * 0.25, 0, 0, Math.PI / 2), [0.18, 0.19, 0.2]));
   }
 }
 
@@ -238,7 +322,7 @@ function buildSherman() {
   const root = N('sherman', { extras: { type: 'sherman' } });
 
   const tracks = Z('tracks', 20);
-  runningGear(tracks, 1.06, 6, 0.42, 6.15, 0.84, C, 0);
+  runningGear(root, tracks, 1.06, 6, 0.42, 6.15, 0.84); tracks.trackTex = true;
   root.children.push(tracks);
 
   // 车体: 上部车体侧板(含翼子板) + 首上/首下/尾/顶
@@ -312,7 +396,7 @@ function buildMedium() {
   const root = N('medium', { extras: { type: 'medium' } });
 
   const tracks = Z('tracks', 20);
-  runningGear(tracks, 1.13, 6, 0.40, 6.55, 0.86, C, 0.32);  // 交错负重轮
+  runningGear(root, tracks, 1.13, 6, 0.40, 6.55, 0.86, 0.32); tracks.trackTex = true;  // 交错负重轮
   root.children.push(tracks);
 
   const hullSide = Z('hullSide', 40);
@@ -389,7 +473,7 @@ function buildTD() {
   const root = N('td', { extras: { type: 'td' } });
 
   const tracks = Z('tracks', 20);
-  runningGear(tracks, 1.10, 6, 0.42, 6.7, 0.84, C, 0);
+  runningGear(root, tracks, 1.10, 6, 0.42, 6.7, 0.84); tracks.trackTex = true;
   root.children.push(tracks);
 
   const hw = 1.32, hy = 1.22, hl = 6.4, sh = 0.94;
@@ -441,7 +525,7 @@ function buildHeavy() {
   const root = N('heavy', { extras: { type: 'heavy' } });
 
   const tracks = Z('tracks', 20);
-  runningGear(tracks, 1.18, 7, 0.44, 7.0, 0.92, C, 0);
+  runningGear(root, tracks, 1.18, 7, 0.44, 7.0, 0.92); tracks.trackTex = true;
   root.children.push(tracks);
 
   const hw = 1.45, hy = 1.38, hl = 6.7, sh = 1.14;
@@ -512,6 +596,7 @@ const TANKS = [
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 for (const t of TANKS) {
+  wheelSeq = 0;
   const root = t.build();
   // 契约自检: 分区齐全 + 枢轴存在 + 装甲数值正确
   const zones = {}, pivots = [];
@@ -525,7 +610,7 @@ for (const t of TANKS) {
   const missing = need.filter(z => !(z in zones));
   if (missing.length) throw new Error(`${t.file} 缺分区: ${missing}`);
   const triCount = (function cnt(n) { let s = 0; if (n.parts) for (const p of n.parts) s += p.positions.length / 9; for (const c of n.children || []) s += cnt(c); return s; })(root);
-  writeGLB(path.join(OUT_DIR, t.file), root);
+  writeGLB(path.join(OUT_DIR, t.file), root, TRACK_PNG);
   console.log(`✓ ${t.file}  三角面≈${triCount}  枢轴[${pivots.join(',')}]  分区${Object.keys(zones).length}个`);
 }
 console.log(`\nV2 模型完成 → ${OUT_DIR}`);

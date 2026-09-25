@@ -20,6 +20,7 @@ SF.Tank = class {
 
     this.hp = this.spec.hp; this.alive = true;
     this.velX = 0; this.velZ = 0;   // 供 AI 预判提前量
+    this.trackOffset = 0;           // 履带纹理滚动相位
     this.reloadT = 0.5;
     this.disp = this.spec.dispersion.max;   // 起始满圈
     this.modules = { track: 0, engine: 0, gun: 0 };
@@ -85,16 +86,25 @@ SF.Tank = class {
         if (d < 4.4 && d > 0.01) { this.x = o.x + dx / d * 4.4; this.z = o.z + dz / d * 4.4; }
       }
 
-    /* --- 地形贴合(履带四角采样 → 俯仰/侧倾; 凹地架桥/凸地撑中心, 不埋车) --- */
+    /* --- 地形贴合(履带四角采样 → 俯仰/侧倾/高度; 全部平滑防颠簸) --- */
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
     const SL = S.sample.l, SW = S.sample.w;
     const hF = T.heightAt(this.x + s * SL, this.z + c * SL), hB = T.heightAt(this.x - s * SL, this.z - c * SL);
     const hL = T.heightAt(this.x - c * SW, this.z + s * SW), hR = T.heightAt(this.x + c * SW, this.z - s * SW);
     const hC = T.heightAt(this.x, this.z);
-    this.y = Math.max(hC, (hF + hB + hL + hR) / 4);   // 凹: 骑在四角上; 凸: 撑在中心上
+    const targetY = Math.max(hC, (hF + hB + hL + hR) / 4);   // 凹: 骑在四角上; 凸: 撑在中心上
     const tPitch = Math.atan2(hF - hB, 2 * SL), tRoll = Math.atan2(hL - hR, 2 * SW);
-    const sm = 1 - Math.exp(-14 * dt);
+    if (!this._yInit) { this._yInit = true; this.y = targetY; this.pitch = tPitch; this.roll = tRoll; }  // 出生直接贴地, 不从地里升起
+    const sm = 1 - Math.exp(-12 * dt);
+    this.y = U.lerp(this.y, targetY, sm);
     this.pitch = U.lerp(this.pitch, tPitch, sm); this.roll = U.lerp(this.roll, tRoll, sm);
+
+    /* --- 履带滚动: 负重轮旋转 + 履带纹理滚动 --- */
+    if (this.parts.wheels) for (const w of this.parts.wheels) w.node.rotation.x += (this.speed * dt) / w.r;
+    if (this.parts.trackTex) {
+      this.trackOffset = (this.trackOffset - this.speed * dt / 4.0) % 1;   // 4m = 一圈纹理
+      this.parts.trackTex.offset.x = this.trackOffset;
+    }
 
     /* --- 炮塔回转(独立限速; 歼击车战斗室固定) --- */
     if (this.parts.noTurret) {

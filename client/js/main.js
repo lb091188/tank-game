@@ -293,6 +293,10 @@ SF.Main = (() => {
       if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 1.2 });
     });
     SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) SF.Audio.play('reload', null, { gain: 1.5 }); });
+    let missLast = -9;   // 未命中提示节流(基于模拟时间)
+    SF.Bus.on('playerMiss', () => {
+      if (world.time - missLast > 0.6) { SF.HUD.hitFeedback('未命中', '#8a8f94'); missLast = world.time; }
+    });
     SF.Bus.on('destroyed', (e) => {
       const t = e.tank;
       fx.explosion(t.pos3);
