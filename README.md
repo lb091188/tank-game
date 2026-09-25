@@ -6,6 +6,8 @@
 **阶段一（已完成）**：单机 PVE 原型 —— M4 谢尔曼 + 一张诺曼底风地图 + 第一关「遭遇战」
 **阶段二（规划中）**：WebSocket 内网对战（房主 Node 服务 + 主机权威状态同步）
 
+**🎮 在线试玩：https://lb091188.github.io/tank-game/**（推送 main 分支自动部署，CI 见 `.github/workflows/deploy.yml`）
+
 ---
 
 ## 运行
