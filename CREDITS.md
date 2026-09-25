@@ -4,7 +4,7 @@
 
 | 用途 | 文件 | 来源 | 作者 | 授权 |
 |---|---|---|---|---|
-| 坦克开炮 | `audio/cannon.ogg` | [Cannon fire](https://opengameart.org/content/cannon-fire) | — | **CC0**（公有领域，无需署名） |
+| 坦克开炮 | `audio/cannon.wav` | [Tank fire Mixed by GaryQ](https://freesound.org/people/GaryQ/sounds/127845/)（裁剪+EQ 处理） | GaryQ | **CC0**（公有领域，无需署名） |
 | 坦克引擎循环 | `audio/engine-loop.wav` | [Engine-loop heavy vehicle/tank](https://opengameart.org/content/engine-loop-heavy-vehicletank) | **Nayckron**（qubodup 整理） | **CC-BY 3.0**（需署名：请注明作者 Nayckron 与来源链接） |
 | 爆炸/殉爆 | `audio/explosion.wav` | [Explosion](https://opengameart.org/content/explosion-0) | — | **CC0** |
 | 击穿(金属穿透) | `audio/pen.wav` | [Metal Impact Sounds](https://opengameart.org/content/metal-impact-sounds) | Brian MacIntosh | **CC0**（可选署名） |
@@ -14,7 +14,7 @@
 | 装填完成 | `audio/reload.wav` | 同上 | Brian MacIntosh | CC0 |
 | 环境风声 | `audio/wind.wav` | 程序合成（tools/build-audio.js） | 本项目 | 项目自身 |
 | 装填完成音效 | `audio/reload.wav` | 程序合成（炮闩机械声） | 本项目 | 项目自身 |
-| 中文战斗语音 ×11 | `audio/voice/v_*.mp3` | edge-tts 生成（zh-CN-YunjianNeural） | 微软神经语音 | 项目作者知情选择用于个人/非商用发布；**商业发行前需替换**为自录或已授权语音（文件缺失时引擎自动退回系统 TTS） |
+| 中文战斗语音 ×11 | `audio/voice/v_*.mp3` | 本地 Qwen3-TTS 零样本克隆合成（参考音源：[Freesound st888 #452374](https://freesound.org/people/st888/sounds/452374/) CC0 朗诵片段，《临江仙》朗诵） | 克隆自 CC0 音源 | CC0 参考音源 + 本地合成，可商用 |
 
 - 引擎音经过 playbackRate 变调处理（随车速 0.88–1.62 倍速），属对原素材的使用性修改。
 - 语音走玩家系统 TTS 实时合成，游戏不携带任何语音文件；系统缺少中文语音时自动静默（文字提示不受影响）。
