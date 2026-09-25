@@ -83,5 +83,24 @@ SF.Audio = (() => {
   function setListener(x, z, yaw) { listener = { x, z, yaw }; }
   function state() { return engineGain ? { rate: +engineRate.toFixed(2), gain: +engineGain.gain.value.toFixed(3), lp: Math.round(engineLP.frequency.value) } : null; }
 
-  return { init, play, startEngine, setEngine, startAmbient, setListener, resume, state };
+  // 中文战斗语音: 非空间化, 常亮; 全局节流 0.65s 防播报重叠(重要语音可打断)
+  let voiceLast = -9;
+  function playVoice(name, important = false) {
+    if (!ctx) return;
+    const on = !SF.CFG.audio || SF.CFG.audio.voice !== false;
+    if (!on) return;
+    const now = ctx.currentTime;
+    if (!important && now - voiceLast < 0.65) return;
+    voiceLast = now;
+    const buf = SF.Assets.sounds[name];
+    if (!buf) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g = ctx.createGain();
+    g.gain.value = 1.15;
+    src.connect(g); g.connect(master);
+    src.start();
+  }
+
+  return { init, play, playVoice, startEngine, setEngine, startAmbient, setListener, resume, state };
 })();

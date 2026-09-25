@@ -84,6 +84,11 @@ SF.Assets = (() => {
       track(loadSound(audioCtx, `assets/audio/${s}`).then(b => { A.sounds[key] = b; })
         .catch(() => console.warn(`音效缺失(跳过): ${s}`)));
     }
+    // 中文战斗语音(edge-tts 生成, voice/ 子目录)
+    for (const v of ['v_pen', 'v_nopen', 'v_bounce', 'v_miss', 'v_kill', 'v_hitpen', 'v_track', 'v_ammo', 'v_engine', 'v_gun', 'v_reload']) {
+      track(loadSound(audioCtx, `assets/audio/voice/${v}.mp3`).then(b => { A.sounds[v] = b; })
+        .catch(() => console.warn(`语音缺失(跳过): ${v}`)));
+    }
 
     let done = 0;
     const total = jobs.length;

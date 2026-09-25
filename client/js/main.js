@@ -280,22 +280,27 @@ SF.Main = (() => {
       const snd = r.kind === 'pen' ? 'pen' : r.kind === 'bounce' ? 'bounce' : 'nopen';
       // 音量: 自己挨打最响; 自己打中的反馈音用慢衰减(atten 大)保证清晰
       SF.Audio.play(snd, target.isPlayer ? null : r.point, { gain: target.isPlayer ? 1.7 : 1.0, atten: 140 });
-      // 归属分明的提示: 我打出去的 → 准星下方; 我挨打的 → 顶部红色警报
+      // 归属分明的提示: 我打出去的 → 准星下方; 我挨打的 → 顶部红色警报 (文字+语音)
       if (shooter && shooter.isPlayer) {
         SF.HUD.hitFeedback(HIT_TEXT[r.kind] + (r.module ? MODULE_TAG[r.module] : ''), HIT_COLOR[r.kind]);
         if (r.module) SF.HUD.log(`敌方${MODULE_TAG[r.module] || ''}损伤`, '#a8d0a8');
+        SF.Audio.playVoice({ pen: 'v_pen', bounce: 'v_bounce', nopen: 'v_nopen', gun: 'v_nopen' }[r.kind]);
       } else if (target.isPlayer) {
-        if (r.kind === 'pen') SF.HUD.alarm(`被击穿 -${r.dmg}` + (r.module ? ` · ${SF.CFG.armor.modules[r.module].text}` : ''));
+        if (r.kind === 'pen') {
+          SF.HUD.alarm(`被击穿 -${r.dmg}` + (r.module ? ` · ${SF.CFG.armor.modules[r.module].text}` : ''));
+          SF.Audio.playVoice('v_hitpen', true);
+          if (r.module) SF.Audio.playVoice({ track: 'v_track', engine: 'v_engine', ammo: 'v_ammo', gun: 'v_gun' }[r.module], true);
+        }
         else if (r.kind === 'bounce') SF.HUD.hitFeedback('跳弹', '#9fd0ff');
       }
       if (target.isPlayer && shooter) SF.HUD.hitFrom(shooter);
       if (target.isPlayer) shakeT = Math.max(shakeT, 0.7);
       if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 1.2 });
     });
-    SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) SF.Audio.play('reload', null, { gain: 1.5 }); });
+    SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) { SF.Audio.play('reload', null, { gain: 1.5 }); SF.Audio.playVoice('v_reload'); } });
     let missLast = -9;   // 未命中提示节流(基于模拟时间)
     SF.Bus.on('playerMiss', () => {
-      if (world.time - missLast > 0.6) { SF.HUD.hitFeedback('未命中', '#8a8f94'); missLast = world.time; }
+      if (world.time - missLast > 0.6) { SF.HUD.hitFeedback('未命中', '#8a8f94'); SF.Audio.playVoice('v_miss'); missLast = world.time; }
     });
     SF.Bus.on('destroyed', (e) => {
       const t = e.tank;
@@ -305,6 +310,7 @@ SF.Main = (() => {
       else {
         stats.kills++;
         SF.HUD.hitFeedback('击毁', '#8fd98f');
+        SF.Audio.playVoice('v_kill', true);
         SF.HUD.log(`击毁：${t.spec.name}`, '#8fd98f');
       }
     });
