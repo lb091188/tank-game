@@ -80,7 +80,14 @@ SF.Main = (() => {
     shells = new SF.Shells(scene, fx);
     world.shells = shells;
 
-    SF.Game = { scene, camera, renderer, world, fx, get uiState() { return { aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected }; } };
+    SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
+      aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected,
+      mission: (SF.Game_mp.mode === 'sp' && world.map) ? {
+        idx: waveIdx, total: world.map.waves.length,
+        name: (world.map.waves[waveIdx] || {}).name || '',
+        kills: stats.kills, totalEnemies: stats.total
+      } : null
+    }; } };
   
   // 测试钩子: 无 rAF 环境下手动推进模拟与渲染(自动化测试用)
     SF.Game.test = {
@@ -213,11 +220,12 @@ SF.Main = (() => {
 
   /* ---------- 输入 ---------- */
   // 键名归一: 优先 e.code, 缺失时回退 e.key(部分内嵌浏览器/输入法环境 code 为空)
-  const KEY_ALIAS = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', arrowup: 'ArrowUp', arrowleft: 'ArrowLeft', arrowdown: 'ArrowDown', arrowright: 'ArrowRight', shift: 'Shift' };
+  const KEY_ALIAS = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', arrowup: 'ArrowUp', arrowleft: 'ArrowLeft', arrowdown: 'ArrowDown', arrowright: 'ArrowRight', shift: 'Shift', tab: 'Tab' };
   function keyOf(e) {
     if (e.code) {
       if (/^Key[WASD]$/.test(e.code) || /^Arrow(Up|Down|Left|Right)$/.test(e.code)) return e.code;
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') return 'Shift';
+      if (e.code === 'Tab') return 'Tab';
     }
     const k = (e.key || '').toLowerCase();
     return KEY_ALIAS[k] || null;
@@ -251,6 +259,7 @@ SF.Main = (() => {
       if (!k) return;
       keySeen = true;
       if (k === 'Shift') { if (!e.repeat) sniper = !sniper; keys.Shift = true; return; }
+      if (k === 'Tab') { e.preventDefault(); if (!e.repeat) SF.HUD.toggleMissionDetail(); return; }
       keys[k] = true;
       if (/^Arrow/.test(k) || k === 'Space') e.preventDefault();
     }, true);

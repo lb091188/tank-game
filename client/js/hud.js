@@ -185,19 +185,41 @@ SF.HUD = (() => {
     ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.2, 5); ctx.lineTo(-4.2, 5); ctx.closePath(); ctx.fill();
     ctx.restore();
 
-    // 敌人血条(可见时)
+    // 敌人名牌: 型号/PVE=坦克型号, 联机=玩家名 + 血条(可见时)
     const marks = $('markers'); marks.innerHTML = '';
-    for (const e of world.enemies) {
+    const mp = window.SF && SF.Game_mp && SF.Game_mp.mode !== 'sp' ? SF.Game_mp : null;
+    const targets = mp ? [...mp.tanks.values()].filter(t => t.netId !== mp.myId) : world.enemies;
+    for (const e of targets) {
       if (!e.alive) continue;
       const spotted = uiState.spotted.has(e) || world.time - (e.lastFireT || -99) < 5;
       if (!spotted) continue;
-      const p = project(new THREE.Vector3(e.x, e.y + 4.4, e.z));
+      const p = project(new THREE.Vector3(e.x, e.y + 5.0, e.z));
       if (!p || p.x < 0 || p.x > innerWidth || p.y < 0 || p.y > innerHeight) continue;
       const d = document.createElement('div');
       d.className = 'emark';
       d.style.left = p.x + 'px'; d.style.top = p.y + 'px';
-      d.innerHTML = `<i style="width:${Math.max(6, e.hp / e.spec.hp * 46)}px"></i>`;
+      let name = e.spec.name;
+      if (mp && e.netId) { const pl = mp.players.find(q => q.id === e.netId); if (pl) name = pl.name; }
+      const hpPct = SF.Util.clamp(e.hp / e.spec.hp, 0, 1) * 100;
+      d.innerHTML = `<b>${name}</b><i><em style="width:${hpPct}%"></em></i>`;
       marks.appendChild(d);
+    }
+
+    // 任务进程(单机 PVE): 简略条 + Tab 详细面板
+    if (uiState.mission) {
+      const SYM = { medium: '◇', td: '△', heavy: '●' };
+      const groups = {};
+      for (const e of world.enemies) if (e.alive) groups[e.type] = (groups[e.type] || 0) + 1;
+      const m = uiState.mission;
+      const symLine = Object.entries(groups).map(([t, n]) => `<span class="sym">${SYM[t] || '◆'}×${n}</span>`).join('') || '<span class="sym" style="color:#8fd98f">已肃清</span>';
+      $('missionBar').style.display = 'block';
+      $('missionBar').innerHTML = `任务 ${m.idx + 1}/${m.total}　残敌 ${symLine}`;
+      const detail = $('missionDetail');
+      if (detail.style.display === 'block') {
+        const rows = Object.entries(groups).map(([t, n]) =>
+          `<div class="row"><span>${SYM[t] || '◆'} ${SF.CFG.vehicles[t] ? SF.CFG.vehicles[t].name : t}</span><span>×${n}</span></div>`).join('');
+        detail.innerHTML = `<h4>${m.name}</h4>${rows || '<div style="color:#8fd98f">本波已肃清</div>'}<div class="k">已击毁 ${m.kills} / ${m.totalEnemies}　·　Tab 收起</div>`;
+      }
     }
 
     // 狙击镜
@@ -223,5 +245,10 @@ SF.HUD = (() => {
       `造成伤害 <b>${Math.round(stats.dmg)}</b>`;
   }
 
-  return { init, update, dmgNumber, hitFrom, hitFeedback, alarm, log, showMsg, endGame, project };
+  function toggleMissionDetail() {
+    const d = $('missionDetail');
+    d.style.display = d.style.display === 'block' ? 'none' : 'block';
+  }
+
+  return { init, update, dmgNumber, hitFrom, hitFeedback, alarm, log, showMsg, endGame, project, toggleMissionDetail };
 })();
