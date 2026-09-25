@@ -8,7 +8,7 @@ SF.Main = (() => {
   let camYaw = Math.PI, camPitch = 0.30, camDist = SF.CFG.camera.dist;
   let sniper = false, mouseDown = false, shakeT = 0;
   const keys = {};
-  let acc = 0, lastT = 0, running = false;
+  let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
   let spottedTimer = 0;
   const spotted = new Set();
   let waveIdx = 0, waveEnemies = [], repairT = 0, repairDone = false, gameOver = false, loseT = -1;
@@ -119,13 +119,15 @@ SF.Main = (() => {
   function updateCamera(dt) {
     const p = world.player;
     if (sniper) {
+      p.group.visible = false;   // 狙击镜视角隐藏自己(WoT 式, 也避免相机被炮塔内壁糊住)
       camera.fov = U.lerp(camera.fov, SF.CFG.camera.sniperFov, 1 - Math.exp(-12 * dt));
-      const tp = new THREE.Vector3(p.x, p.y + 2.5, p.z);
+      const tp = new THREE.Vector3(p.x, p.y + 2.85, p.z);
       const dir = new THREE.Vector3(
         Math.sin(camYaw) * Math.cos(camPitch), Math.sin(-camPitch) + 0.04, Math.cos(camYaw) * Math.cos(camPitch)).normalize();
-      camera.position.copy(tp).addScaledVector(dir, -1.2);
+      camera.position.copy(tp).addScaledVector(dir, 0.5);
       camera.lookAt(tp.clone().addScaledVector(dir, 100));
     } else {
+      p.group.visible = true;
       camera.fov = U.lerp(camera.fov, SF.CFG.camera.fov, 1 - Math.exp(-12 * dt));
       const pivot = new THREE.Vector3(p.x, p.y + SF.CFG.camera.height, p.z);
       const off = new THREE.Vector3(
@@ -203,6 +205,8 @@ SF.Main = (() => {
     document.addEventListener('keydown', (e) => {
       keys[e.code] = true;
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') sniper = !sniper;
+      // 方向键/空格防止页面滚动
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
     });
     document.addEventListener('keyup', (e) => { keys[e.code] = false; });
     window.addEventListener('resize', () => {
@@ -215,8 +219,8 @@ SF.Main = (() => {
   function playerInput() {
     const p = world.player;
     const input = {
-      throttle: (keys.KeyW ? 1 : 0) + (keys.KeyS ? -1 : 0),
-      steer: (keys.KeyD ? 1 : 0) + (keys.KeyA ? -1 : 0),
+      throttle: (keys.KeyW || keys.ArrowUp ? 1 : 0) + (keys.KeyS || keys.ArrowDown ? -1 : 0),
+      steer: (keys.KeyD || keys.ArrowRight ? 1 : 0) + (keys.KeyA || keys.ArrowLeft ? -1 : 0),
       fire: mouseDown
     };
     if (aimPoint) {
@@ -256,7 +260,7 @@ SF.Main = (() => {
     SF.Bus.on('destroyed', (e) => {
       const t = e.tank;
       fx.explosion(t.pos3);
-      SF.Audio.play('explode', t.pos3, { gain: 1 });
+      SF.Audio.play('explosion', t.pos3, { gain: 1 });
       if (t.isPlayer) { loseT = 2.5; SF.HUD.showMsg('坦克被击毁…', 3); }
       else {
         stats.kills++;
@@ -305,9 +309,7 @@ SF.Main = (() => {
     renderer.render(scene, camera);
   }
 
-  function loop(t) {
-    if (!running) return;
-    requestAnimationFrame(loop);
+  function tick(t) {
     const dtReal = Math.min(0.1, (t - lastT) / 1000 || 0.016);
     lastT = t;
     acc += dtReal;
@@ -315,6 +317,21 @@ SF.Main = (() => {
     while (acc >= dt) { step(dt); acc -= dt; }
     frame(dtReal);
   }
+
+  function loop(t) {
+    if (!running) return;
+    requestAnimationFrame(loop);
+    lastRaf = t;
+    tick(t);
+  }
+
+  // 渲染看门狗: 页面被判定遮挡时 rAF 会停摆(可见却冻结), 自动降级为定时器驱动
+  setInterval(() => {
+    if (!running) return;
+    const rafAlive = performance.now() - lastRaf < 600;
+    if (!rafAlive && !timerId) timerId = setInterval(() => tick(performance.now()), 16);
+    else if (rafAlive && timerId) { clearInterval(timerId); timerId = null; }
+  }, 300);
 
   /* ---------- 启动 ---------- */
   async function start() {

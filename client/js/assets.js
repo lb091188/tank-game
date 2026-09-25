@@ -77,10 +77,13 @@ SF.Assets = (() => {
     for (const file in MODEL_FILES)
       track(loadGLB(`assets/models/${file}.glb`).then(g => { A.models[MODEL_FILES[file]] = g.scene; }));
 
-    // 音效
-    const sounds = ['cannon', 'pen', 'bounce', 'nopen', 'track', 'reload', 'explode', 'wind', 'engine-loop'];
-    for (const s of sounds)
-      track(loadSound(audioCtx, `assets/audio/${s}.wav`).then(b => { A.sounds[s] = b; }));
+    // 音效(开源音源, 见 CREDITS.md; cannon 是 ogg, 其余 wav; 缺失仅警告不阻断)
+    const sounds = ['cannon.ogg', 'pen.wav', 'bounce.wav', 'nopen.wav', 'track.wav', 'reload.wav', 'explosion.wav', 'wind.wav', 'engine-loop.wav'];
+    for (const s of sounds) {
+      const key = s.replace(/\.(wav|ogg)$/, '');
+      track(loadSound(audioCtx, `assets/audio/${s}`).then(b => { A.sounds[key] = b; })
+        .catch(() => console.warn(`音效缺失(跳过): ${s}`)));
+    }
 
     let done = 0;
     const total = jobs.length;

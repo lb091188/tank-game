@@ -44,25 +44,25 @@ SF.Audio = (() => {
     src.start();
   }
 
-  // 玩家引擎: 循环 wav, playbackRate 随车速(怠速0.72 → 高速1.75), 油门控制音量
+  // 玩家引擎: 真实引擎循环(开源音源), playbackRate 随车速变调(怠速0.88 → 高速1.62)
   function startEngine() {
     const buf = SF.Assets.sounds['engine-loop'];
     if (!buf || engineSrc) return;
     engineSrc = ctx.createBufferSource();
     engineSrc.buffer = buf; engineSrc.loop = true;
-    engineSrc.playbackRate.value = 0.72;
+    engineSrc.playbackRate.value = 0.88;
     engineGain = ctx.createGain();
-    engineGain.gain.value = 0.16;
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+    engineGain.gain.value = 0.18;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100;
     engineSrc.connect(lp); lp.connect(engineGain); engineGain.connect(master);
     engineSrc.start();
   }
   function setEngine(speedRatio, throttle) {
     if (!engineSrc) return;
-    const target = 0.72 + SF.Util.clamp(speedRatio, 0, 1) * 1.03;
+    const target = 0.88 + SF.Util.clamp(speedRatio, 0, 1) * 0.74;
     engineRate += (target - engineRate) * 0.08;
     engineSrc.playbackRate.value = engineRate;
-    engineGain.gain.value = 0.13 + SF.Util.clamp(Math.abs(throttle), 0, 1) * 0.1 + SF.Util.clamp(speedRatio, 0, 1) * 0.06;
+    engineGain.gain.value = 0.15 + SF.Util.clamp(Math.abs(throttle), 0, 1) * 0.12 + SF.Util.clamp(speedRatio, 0, 1) * 0.08;
   }
   function startAmbient() {
     const buf = SF.Assets.sounds['wind'];

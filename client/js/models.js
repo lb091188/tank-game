@@ -14,6 +14,10 @@ SF.Models = (() => {
       if (o.isMesh) {
         o.castShadow = true;
         o.receiveShadow = false;
+        if (o.geometry.attributes.color && o.material) {   // V2 顶点色(迷彩/做旧)兼容
+          o.material.vertexColors = true;
+          o.material.needsUpdate = true;
+        }
         const zone = o.userData && o.userData.zone;  // GLTFLoader 把节点 extras 放进 userData
         if (zone) { parts.zones.push(o); }
       } else if (o.name === 'turret') parts.turret = o;

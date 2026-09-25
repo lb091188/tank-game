@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// build-audio.js — 纯 Node 合成全套 WAV 音效（零外部音源, 零版权）
-// 用法: node tools/build-audio.js   → client/assets/audio/*.wav
-// 替换方法: 用同名 wav 覆盖即可（引擎按文件名加载）
+// build-audio.js — 程序合成 WAV 音效(备用音源, 输出到 synth/ 子目录)
+// 用法: node tools/build-audio.js   → client/assets/audio/synth/*.wav
+// 主音效已换用开源音源(见 CREDITS.md); 本脚本仅作为无网络时的备用生成器,
+// 输出到 synth/ 子目录, 不会覆盖 assets/audio/ 下的开源文件。
 'use strict';
 const fs = require('fs');
 const path = require('path');
 
-const OUT = path.join(__dirname, '..', 'client', 'assets', 'audio');
+const OUT = path.join(__dirname, '..', 'client', 'assets', 'audio', 'synth');
 const SR = 44100;
 
 /* ---------- WAV(PCM16 单声道) 写入 ---------- */

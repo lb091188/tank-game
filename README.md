@@ -69,7 +69,7 @@
 |---|---|
 | 坦克模型 | Blender 建模 → 导出 `.glb` → 覆盖 `assets/models/` 同名文件。保持节点结构：部位节点命名 `glacis/lowerPlate/hullSide/hullRear/hullTop/turretFront/turretSide/turretRear/turretRoof/mantlet`（extras 带 `zone` 和 `armor` 毫米值）；可动件 `turret`（枢轴）→ `gun`（枢轴）→ `muzzle`（炮口空节点） |
 | 地形 | 任何工具重画 16 位灰度高程图（256×256，0→0m / 65535→70m）覆盖 `heightmap.png`；掩体/敌人/出生点改 `map.json` |
-| 音效 | 同名 `.wav` 覆盖（engine-loop.wav 需无缝循环，引擎声用 playbackRate 变调） |
+| 音效 | 同名文件覆盖（引擎 `engine-loop.wav` 需无缝循环，引擎声用 playbackRate 变调）。现用音源来自 OpenGameArt 开源音效，授权与署名见 [CREDITS.md](CREDITS.md)；备用合成音源由 `node tools/build-audio.js` 生成到 `synth/` 子目录，不会覆盖开源文件 |
 
 改模型/地图后无需重新生成其他资产；改生成器源码后跑 `node tools/build-models.js` 等重建。
 
