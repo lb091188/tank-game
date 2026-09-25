@@ -188,6 +188,32 @@ SF.HUD = (() => {
     ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.2, 5); ctx.lineTo(-4.2, 5); ctx.closePath(); ctx.fill();
     ctx.restore();
 
+    // 任务地点: 当前波次敌军区域中心(随任务推进自动移动), 金色脉冲圈
+    if (uiState.mission && world.map && world.map.waves[uiState.mission.idx]) {
+      const defs = world.map.waves[uiState.mission.idx].enemies;
+      if (defs.length) {
+        const cx = defs.reduce((s2, d) => s2 + d.pos[0], 0) / defs.length;
+        const cz = defs.reduce((s2, d) => s2 + d.pos[1], 0) / defs.length;
+        const [mx, my] = worldToMap(cx, cz, T);
+        const pulse = 1 + Math.sin(world.time * 4) * 0.25;
+        ctx.strokeStyle = '#e8c977'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(mx, my, 6 * pulse, 0, 7); ctx.stroke();
+        ctx.fillStyle = '#e8c977';
+        ctx.beginPath(); ctx.arc(mx, my, 2, 0, 7); ctx.fill();
+        ctx.font = '10px sans-serif';
+        ctx.fillText('任务', mx + 8, my + 3);
+      }
+    }
+    // 上次阵亡位置: 红 ✕
+    if (uiState.deathMark) {
+      const [mx, my] = worldToMap(uiState.deathMark.x, uiState.deathMark.z, T);
+      ctx.strokeStyle = '#e05a4a'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(mx - 4, my - 4); ctx.lineTo(mx + 4, my + 4);
+      ctx.moveTo(mx + 4, my - 4); ctx.lineTo(mx - 4, my + 4);
+      ctx.stroke();
+    }
+
     // 敌人名牌: 型号/PVE=坦克型号, 联机=玩家名 + 血条(可见时)
     const marks = $('markers'); marks.innerHTML = '';
     const mp = window.SF && SF.Game_mp && SF.Game_mp.mode !== 'sp' ? SF.Game_mp : null;

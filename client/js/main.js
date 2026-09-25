@@ -11,6 +11,7 @@ SF.Main = (() => {
   let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
   let selTank = 'sherman', selMap = 'l01';   // 出击前选择
   let lastSpottedT = -99, wasDetected = false;   // 点亮机制(2s 宽限)
+  let deathMark = null;                          // 上次阵亡位置(小地图 ✕ 标记)
   // 联机死斗(主机权威): mode=host 房主跑模拟; client 幽灵插值; sp 单机
   const MP = SF.Game_mp = {
     mode: 'sp', gameMode: 'dm', myId: 0, mapId: 'l01', players: [],   // [{id,name,tank,host}]
@@ -82,7 +83,7 @@ SF.Main = (() => {
     world.shells = shells;
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
-      aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected,
+      aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected, deathMark,
       mission: (() => {
         if (!world.map) return null;
         if (SF.Game_mp.mode === 'sp') return { idx: waveIdx, total: world.map.waves.length, name: (world.map.waves[waveIdx] || {}).name || '', kills: stats.kills, totalEnemies: stats.total };
@@ -380,6 +381,7 @@ SF.Main = (() => {
     });
     SF.Bus.on('destroyed', (e) => {
       const t = e.tank;
+      if (t.isPlayer) deathMark = { x: t.x, z: t.z };   // 记录阵亡点(小地图 ✕)
       fx.explosion(t.pos3);
       SF.Audio.play('explosion', t.pos3, { gain: 1.3 });
       if (SF.Game_mp.mode !== 'sp') {
