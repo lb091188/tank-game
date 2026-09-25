@@ -104,9 +104,23 @@ SF.Audio = (() => {
     pickVoice();
     speechSynthesis.onvoiceschanged = pickVoice;
   }
+  let voiceLast = -9;   // 语音文件播放节流
   function playVoice(name, important = false) {
     if (!SF.CFG.audio || SF.CFG.audio.voice === false) return;
-    if (typeof speechSynthesis === 'undefined') return;
+    // 优先: 打包的语音文件(所有设备听感一致)
+    const buf = SF.Assets.sounds[name];
+    if (buf && ctx) {
+      if (!important && ctx.currentTime - voiceLast < 0.65) return;
+      voiceLast = ctx.currentTime;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const g = ctx.createGain();
+      g.gain.value = 1.15;
+      src.connect(g); g.connect(master);
+      src.start();
+      return;
+    }
+    // 兜底: 系统 TTS 实时合成(语音文件缺失时)
     const text = VOICE_TEXT[name];
     if (!text) return;
     try {
