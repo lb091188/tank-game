@@ -73,7 +73,15 @@ SF.CFG = {
 
   camera: { dist: 13, minDist: 6.5, maxDist: 26, height: 3.6, pitch: 0.32, fov: 60, sniperFov: 15, sens: 0.0022 },
 
-  player: { viewRange: 380 }
+  player: { viewRange: 380 },
+
+  // 音效: 引擎音量曲线(怠速近乎无声 → 全速渐强), engine:false 可完全关闭引擎音
+  audio: {
+    engine: true,
+    idleGain: 0.03, maxGain: 0.26,     // 怠速/全油门音量
+    idleRate: 0.95, topRate: 1.62,     // 怠速/全速播放倍率
+    idleLP: 500, topLP: 2200           // 怠速闷/全速亮的低通截止(Hz)
+  }
 };
 
 /* ---------- 通用小工具 ---------- */

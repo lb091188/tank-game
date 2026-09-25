@@ -3,7 +3,7 @@
 window.SF = window.SF || {};
 
 SF.Audio = (() => {
-  let ctx, master, engineSrc, engineGain, engineRate = 1;
+  let ctx, master, engineSrc, engineGain, engineLP, engineRate = 1;
   let listener = { x: 0, z: 0, yaw: 0 };
   let voices = 0;
 
@@ -44,25 +44,32 @@ SF.Audio = (() => {
     src.start();
   }
 
-  // 玩家引擎: 真实引擎循环(开源音源), playbackRate 随车速变调(怠速0.88 → 高速1.62)
+  // 玩家引擎: 真实引擎循环(开源音源); 怠速近乎无声, 音量/音调/低通随油门与车速渐强
   function startEngine() {
+    if (!SF.CFG.audio.engine) return;
     const buf = SF.Assets.sounds['engine-loop'];
     if (!buf || engineSrc) return;
     engineSrc = ctx.createBufferSource();
     engineSrc.buffer = buf; engineSrc.loop = true;
-    engineSrc.playbackRate.value = 0.88;
+    engineSrc.playbackRate.value = SF.CFG.audio.idleRate;
     engineGain = ctx.createGain();
-    engineGain.gain.value = 0.18;
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100;
-    engineSrc.connect(lp); lp.connect(engineGain); engineGain.connect(master);
+    engineGain.gain.value = SF.CFG.audio.idleGain;
+    engineLP = ctx.createBiquadFilter();
+    engineLP.type = 'lowpass'; engineLP.frequency.value = SF.CFG.audio.idleLP;
+    engineSrc.connect(engineLP); engineLP.connect(engineGain); engineGain.connect(master);
     engineSrc.start();
   }
   function setEngine(speedRatio, throttle) {
     if (!engineSrc) return;
-    const target = 0.88 + SF.Util.clamp(speedRatio, 0, 1) * 0.74;
-    engineRate += (target - engineRate) * 0.08;
+    if (!SF.CFG.audio.engine) { engineGain.gain.value = 0; return; }
+    const A = SF.CFG.audio;
+    const drive = Math.max(Math.min(Math.abs(throttle), 1), 0) * 0.65 + SF.Util.clamp(speedRatio, 0, 1) * 0.35; // 驾驶强度
+    const k = 1 - Math.exp(-0.25);   // 平滑系数(每帧)
+    engineRate += (A.idleRate + SF.Util.clamp(speedRatio, 0, 1) * (A.topRate - A.idleRate) - engineRate) * k;
     engineSrc.playbackRate.value = engineRate;
-    engineGain.gain.value = 0.15 + SF.Util.clamp(Math.abs(throttle), 0, 1) * 0.12 + SF.Util.clamp(speedRatio, 0, 1) * 0.08;
+    const gTarget = A.idleGain + drive * (A.maxGain - A.idleGain);
+    engineGain.gain.value += (gTarget - engineGain.gain.value) * 0.06;
+    engineLP.frequency.value += (A.idleLP + drive * (A.topLP - A.idleLP) - engineLP.frequency.value) * 0.05;
   }
   function startAmbient() {
     const buf = SF.Assets.sounds['wind'];
@@ -74,6 +81,7 @@ SF.Audio = (() => {
     src.start();
   }
   function setListener(x, z, yaw) { listener = { x, z, yaw }; }
+  function state() { return engineGain ? { rate: +engineRate.toFixed(2), gain: +engineGain.gain.value.toFixed(3), lp: Math.round(engineLP.frequency.value) } : null; }
 
-  return { init, play, startEngine, setEngine, startAmbient, setListener, resume };
+  return { init, play, startEngine, setEngine, startAmbient, setListener, resume, state };
 })();
