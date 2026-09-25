@@ -1,0 +1,12 @@
+{
+  "name": "steel-front-server",
+  "version": "1.0.0",
+  "description": "钢铁前沿 内网对战服务器: 静态托管 + 房间管理 + 消息路由(仅转发, 不解析游戏数据)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

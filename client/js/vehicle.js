@@ -10,7 +10,8 @@ SF.Tank = class {
     this.parts = SF.Models.makeTank(type);
     this.group = this.parts.root;
     this.isPlayer = !!opts.isPlayer;
-    this.team = opts.team || (this.isPlayer ? 0 : 1);
+    this.netId = opts.netId || 0;
+    this.team = (opts.team !== undefined) ? opts.team : (this.isPlayer ? 0 : 1);
 
     this.x = opts.x; this.z = opts.z; this.yaw = opts.yaw || 0;
     this.speed = 0;
@@ -100,12 +101,7 @@ SF.Tank = class {
     this.y = U.lerp(this.y, targetY, sm);
     this.pitch = U.lerp(this.pitch, tPitch, sm); this.roll = U.lerp(this.roll, tRoll, sm);
 
-    /* --- 履带滚动: 负重轮旋转 + 履带纹理滚动 --- */
-    if (this.parts.wheels) for (const w of this.parts.wheels) w.node.rotation.x += (this.speed * dt) / w.r;
-    if (this.parts.trackTex) {
-      this.trackOffset = (this.trackOffset - this.speed * dt / 4.0) % 1;   // 4m = 一圈纹理
-      this.parts.trackTex.offset.x = this.trackOffset;
-    }
+    this.animateTracks(dt);
 
     /* --- 炮塔回转(独立限速; 歼击车战斗室固定) --- */
     if (this.parts.noTurret) {
@@ -142,6 +138,48 @@ SF.Tank = class {
     this.group.rotation.set(-this.pitch, this.yaw, this.roll, 'YXZ');
     if (this.parts.turret) this.parts.turret.rotation.y = SF.Util.angDiff(this.yaw, this.turretYaw);
     if (this.parts.gun) this.parts.gun.rotation.x = -this.gunPitch;  // gunPitch 已是车体相对角
+  }
+
+  /* 履带滚动: 负重轮旋转 + 履带纹理滚动(本地模拟与联机幽灵共用) */
+  animateTracks(dt) {
+    if (this.parts.wheels) for (const w of this.parts.wheels) w.node.rotation.x += (this.speed * dt) / w.r;
+    if (this.parts.trackTex) {
+      this.trackOffset = (this.trackOffset - this.speed * dt / 4.0) % 1;
+      this.parts.trackTex.offset.x = this.trackOffset;
+    }
+  }
+
+  /* 联机客户端: 由主机快照插值直接驱动姿态(不跑本地物理) */
+  ghostPose(pose, dt) {
+    if (!pose.alive && this.alive) { this.alive = false; }
+    if (pose.alive && !this.alive) {   // 主机已让该坦克重生 → 客户端换新模型归队
+      if (SF.Game && SF.Game.scene) {
+        SF.Game.scene.remove(this.group);
+        this.rebuild();
+        SF.Game.scene.add(this.group);
+      } else this.alive = true;
+    }
+    if (!this.alive) { this._deathFx(dt); return; }
+    this.x = pose.x; this.z = pose.z; this.y = pose.y;
+    this.yaw = pose.yaw; this.turretYaw = pose.tur; this.gunPitch = pose.pitch;
+    this.speed = pose.speed; this.hp = pose.hp;
+    this.animateTracks(dt);
+    this._syncNode();
+  }
+
+  /* 死斗重生: 换新模型(清除残骸状态), 由调用方重新加入场景 */
+  rebuild() {
+    const keep = { x: this.x, z: this.z, yaw: this.yaw, netId: this.netId, isPlayer: this.isPlayer, team: this.team, type: this.type };
+    this.parts = SF.Models.makeTank(this.type);
+    this.group = this.parts.root;
+    this.x = keep.x; this.z = keep.z; this.yaw = keep.yaw; this.netId = keep.netId; this.isPlayer = keep.isPlayer; this.team = keep.team;
+    this.speed = 0; this.turretYaw = this.yaw; this.gunPitch = 0;
+    this.pitch = 0; this.roll = 0; this.y = 0; this._yInit = false;
+    this.hp = this.spec.hp; this.alive = true; this.reloadT = 1;
+    this.disp = this.spec.dispersion.max;
+    this.modules = { track: 0, engine: 0, gun: 0 };
+    this._wreck = null; this._deadTinted = false;
+    this.velX = 0; this.velZ = 0; this.trackOffset = 0;
   }
 
   muzzleWorld() {

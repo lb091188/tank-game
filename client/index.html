@@ -34,6 +34,27 @@
   #controls b { color: #e0d6a8; display: inline-block; min-width: 130px; }
   #btnStart { font-size: 20px; padding: 14px 64px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
   #btnStart:hover { filter: brightness(1.15); }
+  #btnMp { display: block; margin: 18px auto 0; font-size: 15px; padding: 9px 38px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 4px; cursor: pointer; }
+  #btnMp:hover { background: #2e3325; }
+  #lobbyScreen { display: none; position: fixed; inset: 0; background: rgba(14,16,11,.92); z-index: 95; align-items: center; justify-content: center; }
+  #lobbyBox { width: 460px; padding: 26px 30px; }
+  #lobbyBox h3 { color: #d8c887; letter-spacing: 6px; margin-bottom: 18px; text-align: center; }
+  #lobbyBox .row { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
+  #lobbyBox label { color: #8b9080; font-size: 13px; min-width: 52px; }
+  #lobbyBox input, #lobbyBox select { flex: 1; background: #14160f; border: 1px solid #3a3e2c; color: #d8dbcc; padding: 8px 10px; border-radius: 4px; font-size: 14px; }
+  .mbtn { background: #2c2f22; color: #d8c887; border: 1px solid #8a7a3e; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; letter-spacing: 1px; }
+  .mbtn:hover { background: #3a3e2c; }
+  .mbtn.gold { background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; }
+  #lobbyTip { color: #7d8070; font-size: 12px; margin: 8px 0; }
+  #srvTip { color: #6a6f5e; font-size: 11px; margin-bottom: 4px; }
+  #roomCodeShow { color: #e8dcae; font-size: 20px; text-align: center; letter-spacing: 4px; margin: 10px 0; }
+  #playerList { margin: 10px 0; min-height: 60px; }
+  #playerList .pl { color: #b9bfa8; font-size: 14px; line-height: 2; border-bottom: 1px dashed #2a2d22; }
+  #playerList .pl.me { color: #e8dcae; }
+  #playerList .ok { color: #8fd98f; margin-left: 8px; }
+  #playerList .no { color: #9c8f6a; margin-left: 8px; }
+  #hostPanel { display: none; margin-top: 10px; }
+  #mpBar { display: none; position: absolute; top: 16px; left: 50%; transform: translateX(-50%); padding: 7px 18px; color: #d8dbcc; font-size: 14px; letter-spacing: 1px; }
 
   /* HUD */
   #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 50; }
@@ -122,7 +143,33 @@
   </div>
   <div id="speedText" class="panel">0 km/h</div>
   <div id="minimapBox" class="panel"><canvas id="minimap" width="180" height="180"></canvas><div class="cap">战场态势</div></div>
+  <div id="mpBar" class="panel"></div>
   <div id="sniperOverlay"></div>
+</div>
+
+<div id="lobbyScreen">
+  <div id="lobbyBox" class="panel">
+    <h3>联 机 对 战</h3>
+    <div id="srvTip">房主运行 server 后控制台会打印 WS 地址，填到下面即可（任意来源打开的客户端均可加入）</div>
+    <div class="row"><label>服务器</label><input id="srvInput" placeholder="例如 192.168.1.5:8342"></div>
+    <div class="row"><label>昵称</label><input id="mpName" maxlength="12" placeholder="车长名"></div>
+    <div id="lobbyTip">填好地址后创建或加入房间 · 出击界面选的坦克即联机用车</div>
+    <div class="row" id="joinBox">
+      <button id="btnCreate" class="mbtn gold">创建房间（成为主机）</button>
+      <input id="roomInput" placeholder="房间号" maxlength="4" style="max-width:90px">
+      <button id="btnJoin" class="mbtn">加入房间</button>
+    </div>
+    <div id="roomCodeShow"></div>
+    <div id="playerList"></div>
+    <div id="hostPanel">
+      <div class="row"><label>地图</label><select id="mpMap"></select></div>
+      <div class="row" style="justify-content:center"><button id="btnMpStart" class="mbtn gold">开 始 对 战</button></div>
+    </div>
+    <div class="row" style="justify-content:center;margin-top:14px">
+      <button id="btnReady" class="mbtn">准备</button>
+      <button id="btnMpBack" class="mbtn">返回</button>
+    </div>
+  </div>
 </div>
 
 <div id="overlay">
@@ -152,6 +199,7 @@
     <b>提示</b>停车缩圈再开炮 · 打首下与侧面 · 歼击车正面硬要绕侧
   </div>
   <button id="btnStart">出 击</button>
+  <button id="btnMp">⚔ 联机对战</button>
 </div>
 
 <script src="js/vendor/three.min.js"></script>
@@ -164,8 +212,13 @@
 <script src="js/combat.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/hud.js"></script>
+<script src="js/net.js"></script>
+<script src="js/lobby.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/main.js"></script>
-<script>document.getElementById('btnRestart').addEventListener('click', () => location.reload());</script>
+<script>
+document.getElementById('btnRestart').addEventListener('click', () => location.reload());
+SF.Lobby.bind();
+</script>
 </body>
 </html>
