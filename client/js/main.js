@@ -360,6 +360,11 @@ SF.Main = (() => {
       SF.HUD.init(world);
       bindInput();
       bindBus();
+      // 出击即锁定鼠标(点击是用户手势); 失败(如浏览器冷却期)不阻断, 点画面可补锁
+      try {
+        const p = renderer.domElement.requestPointerLock();
+        if (p && p.catch) p.catch(() => {});
+      } catch (e) { }
       const b = world.map.briefing;
       SF.HUD.showMsg(b, 5);
       running = true; lastT = performance.now();
