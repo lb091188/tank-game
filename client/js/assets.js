@@ -81,7 +81,7 @@ SF.Assets = (() => {
 
     // 音效(开源音源, 见 CREDITS.md; cannon 是 ogg, 其余 wav; 缺失仅警告不阻断)
     // 音效(开源音源, 见 CREDITS.md; cannon 是 ogg, 其余 wav; 缺失仅警告不阻断)
-    const sounds = ['cannon.ogg', 'pen.wav', 'bounce.wav', 'nopen.wav', 'track.wav', 'reload.wav', 'explosion.wav', 'wind.wav', 'engine-loop.wav'];
+    const sounds = ['cannon.ogg', 'pen.wav', 'bounce.wav', 'nopen.wav', 'track.wav', 'reload.wav', 'explosion.wav', 'wind.wav', 'engine-loop.wav', 'beep.wav'];
     for (const s of sounds) {
       const key = s.replace(/\.(wav|ogg)$/, '');
       track(loadSound(audioCtx, `assets/audio/${s}`).then(b => { A.sounds[key] = b; })

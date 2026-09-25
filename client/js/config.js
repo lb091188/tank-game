@@ -94,6 +94,7 @@ SF.CFG = {
   // AI 感知与性格(难度旋钮: aimPatience 越低越急着开炮 → 越不准)
   ai: {
     viewRange: 380, reactionTime: 0.35, hearingRange: 90, memoryTime: 7,
+    radio: { range: 220, cooldown: 6 },   // 无线电呼叫支援: 发现玩家通知范围内友军
     perceptionInterval: 0.13,
     personalities: {
       flanker: { band: [55, 115], flankChance: 0.55, aimPatience: 0.78, leadSkill: 0.78, retreatHp: 0.2, holdGround: false },

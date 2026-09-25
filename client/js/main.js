@@ -10,6 +10,7 @@ SF.Main = (() => {
   const keys = {};
   let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
   let selTank = 'sherman', selMap = 'l01';   // 出击前选择
+  let lastSpottedT = -99, wasDetected = false;   // 点亮机制(2s 宽限)
   let keySeen = false, hintShown = false;   // 键盘诊断: 是否收到过按键
   let spottedTimer = 0;
   const spotted = new Set();
@@ -72,7 +73,7 @@ SF.Main = (() => {
     shells = new SF.Shells(scene, fx);
     world.shells = shells;
 
-    SF.Game = { scene, camera, renderer, world, fx, get uiState() { return { aimPoint, gunAim, sniper, spotted, keys }; } };
+    SF.Game = { scene, camera, renderer, world, fx, get uiState() { return { aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected }; } };
     // 测试钩子: 无 rAF 环境下手动推进模拟与渲染(自动化测试用)
     SF.Game.test = {
       step(n = 1) { for (let i = 0; i < n; i++) step(SF.CFG.sim.dt); },
@@ -86,8 +87,14 @@ SF.Main = (() => {
     const wave = world.map.waves[i];
     if (!wave) return;
     waveEnemies = wave.enemies.map(def => {
-      const t = new SF.Tank(def.type, { x: def.pos[0], z: def.pos[1], yaw: def.yaw || 0 });
-      t.ai = new SF.AI(t, def);
+      // 出生点随机化: 范围内随机平移(守位单位 ±12m, 机动单位 ±30m), 巡逻点随之平移, 避开掩体
+      const jr = def.hold ? 12 : 30;
+      const dx = (Math.random() - 0.5) * 2 * jr, dz = (Math.random() - 0.5) * 2 * jr;
+      let ex = U.clamp(def.pos[0] + dx, -330, 330), ez = U.clamp(def.pos[1] + dz, -330, 330);
+      [ex, ez] = world.covers.collide(ex, ez, 2.6);
+      const t = new SF.Tank(def.type, { x: ex, z: ez, yaw: (def.yaw !== undefined ? def.yaw : Math.PI) + (Math.random() - 0.5) * 0.4 });
+      const def2 = { ...def, patrol: (def.patrol || []).map(w => [w[0] + (ex - def.pos[0]), w[1] + (ez - def.pos[1])]) };
+      t.ai = new SF.AI(t, def2);
       scene.add(t.group);
       world.tanks.push(t);
       return t;
@@ -343,7 +350,7 @@ SF.Main = (() => {
     if (repairT > 0) repairT -= dt;
     checkWave();
 
-    // 玩家对敌发现(小地图/血条显示用)
+    // 玩家对敌发现(小地图/血条显示用) + 点亮机制(被敌人看见 → 灯泡+滴滴)
     spottedTimer -= dt;
     if (spottedTimer <= 0) {
       spottedTimer = 0.25;
@@ -352,6 +359,12 @@ SF.Main = (() => {
         if (e.alive && U.dist2d(p.x, p.z, e.x, e.z) < SF.CFG.player.viewRange && SF.losClear(world, p.x, p.z, e.x, e.z))
           spotted.add(e);
     }
+    let enemySeesMe = false;
+    for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow) { enemySeesMe = true; break; }
+    if (enemySeesMe) lastSpottedT = world.time;
+    const detected = p.alive && (world.time - lastSpottedT < 2.0);
+    if (detected && !wasDetected) SF.Audio.play('beep', null, { gain: 1.1 });
+    wasDetected = detected;
 
     if (loseT > 0) { loseT -= dt; if (loseT <= 0 && !gameOver) { gameOver = true; SF.HUD.endGame(false, stats); } }
   }

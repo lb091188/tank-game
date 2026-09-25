@@ -22,6 +22,17 @@ SF.AI = class {
 
     this.state = 'patrol';
     this.wp = 0;
+    this._lastRadio = -99;
+    this._alertT = 0;
+
+    // 无线电: 友军发现玩家 → 范围内友军收到坐标前去支援(守位单位原地警戒转向)
+    SF.Bus.on('aiRadio', (e) => {
+      if (!this.tank.alive || e.from === this.tank || this.state === 'combat') return;
+      if (SF.Util.dist2d(this.tank.x, this.tank.z, e.from.x, e.from.z) > SF.CFG.ai.radio.range) return;
+      this.heard = { x: e.x + (Math.random() - 0.5) * 24, z: e.z + (Math.random() - 0.5) * 24 };
+      if (this.state !== 'alert') { this.state = 'alert'; this._alertT = world2time(); }
+    });
+    function world2time() { return SF.Game && SF.Game.world ? SF.Game.world.time : 0; }
     this.input = { throttle: 0, steer: 0, aimYaw: tank.yaw, aimPitch: 0, fire: false };
     this.seen = false; this.reactT = 0;
     this.lastSeen = null; this.lastSeenT = -99;
@@ -53,6 +64,11 @@ SF.AI = class {
         this.lastSeen = { x: player.x, z: player.z, vx: player.velX || 0, vz: player.velZ || 0, t: world.time };
         if (!wasSeen && this.state !== 'combat')
           this.reactT = SF.CFG.ai.reactionTime * (1 + (1 - this.p.aimPatience));  // 反应延迟
+        // 无线电呼叫支援(冷却)
+        if (world.time - this._lastRadio > SF.CFG.ai.radio.cooldown) {
+          this._lastRadio = world.time;
+          SF.Bus.emit('aiRadio', { from: this.tank, x: player.x, z: player.z });
+        }
       }
     }
     this.seenNow = this.seen;
@@ -108,7 +124,7 @@ SF.AI = class {
 
     /* --- 状态转移 --- */
     if (this.seenNow && this.state !== 'retreat') {
-      this.state = 'combat';
+      this.state = 'combat'; this._alertT = 0;
       if (t.hp / t.spec.hp < P.retreatHp && this.retreatT <= 0) { this.state = 'retreat'; this.retreatT = 8; }
     } else if (this.state === 'combat' && !this.seenNow) {
       if (!this.lastSeen || world.time - this.lastSeen.t > SF.CFG.ai.memoryTime) this.state = 'alert';
@@ -132,12 +148,19 @@ SF.AI = class {
       this.input.aimYaw = t.yaw; this.input.aimPitch = 0.02;
     }
     else if (this.state === 'alert') {
+      if (!this._alertT) this._alertT = world.time;
       const target = this.heard || this.lastSeen || this.home;
-      this.navigate(target.x, target.z, dt, world);
-      this.input.aimYaw = t.yaw; this.input.aimPitch = 0.02;
-      if (SF.Util.dist2d(t.x, t.z, target.x, target.z) < 8 && !this.seenNow) {
-        this.heard = null;
-        if (!this.lastSeen || world.time - this.lastSeen.t > SF.CFG.ai.memoryTime) this.state = 'patrol';
+      if (this.hold) {
+        // 守位单位(歼击车/重坦): 原地警戒, 炮口指向情报方向
+        this.input.throttle = 0; this.input.steer = this.parts_noTurret ? 0 : 0;
+        this.input.aimYaw = Math.atan2(target.x - t.x, target.z - t.z);
+        this.input.aimPitch = 0.02;
+      } else {
+        this.navigate(target.x, target.z, dt, world);
+        this.input.aimYaw = t.yaw; this.input.aimPitch = 0.02;
+      }
+      if (!this.seenNow && world.time - this._alertT > 7) {   // 支援无果 → 回归巡逻
+        this._alertT = 0; this.heard = null; this.state = 'patrol';
       }
     }
     else if (this.state === 'combat') {

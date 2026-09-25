@@ -61,6 +61,8 @@
   #aimCircle.aimed { border-color: rgba(150,230,140,.9); }
 
   /* 受击方向 */
+  #detectLamp { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); font-size: 32px; opacity: 0; transition: opacity .25s; filter: drop-shadow(0 0 10px rgba(255,220,90,.9)); animation: lampPulse 1s infinite; }
+  @keyframes lampPulse { 0%,100% { filter: drop-shadow(0 0 6px rgba(255,220,90,.6)); } 50% { filter: drop-shadow(0 0 14px rgba(255,220,90,1)); } }
   #hitDir { position: absolute; left: 50%; top: 50%; width: 240px; height: 240px; margin: -120px; opacity: 0; }
   #hitDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -34px; border-left: 34px solid transparent; border-right: 34px solid transparent; border-top: 20px solid rgba(226,58,42,.85); border-radius: 8px; }
 
@@ -108,6 +110,7 @@
   <canvas id="reloadRing" width="76" height="76"></canvas>
   <div id="reloadText"></div>
   <div id="crosshair"></div>
+  <div id="detectLamp">💡</div>
   <div id="hitFeedback"></div>
   <div id="alarm"></div>
   <div id="hitDir"></div>
