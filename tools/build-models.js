@@ -576,7 +576,43 @@ const ROSTER = [
   { type: 'chinu', nation: 'JPN', hw: 1.08, wheels: 6, wr: 0.38, tl: 6.0, th: 0.82,
     hull: { l: 6.0, w: 2.26, h: 1.05, y: 1.26 }, gl: 1.4, ga: 0.21, gl2: 2.8, gr: 0.065,
     armor: { glacis: 50, lower: 45, side: 25, rear: 20, top: 12, turretFront: 50, turretSide: 25, turretRear: 25, mantlet: 60 },
-    turret: { kind: 'box', w: 1.9, l: 2.1, th: 0.68 } }
+    turret: { kind: 'box', w: 1.9, l: 2.1, th: 0.68 } },
+  /* ---- 中高级(VI-VIII): 二战末期服役/原型 ---- */
+  { type: 'tiger2', nation: 'GER', hw: 1.7, wheels: 8, wr: 0.40, tl: 7.3, th: 0.9, interleave: 0.26,
+    hull: { l: 7.3, w: 3.4, h: 1.15, y: 1.34 }, gl: 2.0, ga: 0.87, gl2: 5.3, gr: 0.09,
+    armor: { glacis: 150, lower: 100, side: 80, rear: 80, top: 25, turretFront: 180, turretSide: 80, turretRear: 80, mantlet: 180 },
+    turret: { kind: 'box', w: 2.35, l: 2.6, th: 0.78, bustle: true, z: 0.15 } },
+  { type: 'ferdinand', nation: 'GER', hw: 1.6, wheels: 6, wr: 0.42, tl: 7.0, th: 0.9,
+    hull: { l: 6.8, w: 3.1, h: 1.15, y: 1.34 }, gl: 1.9, ga: 0.26, gl2: 5.3, gr: 0.09, turret: 'casemate', casH: 1.05, casA: 0.35, casL: 2.7,
+    armor: { glacis: 160, lower: 100, side: 80, rear: 60, top: 25, turretSide: 80, mantlet: 200 } },
+  { type: 'is3', nation: 'USSR', hw: 1.5, wheels: 6, wr: 0.44, tl: 6.9, th: 0.9,
+    hull: { l: 6.9, w: 3.1, h: 1.1, y: 1.32 }, gl: 1.7, ga: 1.05, gl2: 4.1, gr: 0.11, brake: false,
+    armor: { glacis: 120, lower: 120, side: 90, rear: 60, top: 20, turretFront: 160, turretSide: 110, turretRear: 90, mantlet: 170 },
+    turret: { kind: 'cyl', r: 1.15, th: 0.6, bustle: true } },
+  { type: 't44', nation: 'USSR', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.2, th: 0.86,
+    hull: { l: 6.1, w: 2.9, h: 1.0, y: 1.26 }, gl: 1.6, ga: 1.05, gl2: 4.0, gr: 0.085,
+    armor: { glacis: 90, lower: 90, side: 75, rear: 45, top: 15, turretFront: 120, turretSide: 90, turretRear: 75, mantlet: 150 },
+    turret: { kind: 'cyl', r: 1.05, th: 0.62 } },
+  { type: 'm26', nation: 'USA', hw: 1.42, wheels: 6, wr: 0.43, tl: 6.5, th: 0.88,
+    hull: { l: 6.3, w: 2.84, h: 1.05, y: 1.28 }, gl: 1.8, ga: 0.8, gl2: 4.6, gr: 0.09,
+    armor: { glacis: 76, lower: 76, side: 50, rear: 50, top: 20, turretFront: 102, turretSide: 76, turretRear: 76, mantlet: 114 },
+    turret: { kind: 'cyl', r: 1.1, th: 0.7, bustle: true } },
+  { type: 't26e4', nation: 'USA', hw: 1.42, wheels: 6, wr: 0.43, tl: 6.5, th: 0.88, skirts: true,
+    hull: { l: 6.3, w: 2.84, h: 1.05, y: 1.28 }, gl: 1.8, ga: 0.8, gl2: 4.8, gr: 0.09,
+    armor: { glacis: 114, lower: 90, side: 60, rear: 50, top: 20, turretFront: 140, turretSide: 89, turretRear: 76, mantlet: 180 },
+    turret: { kind: 'cyl', r: 1.12, th: 0.72, bustle: true } },
+  { type: 't29', nation: 'USA', hw: 1.58, wheels: 7, wr: 0.42, tl: 7.1, th: 0.92,
+    hull: { l: 6.9, w: 3.15, h: 1.15, y: 1.36 }, gl: 1.9, ga: 0.95, gl2: 4.8, gr: 0.095,
+    armor: { glacis: 102, lower: 70, side: 76, rear: 50, top: 25, turretFront: 178, turretSide: 127, turretRear: 102, mantlet: 203 },
+    turret: { kind: 'box', w: 2.3, l: 2.5, th: 0.88, bustle: true } },
+  { type: 'centurion', nation: 'UK', hw: 1.48, wheels: 6, wr: 0.42, tl: 7.0, th: 0.9,
+    hull: { l: 6.6, w: 2.95, h: 1.1, y: 1.32 }, gl: 1.8, ga: 1.0, gl2: 4.6, gr: 0.083,
+    armor: { glacis: 76, lower: 64, side: 50, rear: 38, top: 20, turretFront: 152, turretSide: 89, turretRear: 89, mantlet: 140 },
+    turret: { kind: 'cyl', r: 1.12, th: 0.75, bustle: true } },
+  { type: 'chiri', nation: 'JPN', hw: 1.15, wheels: 6, wr: 0.38, tl: 6.7, th: 0.84,
+    hull: { l: 6.3, w: 2.3, h: 1.1, y: 1.3 }, gl: 1.5, ga: 0.35, gl2: 3.3, gr: 0.07,
+    armor: { glacis: 50, lower: 45, side: 25, rear: 20, top: 12, turretFront: 75, turretSide: 35, turretRear: 35, mantlet: 90 },
+    turret: { kind: 'cyl', r: 0.95, th: 0.65 } }
 ];
 
 /* ============ 坦克清单(V2) ============ */
@@ -879,7 +915,7 @@ for (const t of TANKS) {
     (n.children || []).forEach(walk);
   })(root);
   let need = ['tracks','glacis','lowerPlate','hullSide','hullRear','hullTop','turretFront','turretSide','turretRear','turretRoof','mantlet','gun'];
-  const casemates = ['enemy-td', 'stug3', 'jagdpanther', 'su85', 'su100', 'isu152'];
+  const casemates = ['enemy-td', 'stug3', 'jagdpanther', 'su85', 'su100', 'isu152', 'ferdinand'];
   if (casemates.includes(t.file.replace('.glb', ''))) need = need.filter(z => z !== 'turretFront' && z !== 'turretRear');  // 固定战斗室: 无 turretFront/turretRear
   const missing = need.filter(z => !(z in zones));
   if (missing.length) throw new Error(`${t.file} 缺分区: ${missing}`);
