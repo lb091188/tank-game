@@ -272,7 +272,9 @@ SF.Main = (() => {
     document.addEventListener('mousedown', (e) => { if (e.button === 0) mouseDown = true; if (e.button === 2) freeLook = true; });
     document.addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; if (e.button === 2) freeLook = false; });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
+    // 滚轮: 第三人称下缩放相机距离; 已在狙击镜中则滚轮退出狙击镜(WoT 式切换)
     document.addEventListener('wheel', (e) => {
+      if (sniper) { sniper = false; return; }
       camDist = U.clamp(camDist + Math.sign(e.deltaY) * 1.6, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
     });
     // 键盘: window 捕获阶段监听(最先收到, 不被其他处理器截断)
