@@ -7,6 +7,8 @@ SF.Main = (() => {
   let world, fx, shells;
   let camYaw = Math.PI, camPitch = 0.30, camDist = SF.CFG.camera.dist;
   let sniper = false, mouseDown = false, shakeT = 0, freeLook = false;   // 右键按住: 自由视角(炮塔锁定)
+  let cruise = 0;              // 巡航控制: 1 前进 / -1 倒车 / 0 关
+  let autoTarget = null;       // 自动瞄准目标(WoT E 键)
   const keys = {};
   let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
   let selTank = 'sherman', selMap = 'l01';   // 出击前选择
@@ -83,7 +85,7 @@ SF.Main = (() => {
     world.shells = shells;
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
-      aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected, deathMark,
+      aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected, deathMark, autoTarget, cruise,
       mission: (() => {
         if (!world.map) return null;
         if (SF.Game_mp.mode === 'sp') return { idx: waveIdx, total: world.map.waves.length, name: (world.map.waves[waveIdx] || {}).name || '', kills: stats.kills, totalEnemies: stats.total };
@@ -220,8 +222,15 @@ SF.Main = (() => {
     for (const e of world.enemies) if (e.alive) objs.push(...e.parts.zones);
     _ray.set(origin, dir); _ray.far = Math.min(bestT, maxDist);
     const hits = _ray.intersectObjects(objs, true);
-    if (hits.length && hits[0].distance < bestT) { bestT = hits[0].distance; best = hits[0].point; }
-    return best ? { pos: best, dist: bestT } : null;
+    let hitInfo = null;
+    if (hits.length && hits[0].distance < bestT) {
+      bestT = hits[0].distance; best = hits[0].point;
+      const obj = hits[0].object;
+      if (obj.userData && obj.userData.zone)
+        hitInfo = { zone: obj.userData.zone, armor: obj.userData.armor || 0,
+                    normal: hits[0].face ? hits[0].face.normal.clone().transformDirection(obj.matrixWorld).normalize() : null };
+    }
+    return best ? { pos: best, dist: bestT, hit: hitInfo } : null;
   }
 
   // 相机瞄准点(鼠标中心) + 炮管实际指向点(双准星: 散布圈跟炮走, 追赶后与中心合拢)
@@ -245,6 +254,7 @@ SF.Main = (() => {
   function keyOf(e) {
     if (e.code) {
       if (/^Key[WASD]$/.test(e.code) || /^Arrow(Up|Down|Left|Right)$/.test(e.code)) return e.code;
+      if (/^Key[ERFM]$/.test(e.code)) return e.code;
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') return 'Shift';
       if (e.code === 'Tab') return 'Tab';
     }
@@ -284,6 +294,11 @@ SF.Main = (() => {
       keySeen = true;
       if (k === 'Shift') { if (!e.repeat) sniper = !sniper; keys.Shift = true; return; }
       if (k === 'Tab') { e.preventDefault(); if (!e.repeat) SF.HUD.toggleMissionDetail(); return; }
+      if (k === 'KeyR') { if (!e.repeat) { cruise = 1; SF.HUD.showMsg('巡航 · 前进', 1.2); } return; }
+      if (k === 'KeyF') { if (!e.repeat) { cruise = -1; SF.HUD.showMsg('巡航 · 倒车', 1.2); } return; }
+      if (k === 'KeyE') { if (!e.repeat) toggleAutoAim(); return; }
+      if (k === 'KeyM') { if (!e.repeat) SF.HUD.toggleBigMap(); return; }
+      if (k === 'KeyW' || k === 'KeyS') cruise = 0;   // 手动油门取消巡航
       keys[k] = true;
       if (/^Arrow/.test(k) || k === 'Space') e.preventDefault();
     }, true);
@@ -298,6 +313,25 @@ SF.Main = (() => {
   }
 
   const IDLE_INPUT = (t) => ({ throttle: 0, steer: 0, aimYaw: t.turretYaw, aimPitch: t.gunPitch, fire: false });
+
+  // 自动瞄准(WoT E): 锁定准星方向最近的可见敌人, 炮塔持续跟踪
+  function playerEnemies() {
+    if (MP.mode === 'sp') return world.enemies.filter(e => e.alive);
+    return [...MP.tanks.values()].filter(t => t.netId !== MP.myId && t.alive && t.team !== world.player.team);
+  }
+  function toggleAutoAim() {
+    if (autoTarget) { autoTarget = null; SF.HUD.showMsg('自动瞄准解除', 1); return; }
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    let best = null, bestAng = 16 * Math.PI / 180;   // WoT 式宽容锥角(容纳相机俯仰)
+    for (const e of playerEnemies()) {
+      const to = e.pos3.clone().sub(camera.position);
+      const ang = to.normalize().angleTo(dir);
+      if (ang < bestAng && SF.losClear(world, camera.position.x, camera.position.z, e.x, e.z)) { bestAng = ang; best = e; }
+    }
+    if (best) { autoTarget = best; SF.HUD.showMsg('自动瞄准：' + best.spec.name, 1.5); }
+    else SF.HUD.showMsg('准星方向无目标', 1.2);
+  }
 
   // 敌军等级匹配: 按参战玩家最高等级, 同类别选邻近等级敌车(开 VIII 级不再割草 III 级)
   const TIER_NUM = { III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8 };
@@ -316,8 +350,9 @@ SF.Main = (() => {
 
   function playerInput() {
     const p = world.player;
+    const manual = (keys.KeyW || keys.ArrowUp ? 1 : 0) + (keys.KeyS || keys.ArrowDown ? -1 : 0);
     const input = {
-      throttle: (keys.KeyW || keys.ArrowUp ? 1 : 0) + (keys.KeyS || keys.ArrowDown ? -1 : 0),
+      throttle: manual || cruise,
       // 注意: yaw 增大 = 向左转(俯视逆时针), 所以 A=+1 / D=-1
       steer: (keys.KeyA || keys.ArrowLeft ? 1 : 0) + (keys.KeyD || keys.ArrowRight ? -1 : 0),
       fire: mouseDown
@@ -329,6 +364,12 @@ SF.Main = (() => {
     } else { input.aimYaw = camYaw; input.aimPitch = 0; }
     // WoT 式右键自由视角: 按住右键时炮塔锁定原方向, 相机自由查看四周
     if (freeLook) { input.aimYaw = p.turretYaw; input.aimPitch = p.gunPitch; }
+    // 自动瞄准: 炮塔持续跟踪锁定目标(优先于自由视角)
+    if (autoTarget && autoTarget.alive) {
+      const dx = autoTarget.x - p.x, dz = autoTarget.z - p.z;
+      input.aimYaw = Math.atan2(dx, dz);
+      input.aimPitch = Math.atan2(autoTarget.y + 1.1 - (p.y + 2.2), Math.max(Math.hypot(dx, dz), 1));
+    }
     // 固定战斗室歼击车(WoT 式): 瞄准点超出射界 → 车体自动转向瞄准点(伴随回转扩圈)
     if (p.parts.noTurret && aimPoint) {
       const arc = (p.spec.gunArc !== undefined) ? p.spec.gunArc : 10 * Math.PI / 180;
@@ -497,6 +538,7 @@ SF.Main = (() => {
     if (detected && !wasDetected) SF.Audio.play('beep', null, { gain: 1.1 });
     wasDetected = detected;
 
+    if (autoTarget && !autoTarget.alive) { autoTarget = null; SF.HUD.showMsg('目标已击毁 · 自动瞄准解除', 1.5); }
     if (loseT > 0) { loseT -= dt; if (loseT <= 0 && !gameOver) { gameOver = true; SF.HUD.endGame(false, stats); } }
   }
 

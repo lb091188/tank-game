@@ -180,6 +180,24 @@ SF.HUD = (() => {
     // 炮口至瞄准点距离(WoT 式准星距离读数)
     const dEl = $('distText');
     dEl.textContent = uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '';
+    // 装甲等效指示(WoT 看甲): 瞄准敌人部位时显示 等效厚度/可否击穿/跳弹警告
+    const ai = $('armorInfo');
+    const ap = uiState.gunAim;   // 用炮口指向(实际弹道将命中的部位)
+    if (ap && ap.hit && ap.hit.armor > 0 && ap.hit.normal) {
+      const camDir = new THREE.Vector3();
+      SF.Game.camera.getWorldDirection(camDir);
+      const inc = Math.acos(SF.Util.clamp(-camDir.dot(ap.hit.normal), -1, 1));
+      if (inc > SF.CFG.armor.ricochetAngle) {
+        ai.textContent = '大角度 · 会跳弹';
+        ai.style.color = '#9aa0a6';
+      } else {
+        const eff = Math.round(ap.hit.armor / Math.max(Math.cos(inc), 0.05));
+        const pen = player.spec.gun.pen * 0.9;   // 按平均穿深(含浮动)估
+        const ok = pen >= eff;
+        ai.textContent = `等效 ${eff}mm · ${ok ? '可击穿' : '难击穿'}`;
+        ai.style.color = ok ? '#9fe08a' : '#e07a6a';
+      }
+    } else ai.textContent = '';
 
     // 小地图
     const cv = $('minimap'), ctx = cv.getContext('2d');
@@ -258,8 +276,11 @@ SF.HUD = (() => {
       d.style.left = p.x + 'px'; d.style.top = p.y + 'px';
       let name = e.spec.name;
       if (mp && e.netId) { const pl = mp.players.find(q => q.id === e.netId); if (pl) name = pl.name; }
+      const locked = e === uiState.autoTarget;
+      if (locked) name = '🎯 ' + name;
       const hpPct = SF.Util.clamp(e.hp / e.spec.hp, 0, 1) * 100;
       d.innerHTML = `<b>${name}</b><i><em style="width:${hpPct}%"></em></i>`;
+      if (locked) { d.style.border = '1px solid rgba(255,255,255,.85)'; d.style.padding = '2px 3px'; d.style.borderRadius = '3px'; }
       marks.appendChild(d);
     }
 
@@ -288,6 +309,10 @@ SF.HUD = (() => {
     // 点亮指示(被敌人发现): 灯泡
     $('detectLamp').style.opacity = uiState.detected ? 1 : 0;
 
+    // 大地图(M): 小地图内容放大绘制
+    if ($('bigMap').style.display === 'block')
+      $('bigMap').getContext('2d').drawImage($('minimap'), 0, 0, 430, 430);
+
     // 按键指示器(诊断用: 按下应点亮)
     document.querySelectorAll('#keypad span').forEach(s =>
       s.classList.toggle('on', !!(uiState.keys && uiState.keys[s.dataset.k])));
@@ -305,10 +330,15 @@ SF.HUD = (() => {
       `造成伤害 <b>${Math.round(stats.dmg)}</b>`;
   }
 
+  function toggleBigMap() {
+    const el = $('bigMap');
+    el.style.display = el.style.display === 'block' ? 'none' : 'block';
+  }
+
   function toggleMissionDetail() {
     const d = $('missionDetail');
     d.style.display = d.style.display === 'block' ? 'none' : 'block';
   }
 
-  return { init, update, dmgNumber, hitFrom, shotFrom, hitFeedback, alarm, log, showMsg, endGame, project, toggleMissionDetail };
+  return { init, update, dmgNumber, hitFrom, shotFrom, hitFeedback, alarm, log, showMsg, endGame, project, toggleMissionDetail, toggleBigMap };
 })();
