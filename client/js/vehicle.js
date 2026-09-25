@@ -2,6 +2,10 @@
 // 玩家键鼠与 AI 喂同一个 input 接口: {throttle, steer, aimYaw, aimPitch, fire}
 window.SF = window.SF || {};
 
+// 瞄准换算临时对象(世界方向 → 车体局部系)
+const AIM_DIR = new THREE.Vector3(), AIM_LOCAL = new THREE.Vector3();
+const HULL_E = new THREE.Euler(), HULL_Q = new THREE.Quaternion();
+
 SF.Tank = class {
   constructor(type, opts) {
     const U = SF.Util;
@@ -103,17 +107,23 @@ SF.Tank = class {
 
     this.animateTracks(dt);
 
-    /* --- 炮塔回转(独立限速; 歼击车战斗室固定) --- */
+    /* --- 炮塔/火炮瞄准(WoT 式完整版): 世界瞄准方向 → 车体局部系(含俯仰+横滚) ---
+       俯仰与回转限制都相对车体: 上坡压缩/下坡扩大世界俯角, 侧坡横滚时侧向瞄准自动补偿 */
+    const cp = Math.cos(input.aimPitch || 0), sp2 = Math.sin(input.aimPitch || 0);
+    AIM_DIR.set(Math.sin(input.aimYaw) * cp, sp2, Math.cos(input.aimYaw) * cp);
+    HULL_E.set(-this.pitch, this.yaw, this.roll, 'YXZ');
+    HULL_Q.setFromEuler(HULL_E).invert();
+    AIM_LOCAL.copy(AIM_DIR).applyQuaternion(HULL_Q);
+    const localYaw = Math.atan2(AIM_LOCAL.x, AIM_LOCAL.z);
+    const localElev = Math.atan2(AIM_LOCAL.y, Math.hypot(AIM_LOCAL.x, AIM_LOCAL.z));
     if (this.parts.noTurret) {
       this.turretYaw = this.yaw; this.lastTurretRate = yawRate;
     } else {
       const before = this.turretYaw;
-      this.turretYaw = U.angMoveToward(this.turretYaw, input.aimYaw, S.turretTraverse * dt);
+      this.turretYaw = U.angMoveToward(this.turretYaw, this.yaw + localYaw, S.turretTraverse * dt);
       this.lastTurretRate = U.angDiff(before, this.turretYaw) / dt;
     }
-    /* --- 炮管俯仰: 限制相对车体(WoT 逻辑: 上坡压缩世界俯角, 下坡/坡顶扩大) --- */
-    const relPitch = input.aimPitch - this.pitch;
-    this.gunPitch = U.moveToward(this.gunPitch, U.clamp(relPitch, S.gunDepression, S.gunElevation), 1.2 * dt);
+    this.gunPitch = U.moveToward(this.gunPitch, U.clamp(localElev, S.gunDepression, S.gunElevation), 1.2 * dt);
 
     /* --- 缩圈/扩圈 --- */
     const D = S.dispersion;
