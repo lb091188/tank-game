@@ -4,6 +4,8 @@ window.SF = window.SF || {};
 SF.HUD = (() => {
   const $ = (id) => document.getElementById(id);
   let dmgFloats = [];       // 伤害数字 {el, pos, life}
+  let shotDirT = 0;         // 炮口来向箭头
+  let shotMarks = [];       // 炮口位置(小地图, 3s 渐隐)
   let hitDirT = 0;
   let minimapBase = null;   // 预渲染地形
 
@@ -57,6 +59,19 @@ SF.HUD = (() => {
     el.style.color = color;
     $('dmgLayer').appendChild(el);
     dmgFloats.push({ el, pos: pos.clone(), life: 1.2 });
+  }
+
+  // 炮口来向: 小地图渐隐标记; showArrow=true 时屏幕金色箭头(近弹)
+  function shotFrom(pos, showArrow) {
+    shotMarks.push({ x: pos.x, z: pos.z, life: 3 });
+    if (shotMarks.length > 6) shotMarks.shift();
+    if (showArrow) {
+      const player = SF.Game.world.player;
+      const ang = SF.Util.angDiff(player.yaw, Math.atan2(pos.x - player.x, pos.z - player.z));
+      $('shotDir').style.transform = `translate(-50%,-50%) rotate(${(-ang * 180 / Math.PI)}deg)`;
+      $('shotDir').style.opacity = 1;
+      shotDirT = 0.9;
+    }
   }
 
   function hitFrom(source) {
@@ -140,6 +155,10 @@ SF.HUD = (() => {
     if (hitDirT > 0) { hitDirT -= dt; $('hitDir').style.opacity = Math.max(0, hitDirT); }
     // 命中提示淡出(前 0.9s 常显, 后 0.5s 渐隐)
     if (hitFbT > 0) { hitFbT -= dt; $('hitFeedback').style.opacity = hitFbT > 0.5 ? 1 : hitFbT * 2; }
+    // 炮口来向箭头淡出 + 小地图标记衰减
+    if (shotDirT > 0) { shotDirT -= dt; $('shotDir').style.opacity = Math.max(0, shotDirT); }
+    for (const m of shotMarks) m.life -= dt;
+    shotMarks = shotMarks.filter(m => m.life > 0);
     // 警报淡出
     if (alarmT > 0) { alarmT -= dt; $('alarm').style.opacity = Math.min(1, alarmT); }
 
@@ -204,6 +223,15 @@ SF.HUD = (() => {
         ctx.fillText('任务', mx + 8, my + 3);
       }
     }
+    // 炮口来向: 渐隐橙点
+    for (const m of shotMarks) {
+      const [mx, my] = worldToMap(m.x, m.z, T);
+      ctx.globalAlpha = Math.min(1, m.life / 3);
+      ctx.fillStyle = '#ff8a50';
+      ctx.beginPath(); ctx.arc(mx, my, 3, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
     // 上次阵亡位置: 红 ✕
     if (uiState.deathMark) {
       const [mx, my] = worldToMap(uiState.deathMark.x, uiState.deathMark.z, T);
@@ -281,5 +309,5 @@ SF.HUD = (() => {
     d.style.display = d.style.display === 'block' ? 'none' : 'block';
   }
 
-  return { init, update, dmgNumber, hitFrom, hitFeedback, alarm, log, showMsg, endGame, project, toggleMissionDetail };
+  return { init, update, dmgNumber, hitFrom, shotFrom, hitFeedback, alarm, log, showMsg, endGame, project, toggleMissionDetail };
 })();

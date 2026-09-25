@@ -103,6 +103,8 @@
   #detectLamp { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); font-size: 32px; opacity: 0; transition: opacity .25s; filter: drop-shadow(0 0 10px rgba(255,220,90,.9)); animation: lampPulse 1s infinite; }
   @keyframes lampPulse { 0%,100% { filter: drop-shadow(0 0 6px rgba(255,220,90,.6)); } 50% { filter: drop-shadow(0 0 14px rgba(255,220,90,1)); } }
   #hitDir { position: absolute; left: 50%; top: 50%; width: 240px; height: 240px; margin: -120px; opacity: 0; }
+  #shotDir { position: absolute; left: 50%; top: 50%; width: 190px; height: 190px; margin: -95px; opacity: 0; }
+  #shotDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -26px; border-left: 26px solid transparent; border-right: 26px solid transparent; border-top: 15px solid rgba(255,170,80,.9); }
   #hitDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -34px; border-left: 34px solid transparent; border-right: 34px solid transparent; border-top: 20px solid rgba(226,58,42,.85); border-radius: 8px; }
 
   /* 底部状态 */
@@ -154,6 +156,7 @@
   <div id="hitFeedback"></div>
   <div id="alarm"></div>
   <div id="hitDir"></div>
+  <div id="shotDir"></div>
   <div id="bottomBar" class="panel">
     <div id="hpBar"><div id="hpFill"></div></div>
     <div id="hpText">900 / 900</div>

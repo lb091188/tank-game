@@ -35,13 +35,16 @@ SF.FX = class {
       m.visible = false; scene.add(m);
       this.smokes.push({ s: m, life: 0, max: 1, vy: 1, vx: 0, vz: 0 });
     }
-    // 曳光弹池
-    this.tracers = [];
-    const tracerGeo = new THREE.BoxGeometry(0.05, 0.05, 1);
+    // 炮弹轨迹线池(8 点渐隐拖尾, 加色混合; 己方金色/敌方橙红)
+    this.trailPool = [];
     for (let i = 0; i < 30; i++) {
-      const m = new THREE.Mesh(tracerGeo, new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
-      m.visible = false; scene.add(m);
-      this.tracers.push(m);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(8 * 3), 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(8 * 3), 3));
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      line.visible = false; line.frustumCulled = false;
+      scene.add(line);
+      this.trailPool.push(line);
     }
     // 闪光 sprite 池
     this.flashes = [];
@@ -78,12 +81,38 @@ SF.FX = class {
     it.s.material.color.setHex(color); it.s.material.opacity = 1; it.s.visible = true;
   }
 
-  tracerFor(shell) {
-    const m = this.tracers.find(t => !t.visible);
-    if (!m) return null;
-    m.visible = true;
-    shell.tracer = m;
-    return m;
+  acquireTrail(shell) {
+    const line = this.trailPool.find(l => !l.visible);
+    if (!line) return;
+    const hostile = shell.team !== (SF.Game && SF.Game.world ? SF.Game.world.player.team : 0);
+    shell.trailCol = hostile ? [1, 0.42, 0.12] : [1, 0.85, 0.45];
+    shell.trailPts = [];
+    shell.trailLine = line;
+    const pos = line.geometry.attributes.position;
+    for (let i = 0; i < 8; i++) pos.setXYZ(i, shell.pos.x, shell.pos.y, shell.pos.z);
+    pos.needsUpdate = true;
+    line.visible = true;
+  }
+
+  updateTrail(shell) {
+    const line = shell.trailLine;
+    if (!line) return;
+    const last = shell.trailPts[shell.trailPts.length - 1];
+    if (!last || last.distanceTo(shell.pos) > 8) {
+      shell.trailPts.push(shell.pos.clone());
+      if (shell.trailPts.length > 7) shell.trailPts.shift();
+      this.burst(shell.pos, shell.trailCol, 1, 0.5, 0.1);   // 沿途微粒子增粗观感
+    }
+    const pts = [...shell.trailPts, shell.pos].slice(-8);
+    const pos = line.geometry.attributes.position, col = line.geometry.attributes.color;
+    const off = 8 - pts.length;
+    for (let i = 0; i < 8; i++) {
+      const pt = pts[Math.max(0, i - off)];
+      pos.setXYZ(i, pt.x, pt.y, pt.z);
+      const k = 0.12 + 0.88 * Math.max(0, (i - off + 1) / 8);   // 尾暗头亮
+      col.setXYZ(i, shell.trailCol[0] * k, shell.trailCol[1] * k, shell.trailCol[2] * k);
+    }
+    pos.needsUpdate = true; col.needsUpdate = true;
   }
 
   impact(kind, p) {
@@ -151,7 +180,7 @@ SF.Shells = class {
       pen: spec.pen, dmg: spec.dmg, life: 4, tracer: null
     };
     this.list.push(shell);
-    this.fx.tracerFor(shell);
+    this.fx.acquireTrail(shell);
   }
 
   update(dt, world) {
@@ -216,19 +245,20 @@ SF.Shells = class {
         continue;
       }
 
-      sh.pos.copy(next);
-      if (sh.tracer) {
-        sh.tracer.position.copy(next);
-        sh.tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), sh.vel.clone().normalize());
-        sh.tracer.scale.set(1, 1, Math.min(2.5, sh.vel.length() * 0.004));
+      // 敌方炮弹飞近 → 炮口来向指示(一次性)
+      if (world.player && sh.team !== world.player.team && !sh.warned) {
+        const dPlayer = Math.hypot(sh.pos.x - world.player.x, sh.pos.z - world.player.z);
+        if (dPlayer < 45) { sh.warned = true; SF.Bus.emit('shellFrom', { x: sh.owner.x, z: sh.owner.z }); }
       }
+      sh.pos.copy(next);
+      this.fx.updateTrail(sh);
     }
     this.list = this.list.filter(s => s.active);
   }
 
   _kill(sh) {
     sh.active = false;
-    if (sh.tracer) { sh.tracer.visible = false; sh.tracer = null; }
+    if (sh.trailLine) { sh.trailLine.visible = false; sh.trailLine = null; }
   }
 };
 

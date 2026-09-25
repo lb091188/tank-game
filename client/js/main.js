@@ -342,6 +342,7 @@ SF.Main = (() => {
     SF.Bus.on('fire', (e) => {
       e.tank.lastFireT = world.time;
       if (e.tank.isPlayer) stats.shots++;
+      if (e.tank.team !== world.player.team) SF.HUD.shotFrom(e.pos, false);   // 敌方炮口小地图标记
       fx.flash(e.pos, e.tank.isPlayer ? 2.6 : 2.0);
       SF.Audio.play('cannon', e.pos, { gain: e.tank.isPlayer ? 1.8 : 1.2 });
       if (e.tank.isPlayer) shakeT = 1;
@@ -375,6 +376,7 @@ SF.Main = (() => {
       if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 1.2 });
     });
     SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) SF.Audio.play('reload', null, { gain: 1.5 }); });
+    SF.Bus.on('shellFrom', (d) => SF.HUD.shotFrom(d, true));   // 近弹: 屏幕箭头 + 标记
     let missLast = -9;   // 未命中提示节流(基于模拟时间)
     SF.Bus.on('playerMiss', () => {
       if (world.time - missLast > 0.6) { SF.HUD.hitFeedback('未命中', '#8a8f94'); SF.Audio.playVoice('v_miss'); missLast = world.time; }
@@ -716,7 +718,11 @@ SF.Main = (() => {
     SF.Net.on('ev', (m) => {
       if (MP.mode !== 'client') return;
       const d = m.d;
-      if (m.k === 'fire') SF.Bus.emit('fire', { tank: proxyTank(d.id), pos: new THREE.Vector3(...d.p), dir: new THREE.Vector3(0, 0, 1) });
+      if (m.k === 'fire') {
+        SF.Bus.emit('fire', { tank: proxyTank(d.id), pos: new THREE.Vector3(...d.p), dir: new THREE.Vector3(0, 0, 1) });
+        const tk = MP.tanks.get(d.id);
+        if (tk && tk.team !== MP.tanks.get(MP.myId).team) SF.HUD.shotFrom({ x: d.p[0], z: d.p[2] }, false);
+      }
       else if (m.k === 'hit') {
         SF.Bus.emit('hit', { shooter: proxyTank(d.s), target: proxyTank(d.g), kind: d.kind, dmg: d.dmg, module: d.module || null, point: new THREE.Vector3(...d.p) });
       } else if (m.k === 'aiWave') {
