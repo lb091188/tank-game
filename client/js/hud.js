@@ -334,7 +334,7 @@ SF.HUD = (() => {
     // 敌人名牌: 型号/PVE=坦克型号, 联机=玩家名 + 血条(可见时)
     const marks = $('markers'); marks.innerHTML = '';
     const mp = window.SF && SF.Game_mp && SF.Game_mp.mode !== 'sp' ? SF.Game_mp : null;
-    const targets = mp ? [...mp.tanks.values()].filter(t => t.netId !== mp.myId) : world.enemies;
+    const targets = mp ? [...mp.tanks.values()].filter(t => t.netId !== mp.myId && t.team !== world.player.team) : world.enemies;
     for (const e of targets) {
       if (!e.alive) continue;
       const spotted = uiState.spotted.has(e) || world.time - (e.lastFireT || -99) < 5;
@@ -349,7 +349,7 @@ SF.HUD = (() => {
       const locked = e === uiState.autoTarget;
       if (locked) name = '🎯 ' + name;
       const hpPct = SF.Util.clamp(e.hp / e.spec.hp, 0, 1) * 100;
-      d.innerHTML = `${SF.ClsIcon(e.spec.cls)} <b>${name}</b><i><em style="width:${hpPct}%"></em></i>`;
+      d.innerHTML = `${SF.ClsIcon(e.spec.cls, { color: '#ff7a68' })} <b>${name}</b><i><em style="width:${hpPct}%"></em></i><u>${Math.ceil(e.hp)}</u>`;
       if (locked) { d.style.border = '1px solid rgba(255,255,255,.85)'; d.style.padding = '2px 3px'; d.style.borderRadius = '3px'; }
       marks.appendChild(d);
     }
