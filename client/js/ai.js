@@ -22,6 +22,9 @@ function nearestTarget(world, from) {
   return world.player;
 }
 
+// 模拟时钟(类方法内取世界时间用)
+function nowT() { return SF.Game && SF.Game.world ? SF.Game.world.time : 0; }
+
 SF.AI = class {
   constructor(tank, def) {
     const U = SF.Util;
@@ -54,14 +57,31 @@ SF.AI = class {
     this.retreatT = 0; this.unstuckT = 0; this.stuckT = 0;
     this.navYawJitter = 0;
 
-    // 听觉: 玩家开炮 → 炮声远传(shotHearing), 记下大致方位(带误差)
+    // 听觉: 玩家开炮 → 炮声全图可闻, 记下大致方位(误差随距离增大: 远处只知个大概)
     SF.Bus.on('fire', (e) => {
       if (this.tank.alive && (e.tank.isPlayer || e.tank.team === 0)) {   // 合作: 任何玩家开炮都会被听见
         const d = SF.Util.dist2d(this.tank.x, this.tank.z, e.tank.x, e.tank.z);
-        if (d < SF.CFG.ai.shotHearing)
-          this.heard = { x: e.tank.x + (Math.random() - 0.5) * 30, z: e.tank.z + (Math.random() - 0.5) * 30, t: world2time() };
+        if (d < SF.CFG.ai.shotHearing) {
+          const err = 14 + d * 0.06;
+          this.heard = { x: e.tank.x + (Math.random() - 0.5) * 2 * err, z: e.tank.z + (Math.random() - 0.5) * 2 * err, t: world2time() };
+        }
       }
     });
+  }
+
+  /* ---------- 被击中感知: 中弹 = 确切知道自己挨了打, 冲击方向大致可判 ----------
+     立即上报全队(等级2情报: 有目标准接触), 自己转入警觉/追击, 炮口转向来袭方向 */
+  onHurt(shooter) {
+    if (!this.tank.alive || !shooter || shooter.team === this.tank.team) return;
+    const err = 20 + Math.random() * 14;
+    const hx = shooter.x + (Math.random() - 0.5) * 2 * err, hz = shooter.z + (Math.random() - 0.5) * 2 * err;
+    this.heard = { x: hx, z: hz, t: nowT() };
+    this._hurtT = nowT();
+    const w = SF.Game.world;
+    if (w) w.intel = { x: hx, z: hz, t: nowT(), level: 2 };   // 中弹=确认接触, 全队共享
+    if (!this.seenNow) this.lastSeen = { x: hx, z: hz, vx: 0, vz: 0, t: nowT() };
+    SF.Bus.emit('aiRadio', { from: this.tank, x: hx, z: hz });   // 呼叫支援(不限距离)
+    if (this.state === 'patrol') { this.state = 'alert'; this._alertT = nowT(); }
   }
 
   /* ---------- 感知 ---------- */
@@ -172,16 +192,17 @@ SF.AI = class {
       const tgt = cands[0] || this.home;
       const intel = world.intel;
       const intelFresh = intel.level > 0 && world.time - intel.t < SF.CFG.ai.searchTime;
+      const hurtRecent = this._hurtT && world.time - this._hurtT < 12;   // 刚挨打: 反应升级
       // 守位单位(蹲点歼击/守线重坦): 敌情未确认只原地警戒炮口指向;
-      // 全队已目视确认(等级2)且警戒 10 秒无果 → 离位加入围剿
-      const holdHold = this.hold && !(intel.level === 2 && world.time - this._alertT > 10);
+      // 自己挨了打 / 全队已目视确认且警戒数秒无果 → 离位加入围剿
+      const holdHold = this.hold && !hurtRecent && !(intel.level === 2 && world.time - this._alertT > 7);
       if (holdHold) {
         this.input.throttle = 0; this.input.steer = 0;
         this.input.aimYaw = Math.atan2(tgt.x - t.x, tgt.z - t.z);
         this.input.aimPitch = 0.02;
       } else {
-        // 有方法的围攻: 各车从自己的合围扇区接近, 在情报点外 ringR 处先形成包围圈
-        const ringR = (P.band[0] + P.band[1]) * 0.5;
+        // 有方法的围攻: 各车从自己的合围扇区接近; 刚挨打的车压得更近(报复性追击)
+        const ringR = hurtRecent ? P.band[0] * 0.7 : (P.band[0] + P.band[1]) * 0.5;
         const bx = tgt.x + Math.sin(this.flankSlot) * ringR, bz = tgt.z + Math.cos(this.flankSlot) * ringR;
         if (SF.Util.dist2d(t.x, t.z, bx, bz) > 12) {
           this.navigate(bx, bz, dt, world);
@@ -195,9 +216,11 @@ SF.AI = class {
           }
           this.navigate(this._searchPt.x, this._searchPt.z, dt, world);
         }
-        this.input.aimYaw = t.yaw; this.input.aimPitch = 0.02;
+        // 刚挨打: 炮口压向来袭方向而不是车头方向(边追边瞄)
+        this.input.aimYaw = hurtRecent ? Math.atan2(tgt.x - t.x, tgt.z - t.z) : t.yaw;
+        this.input.aimPitch = 0.02;
       }
-      // 搜剿超时仍无果 → 回归巡逻(玩家一直开炮则情报持续刷新, 搜剿不结束)
+      // 搜剿超时仍无果 → 回归巡逻(玩家一直开炮/命中则情报持续刷新, 搜剿不结束)
       if (!this.seenNow && !intelFresh && world.time - this._alertT > SF.CFG.ai.searchTime) {
         this._alertT = 0; this._searchT = 0; this._searchPt = null; this.heard = null; this.state = 'patrol';
       }

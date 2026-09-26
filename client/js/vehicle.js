@@ -302,6 +302,7 @@ SF.Tank = class {
       this.hp = 0; this.alive = false;
       SF.Bus.emit('destroyed', { tank: this, shooter });
     }
+    if (this.ai && this.alive && shooter && shooter.team !== this.team) this.ai.onHurt(shooter);   // 被打感知: 中弹即知道大致来向
     SF.Bus.emit('hit', result);
     return result;
   }
@@ -315,6 +316,7 @@ SF.Tank = class {
       this.hp = 0; this.alive = false;
       SF.Bus.emit('destroyed', { tank: this, shooter });
     }
+    if (this.ai && this.alive && shooter && shooter.team !== this.team) this.ai.onHurt(shooter);
     SF.Bus.emit('hit', { target: this, shooter, point, zone: 'splash', dmg, kind: 'splash', module: null });
   }
 

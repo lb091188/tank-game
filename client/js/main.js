@@ -594,14 +594,15 @@ SF.Main = (() => {
       e.tank.lastFireT = world.time;
       if (e.tank.isPlayer) stats.shots++;
       if (e.tank.team !== world.player.team) SF.HUD.shotFrom(e.pos, false);   // 敌方炮口小地图标记
-      // 玩家(或友军)开炮: 炮声可被远处敌人听见 → 上报全队情报(玩家有炮口来向提示, 敌人同理)
+      // 玩家(或友军)开炮: 炮声全图可闻 → 上报全队情报(误差随距离增大, 远处只知个大概)
       if (e.tank.isPlayer || e.tank.team === world.player.team) {
-        let heard = false;
+        let minD = 1e9;
         for (const en of world.enemies)
-          if (en.alive && SF.Util.dist2d(en.x, en.z, e.tank.x, e.tank.z) < SF.CFG.ai.shotHearing) { heard = true; break; }
-        if (heard) {
+          if (en.alive) minD = Math.min(minD, SF.Util.dist2d(en.x, en.z, e.tank.x, e.tank.z));
+        if (minD < SF.CFG.ai.shotHearing) {
+          const err = 16 + minD * 0.07;
           const old = world.intel;
-          world.intel = { x: e.tank.x + (Math.random() - .5) * 30, z: e.tank.z + (Math.random() - .5) * 30,
+          world.intel = { x: e.tank.x + (Math.random() - .5) * 2 * err, z: e.tank.z + (Math.random() - .5) * 2 * err,
             t: world.time, level: (old.level === 2 && world.time - old.t < SF.CFG.ai.memoryTime) ? 2 : 1 };
         }
       }
