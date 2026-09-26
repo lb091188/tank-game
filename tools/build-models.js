@@ -288,7 +288,7 @@ function addWheel(root, x, y, z, r, thick, interleave = false) {
   return w;
 }
 
-function runningGear(root, tracksZone, sideX, n, r, len, trackH, interleave = 0) {
+function runningGear(root, tracksZone, sideX, n, r, len, trackH, interleave = 0, fenderC) {
   const yWheel = r + 0.06;
   for (const sx of [-1, 1]) {
     // 环绕履带(真实剪影: 锯齿接地边+前后上翘导轮位), 保留链节纹理滚动
@@ -306,6 +306,9 @@ function runningGear(root, tracksZone, sideX, n, r, len, trackH, interleave = 0)
     // 托带轮(并入履带板网格, 不旋转)
     tracksZone.parts.push(part(cyl(0.11, 0.11, 0.3, 8), M4x(sx * sideX, trackH + 0.16, -len * 0.25, 0, 0, Math.PI / 2), [0.18, 0.19, 0.2]));
     tracksZone.parts.push(part(cyl(0.11, 0.11, 0.3, 8), M4x(sx * sideX, trackH + 0.16, len * 0.25, 0, 0, Math.PI / 2), [0.18, 0.19, 0.2]));
+    // 前后挡泥板: 盖住诱导轮/主动轮上翘段(履带比车体长, 尖端原本裸奔)
+    tracksZone.parts.push(part(box(0.64, 0.05, 0.9), M4x(sx * sideX, trackH + 0.22, len / 2 - 0.1, 0.25, 0, 0), fenderC || DARK));
+    tracksZone.parts.push(part(box(0.64, 0.05, 0.8), M4x(sx * sideX, trackH + 0.2, -len / 2 + 0.1, -0.22, 0, 0), fenderC || DARK));
   }
 }
 
@@ -411,7 +414,7 @@ function buildHellcat() {
   const C = OLIVE;
   const root = N('hellcat', { extras: { type: 'hellcat' } });
   const tracks = Z('tracks', 10);
-  runningGear(root, tracks, 1.02, 5, 0.44, 5.6, 0.72, 0);
+  runningGear(root, tracks, 1.02, 5, 0.44, 5.6, 0.72, 0, C);
   root.children.push(tracks);
 
   // M18 史实小车体: 全长 5.2m(旧 6.2 偏大), 车体顶面 ~1.2m——低矮是地狱猫的立身之本
@@ -425,7 +428,7 @@ function buildHellcat() {
   root.children.push(hullSide);
 
   const glacis = Z('glacis', 25);       // 25mm@47°
-  glacis.parts.push(part(box(2.26, 1.3, 0.16), M4x(0, hy + sh / 2 - Math.cos(0.82) * 0.65, hl / 2 - 0.26 + Math.sin(0.82) * 0.65, -0.82, 0, 0), C));
+  glacis.parts.push(part(box(2.26, 0.65 / Math.cos(0.82), 0.16), M4x(0, hy + sh / 2 - 0.325, hl / 2 - 0.26 - Math.tan(0.82) * 0.325, -0.82, 0, 0), C));
   root.children.push(glacis);
   const lower = Z('lowerPlate', 19);
   lower.parts.push(part(box(2.26, sh * 0.72, 0.16), M4x(0, hy - sh * 0.12, hl / 2 - 0.02, -0.3, 0, 0), C));
@@ -435,7 +438,7 @@ function buildHellcat() {
   engineDeck(rear, rear, 2.36, hy + sh / 2, -hl / 2 + 0.9, C);   // 排气并入尾部
   root.children.push(rear);
   const top = Z('hullTop', 10);
-  top.parts.push(part(box(2.36, 0.1, hl), M4x(0, hy + sh / 2 + 0.05, 0), C));
+  top.parts.push(part(box(2.36, 0.1, hl - 1.15), M4x(0, hy + sh / 2 + 0.05, -0.575), C));
   root.children.push(top);
 
   // 后置敞篷炮塔(M18 史实开顶): 矮篮墙 + 大炮盾 + 尾部配重箱, 无顶盖——俯射会掉进战斗室打车体顶
@@ -479,7 +482,7 @@ function buildRosterTank(T) {
 
   // 履带行走机构
   const tracks = Z('tracks', 20);
-  runningGear(root, tracks, T.hw + 0.16, T.wheels, T.wr, T.tl, T.th || 0.84, T.interleave || 0);
+  runningGear(root, tracks, T.hw + 0.16, T.wheels, T.wr, T.tl, T.th || 0.84, T.interleave || 0, C);
   root.children.push(tracks);
 
   const H = T.hull;
@@ -495,16 +498,19 @@ function buildRosterTank(T) {
   root.children.push(hullSide);
 
   const glacis = Z('glacis', T.armor.glacis);
+  // 首上: 下缘锚在车头线(不再向前捅出车外), 上缘向后收; 垂高封顶不触地(大倾角车的老毛病)
+  const glEff = Math.min(T.gl, H.y + H.h / 2 - 0.55);
+  const glRun = Math.tan(T.ga) * glEff;
   if (T.pike) {
-    // 楔形首上(尖鼻子): 左右两块半宽板向内收角, IS-3/59式/T-54 家族特征
+    // 楔形首上(尖鼻子): 左右两块半宽板向内收角, 棱线在车头前端(IS-3 特征)
     for (const sx of [-1, 1])
-      glacis.parts.push(part(box(H.w * 0.55, T.gl / Math.cos(T.ga), 0.2),
-        M4x(sx * H.w * 0.24, H.y + H.h / 2 - Math.cos(T.ga) * T.gl / 2, H.l / 2 - 0.3 + Math.sin(T.ga) * T.gl / 2, -T.ga, sx * 0.38, 0), C));
+      glacis.parts.push(part(box(H.w * 0.55, glEff / Math.cos(T.ga), 0.2),
+        M4x(sx * H.w * 0.24, H.y + H.h / 2 - glEff / 2, H.l / 2 - 0.3 - glRun / 2, T.ga, sx * 0.38, 0), C));
   } else {
-    glacis.parts.push(part(box(H.w * 0.94, T.gl / Math.cos(T.ga), 0.2),
-      M4x(0, H.y + H.h / 2 - Math.cos(T.ga) * T.gl / 2, H.l / 2 - 0.3 + Math.sin(T.ga) * T.gl / 2, -T.ga, 0, 0), C));
+    glacis.parts.push(part(box(H.w * 0.94, glEff / Math.cos(T.ga), 0.2),
+      M4x(0, H.y + H.h / 2 - glEff / 2, H.l / 2 - 0.3 - glRun / 2, -T.ga, 0, 0), C));
   }
-  glacisKit(glacis, H.w, H.y + H.h / 2, H.l / 2 - 0.3, T.ga, C, T.turret !== 'casemate');   // V3 首上细节
+  glacisKit(glacis, H.w, H.y + H.h / 2, H.l / 2 - 0.3 - glRun, T.ga, C, T.turret !== 'casemate');   // V3 首上细节(锚到顶边)
   if (T.hullGun) {                                                                          // 车体炮(B1 Bis 75mm)
     const gy = H.y + H.h / 2 - Math.cos(T.ga) * T.gl * 0.45, gz = H.l / 2 + Math.sin(T.ga) * T.gl * 0.45;
     glacis.parts.push(part(box(0.52, 0.62, 0.5), M4x(H.w * 0.22, gy, gz + 0.12, -T.ga, 0, 0), C));
@@ -519,7 +525,8 @@ function buildRosterTank(T) {
   rearKit(rear, H.w, H.y, H.h, -H.l / 2, C);                                                  // V3 尾部细节
   root.children.push(rear);
   const top = Z('hullTop', T.armor.top);
-  top.parts.push(part(box(H.w, 0.12, H.l), M4x(0, H.y + H.h / 2 + 0.05, 0), C));
+  const deckCut = T.pike ? 0.35 : glRun + 0.45;   // 顶板前缘收到首上顶边(不再悬空探出)
+  top.parts.push(part(box(H.w, 0.12, H.l - deckCut), M4x(0, H.y + H.h / 2 + 0.05, -deckCut / 2), C));
   engineDeck(top, rear, H.w, H.y + H.h / 2 + 0.07, -H.l / 2 + 1.2, C);
   root.children.push(top);
 
@@ -831,7 +838,7 @@ function buildSherman(opts = {}) {
   const root = N(OT, { extras: { type: OT } });
 
   const tracks = Z('tracks', 20);
-  runningGear(root, tracks, 1.06, 6, 0.42, 6.15, 0.84); tracks.trackTex = true;
+  runningGear(root, tracks, 1.06, 6, 0.42, 6.15, 0.84, 0, C); tracks.trackTex = true;
   root.children.push(tracks);
 
   // 车体: 上部车体侧板(含翼子板) + 首上/首下/尾/顶
@@ -844,14 +851,14 @@ function buildSherman(opts = {}) {
   hullSide.parts.push(part(box(0.16, sh * 0.9, 1.1), M4x(hw - 0.12, hy, hl / 2 - 0.35, 0, -0.5, 0), C));
   if (opts.jumbo) {   // E2 突击型附加装甲
     for (const sx of [-1, 1]) hullSide.parts.push(part(box(0.1, 0.72, 4.6), M4x(sx * (hw + 0.14), hy - 0.05, -0.2), C));
-    hullSide.parts.push(part(box(2.5, 0.62, 0.14), M4x(0, hy + sh / 2 - 0.62, hl / 2 + 0.2, -0.82, 0, 0), C));  // 首上附加板
+    hullSide.parts.push(part(box(2.5, 0.62, 0.14), M4x(0, hy + sh / 2 - 0.5, hl / 2 - 0.32 - Math.tan(0.82) * 0.42, -0.82, 0, 0), C));  // 首上附加板
   }
   fenders(hullSide, hw, hy + sh / 2 + 0.05, 5.6, C);
   hullKit(hullSide, 2.62, hy + sh / 2 + 0.2, hl / 2 - 0.15, C);
   root.children.push(hullSide);
 
   const glacis = Z('glacis', 51);
-  glacis.parts.push(part(box(2.44, 1.95, 0.2), M4x(0, hy + sh / 2 - Math.cos(0.82) * 0.97, hl / 2 - 0.32 + Math.sin(0.82) * 0.97, -0.82, 0, 0), C));
+  glacis.parts.push(part(box(2.44, 1.26 / Math.cos(0.82), 0.2), M4x(0, hy + sh / 2 - 0.63, hl / 2 - 0.32 - Math.tan(0.82) * 0.63, -0.82, 0, 0), C));
   // 三片式变速器罩(车头下缘圆弧)
   glacis.parts.push(part(cyl(0.62, 0.62, 2.2, 10, ), M4x(0, hy - sh * 0.32, hl / 2 - 0.1, 0, 0, Math.PI / 2), C));
   root.children.push(glacis);
@@ -868,7 +875,7 @@ function buildSherman(opts = {}) {
   root.children.push(rear);
 
   const top = Z('hullTop', 19);
-  top.parts.push(part(box(2.62, 0.12, hl), M4x(0, hy + sh / 2 + 0.06, 0), C));
+  top.parts.push(part(box(2.62, 0.12, hl - 1.8), M4x(0, hy + sh / 2 + 0.06, -0.9), C));   // 顶板前缘收到首上顶边
   top.parts.push(part(box(1.7, 0.1, 1.4), M4x(0, hy + sh / 2 + 0.14, -hl / 2 + 1.1), C)); // 发动机舱凸台
   engineDeck(top, rear, 2.62, hy + sh / 2 + 0.16, -hl / 2 + 1.1, C);
   root.children.push(top);
@@ -909,7 +916,7 @@ function buildMedium() {
   const root = N('medium', { extras: { type: 'medium' } });
 
   const tracks = Z('tracks', 20);
-  runningGear(root, tracks, 1.13, 6, 0.40, 6.55, 0.86, 0.32); tracks.trackTex = true;  // 交错负重轮
+  runningGear(root, tracks, 1.13, 6, 0.40, 6.55, 0.86, 0.32, C); tracks.trackTex = true;  // 交错负重轮
   root.children.push(tracks);
 
   const hullSide = Z('hullSide', 40);
@@ -927,7 +934,7 @@ function buildMedium() {
   root.children.push(hullSide);
 
   const glacis = Z('glacis', 60);
-  glacis.parts.push(part(box(2.6, 1.75, 0.2), M4x(0, hy + sh / 2 - Math.cos(0.52) * 0.87, hl / 2 - 0.28 + Math.sin(0.52) * 0.87, -0.52, 0, 0), C));
+  glacis.parts.push(part(box(2.6, 1.28 / Math.cos(0.52), 0.2), M4x(0, hy + sh / 2 - 0.64, hl / 2 - 0.28 - Math.tan(0.52) * 0.64, -0.52, 0, 0), C));
   glacis.parts.push(part(box(0.7, 0.5, 0.5), M4x(-0.9, hy + sh / 2 - 0.1, hl / 2 - 0.3, -0.4, 0.3, 0), C)); // 驾驶员观察窗护罩
   glacis.parts.push(part(box(0.7, 0.5, 0.5), M4x(0.9, hy + sh / 2 - 0.1, hl / 2 - 0.3, -0.4, -0.3, 0), C));
   root.children.push(glacis);
@@ -945,7 +952,7 @@ function buildMedium() {
   // 注: engineDeck 的第一个参数挂格栅用, 这里直接补到 hullTop 分区
   root.children = root.children.filter(n => n.name !== 'hullTop');
   const topZ = Z('hullTop', 20);
-  topZ.parts.push(part(box(2.86, 0.12, hl), M4x(0, hy + sh / 2 + 0.06, 0), C));
+  topZ.parts.push(part(box(2.86, 0.12, hl - 1.18), M4x(0, hy + sh / 2 + 0.06, -0.59), C));
   engineDeck(topZ, rear, 2.86, hy + sh / 2 + 0.08, -hl / 2 + 1.3, C);
   root.children.push(topZ);
 
@@ -986,7 +993,7 @@ function buildTD() {
   const root = N('td', { extras: { type: 'td' } });
 
   const tracks = Z('tracks', 20);
-  runningGear(root, tracks, 1.10, 6, 0.42, 6.7, 0.84); tracks.trackTex = true;
+  runningGear(root, tracks, 1.10, 6, 0.42, 6.7, 0.84, 0, C); tracks.trackTex = true;
   root.children.push(tracks);
 
   const hw = 1.32, hy = 1.22, hl = 6.4, sh = 0.94;
@@ -998,7 +1005,7 @@ function buildTD() {
   root.children.push(hullSide);
 
   const glacis = Z('glacis', 80);
-  glacis.parts.push(part(box(2.5, 1.85, 0.2), M4x(0, hy + sh / 2 - Math.cos(0.78) * 0.92, hl / 2 - 0.3 + Math.sin(0.78) * 0.92, -0.78, 0, 0), C));
+  glacis.parts.push(part(box(2.5, 1.14 / Math.cos(0.78), 0.2), M4x(0, hy + sh / 2 - 0.57, hl / 2 - 0.3 - Math.tan(0.78) * 0.57, -0.78, 0, 0), C));
   root.children.push(glacis);
   const lower = Z('lowerPlate', 60);
   lower.parts.push(part(box(2.5, sh * 0.75, 0.2), M4x(0, hy - sh * 0.12, hl / 2 - 0.04, -0.3, 0, 0), C));
@@ -1007,7 +1014,7 @@ function buildTD() {
   rear.parts.push(part(box(2.64, sh, 0.18), M4x(0, hy, -hl / 2 + 0.02, 0.22, 0, 0), C));
   root.children.push(rear);
   const top = Z('hullTop', 20);
-  top.parts.push(part(box(2.64, 0.12, hl), M4x(0, hy + sh / 2 + 0.06, 0), C));
+  top.parts.push(part(box(2.64, 0.12, hl - 1.59), M4x(0, hy + sh / 2 + 0.06, -0.795), C));
   engineDeck(top, rear, 2.64, hy + sh / 2 + 0.08, -hl / 2 + 1.2, C);
   root.children.push(top);
 
@@ -1038,7 +1045,7 @@ function buildHeavy() {
   const root = N('heavy', { extras: { type: 'heavy' } });
 
   const tracks = Z('tracks', 20);
-  runningGear(root, tracks, 1.18, 7, 0.44, 7.0, 0.92); tracks.trackTex = true;
+  runningGear(root, tracks, 1.18, 7, 0.44, 7.0, 0.92, 0, C); tracks.trackTex = true;
   root.children.push(tracks);
 
   const hw = 1.45, hy = 1.38, hl = 6.7, sh = 1.14;
@@ -1052,9 +1059,9 @@ function buildHeavy() {
   root.children.push(hullSide);
 
   const glacis = Z('glacis', 100);
-  glacis.parts.push(part(box(2.9, 2.1, 0.22), M4x(0, hy + sh / 2 - Math.cos(0.87) * 1.05, hl / 2 - 0.34 + Math.sin(0.87) * 1.05, -0.87, 0, 0), C));
-  glacis.parts.push(part(cyl(0.16, 0.16, 0.2, 8), M4x(0.95, hy + sh * 0.18, hl / 2 + 0.04, Math.PI / 2, 0, 0), GUN_C)); // 航向机枪
-  glacis.parts.push(part(box(0.4, 0.35, 0.3), M4x(-0.95, hy + sh * 0.3, hl / 2 - 0.1, -0.5, 0, 0), C));               // 驾驶员观察塔
+  glacis.parts.push(part(box(2.9, 1.4 / Math.cos(0.87), 0.22), M4x(0, hy + sh / 2 - 0.7, hl / 2 - 0.34 - Math.tan(0.87) * 0.7, -0.87, 0, 0), C));
+  glacis.parts.push(part(cyl(0.16, 0.16, 0.2, 8), M4x(0.95, hy + sh * 0.22, hl / 2 - 1.35, Math.PI / 2 - 0.87, 0, 0), GUN_C)); // 航向机枪
+  glacis.parts.push(part(box(0.4, 0.35, 0.3), M4x(-0.95, hy + sh * 0.38, hl / 2 - 1.6, -0.5, 0, 0), C));               // 驾驶员观察塔
   root.children.push(glacis);
   const lower = Z('lowerPlate', 75);
   lower.parts.push(part(box(2.9, sh * 0.72, 0.22), M4x(0, hy - sh * 0.13, hl / 2 - 0.04, -0.28, 0, 0), C));
@@ -1063,7 +1070,7 @@ function buildHeavy() {
   rear.parts.push(part(box(3.1, sh, 0.2), M4x(0, hy, -hl / 2 + 0.02, 0.22, 0, 0), C));
   root.children.push(rear);
   const top = Z('hullTop', 22);
-  top.parts.push(part(box(3.1, 0.14, hl), M4x(0, hy + sh / 2 + 0.08, 0), C));
+  top.parts.push(part(box(3.1, 0.14, hl - 2.12), M4x(0, hy + sh / 2 + 0.08, -1.06), C));
   engineDeck(top, rear, 3.1, hy + sh / 2 + 0.1, -hl / 2 + 1.3, C);
   root.children.push(top);
 
