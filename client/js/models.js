@@ -61,19 +61,19 @@ SF.Models = (() => {
       col = { ...col, r: 4.8 * s, h: 5 };
     } else if (c.type === 'hedge') {
       const s = (c.scale || 1);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 1.9, 1.7), lambert([0.15, 0.30, 0.13]));
-      m.position.y = 0.95;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 2.4, 2.2), lambert([0.15, 0.30, 0.13]));
+      m.position.y = 1.2;
       g.add(m);
-      col = { ...col, r: 2.8 * s, h: 2.2 };
+      col = { ...col, r: 3.0 * s, h: 2.6 };
     } else if (c.type === 'rock') {
       const s = (c.scale || 1);
       const geo = geoCache.rock || (geoCache.rock = new THREE.IcosahedronGeometry(1, 0));
       const m = new THREE.Mesh(geo, lambert([0.42, 0.41, 0.39]));
-      m.scale.set(1.6 * s, 1.15 * s, 1.4 * s);
-      m.position.y = 0.6 * s;
+      m.scale.set(2.1 * s, 1.5 * s, 1.8 * s);
+      m.position.y = 0.8 * s;
       m.rotation.set(0.3, c.yaw, 0.2);
       g.add(m);
-      col = { ...col, r: 1.9 * s, h: 2.4 * s };
+      col = { ...col, r: 2.5 * s, h: 3.0 * s };   // 坦克比例的巨石: 藏得住整车
     } else if (c.type === 'trap') {
       const bar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 0.22), lambert([0.25, 0.26, 0.28]));
       const b2 = bar.clone(); b2.rotation.z = 0.9; b2.position.y = 0.7;
@@ -109,15 +109,15 @@ SF.Models = (() => {
       const w3 = new THREE.Mesh(new THREE.BoxGeometry(2.2 * s, 1.3, 0.45), dark); w3.position.set(1.8 * s, 0.65, -0.8);
       const rub = new THREE.Mesh(new THREE.BoxGeometry(4.5 * s, 0.5, 2.6), dark); rub.position.set(0.6, 0.25, 0.6);
       g.add(w1, w2, w3, rub);
-      col = { ...col, r: 3.4 * s, h: 3.4 };
+      col = { ...col, r: 3.8 * s, h: 3.4 };
     } else if (c.type === 'wall') {
       const s = (c.scale || 1);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(5.5 * s, 1.25, 0.55), lambert([0.46, 0.44, 0.4]));
-      m.position.y = 0.62;
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(5.7 * s, 0.16, 0.7), lambert([0.38, 0.37, 0.34]));
-      cap.position.y = 1.3;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(7 * s, 1.7, 0.7), lambert([0.46, 0.44, 0.4]));
+      m.position.y = 0.85;
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(7.2 * s, 0.16, 0.9), lambert([0.38, 0.37, 0.34]));
+      cap.position.y = 1.75;
       g.add(m, cap);
-      col = { ...col, r: 2.5 * s, h: 1.5 };
+      col = { ...col, r: 3.0 * s, h: 1.9 };   // 石墙加高到 1.7m: 藏得住车体, 卖头打
     } else if (c.type === 'haystack') {
       const s = (c.scale || 1);
       const m = new THREE.Mesh(new THREE.CylinderGeometry(1.7 * s, 2.0 * s, 2.7 * s, 10), lambert([0.62, 0.5, 0.27]));
@@ -125,7 +125,7 @@ SF.Models = (() => {
       const cap2 = new THREE.Mesh(new THREE.ConeGeometry(1.75 * s, 1.1 * s, 10), lambert([0.55, 0.43, 0.22]));
       cap2.position.y = 3.1 * s;
       g.add(m, cap2);
-      col = { ...col, r: 2.2 * s, h: 3.6 };
+      col = { ...col, r: 2.6 * s, h: 3.6 };
     } else if (c.type === 'wreck') {
       const s = (c.scale || 1);
       const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.1, 6.2), lambert([0.13, 0.13, 0.12]));
@@ -139,7 +139,7 @@ SF.Models = (() => {
       const track2 = track1.clone(); track2.position.x = 1.55;
       g.add(body, tur, gunB, track1, track2);
       g.rotation.z = 0.03;
-      col = { ...col, r: 3.0, h: 2.2 };
+      col = { ...col, r: 3.0, h: 2.4 };
     } else if (c.type === 'bush') {
       const s = (c.scale || 1);
       const m = new THREE.Mesh(new THREE.SphereGeometry(1.15 * s, 7, 5), lambert([0.16, 0.3, 0.14]));

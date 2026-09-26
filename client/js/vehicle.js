@@ -19,6 +19,8 @@ SF.Tank = class {
 
     this.x = opts.x; this.z = opts.z; this.yaw = opts.yaw || 0;
     this.speed = 0;
+    // 车体碰撞半径(外接圆×0.72): 撞掩体/撞车的推离与掉速判定用
+    this.cr = Math.hypot(this.spec.sample.l, this.spec.sample.w) * 0.72;
     this.turretYaw = this.yaw; this.gunPitch = 0;
     this.aimYaw = this.yaw; this.aimPitch = 0;
     this.pitch = 0; this.roll = 0; this.y = 0;
@@ -90,12 +92,24 @@ SF.Tank = class {
     this.z += Math.cos(this.yaw) * this.speed * dt;
     this.x = U.clamp(this.x, -T.half + 16, T.half - 16);
     this.z = U.clamp(this.z, -T.half + 16, T.half - 16);
-    [this.x, this.z] = world.covers.collide(this.x, this.z, 2.4);
-    for (const o of world.tanks)
-      if (o !== this && o.alive) {
-        const dx = this.x - o.x, dz = this.z - o.z, d = Math.hypot(dx, dz);
-        if (d < 4.4 && d > 0.01) { this.x = o.x + dx / d * 4.4; this.z = o.z + dz / d * 4.4; }
+    // 掩体碰撞: 按车体外接圆推离; 顶着障碍硬闯 → 掉速(斜擦滑行不受罚)
+    const cx0 = this.x, cz0 = this.z;
+    [this.x, this.z] = world.covers.collide(this.x, this.z, this.cr);
+    if (this.x !== cx0 || this.z !== cz0) {
+      const px2 = this.x - cx0, pz2 = this.z - cz0, pl = Math.hypot(px2, pz2) || 1;
+      const vdotn = (Math.sin(this.yaw) * this.speed * px2 + Math.cos(this.yaw) * this.speed * pz2) / pl;
+      if (vdotn < -0.4) this.speed *= 0.25;
+    }
+    // 车车碰撞: 含残骸(击毁的车也是实体); 外接圆互推, 顶撞掉速
+    for (const o of world.tanks) {
+      if (o === this) continue;
+      const dx = this.x - o.x, dz = this.z - o.z, d = Math.hypot(dx, dz), minD = this.cr + o.cr;
+      if (d < minD && d > 0.01) {
+        this.x = o.x + dx / d * minD; this.z = o.z + dz / d * minD;
+        const vdotn = (Math.sin(this.yaw) * this.speed * dx + Math.cos(this.yaw) * this.speed * dz) / d;
+        if (vdotn < -0.4) this.speed *= 0.4;
       }
+    }
 
     /* --- 地形贴合(履带四角采样 → 俯仰/侧倾/高度; 全部平滑防颠簸) ---
        车体局部系: 前进+Z, 左舷+X(经 yaw 旋转后: 左舷方向 = (cos yaw, -sin yaw)) */
