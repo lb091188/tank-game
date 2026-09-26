@@ -412,11 +412,15 @@ SF.Main = (() => {
       input.aimYaw = Math.atan2(dx, dz);
       input.aimPitch = Math.atan2(autoTarget.y + 1.1 - (p.y + 2.2), Math.max(Math.hypot(dx, dz), 1));
     }
-    // 固定战斗室(WoT 式): 瞄准点超出射界 → 车体自动转向瞄准点; 玩家按键转向优先于鼠标自动转向
-    if (p.parts.noTurret && aimPoint && !input.steer) {
+    // 固定战斗室(WoT 式): 准星超出炮管射界 → 车体自动转向, 转到对准准星(±1.5°)才停;
+    // 玩家按键转向优先(打断自动转向); 右键自由视角时不自动转
+    if (input.steer) p._autoTurn = false;
+    if (p.parts.noTurret && aimPoint && !input.steer && !freeLook) {
       const arc = (p.spec.gunArc !== undefined) ? p.spec.gunArc : 10 * Math.PI / 180;
       const off = SF.Util.angDiff(p.yaw, input.aimYaw);
-      if (Math.abs(off) > arc * 0.9) input.steer = SF.Util.clamp(off * 2.5, -1, 1);
+      if (Math.abs(off) > arc) p._autoTurn = true;                                   // 超出射界 → 触发
+      else if (Math.abs(off) < 1.5 * Math.PI / 180) p._autoTurn = false;             // 对准 → 停
+      if (p._autoTurn) input.steer = SF.Util.clamp(off * 2.5, -1, 1);
     }
     return input;
   }

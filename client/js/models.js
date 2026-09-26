@@ -36,6 +36,7 @@ SF.Models = (() => {
       else if (o.name === 'muzzle') parts.muzzle = o;
     });
     parts.noTurret = !parts.turret;
+    if (parts.noTurret && parts.gun) parts.gun.rotation.order = 'YXZ';   // 歼击车: 炮管需在射界内横摆(先 yaw 后 pitch)
     return parts;
   }
 

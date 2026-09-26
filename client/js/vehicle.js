@@ -157,7 +157,10 @@ SF.Tank = class {
     this.group.position.set(this.x, this.y, this.z);
     this.group.rotation.set(-this.pitch, this.yaw, this.roll, 'YXZ');
     if (this.parts.turret) this.parts.turret.rotation.y = SF.Util.angDiff(this.yaw, this.turretYaw);
-    if (this.parts.gun) this.parts.gun.rotation.x = -this.gunPitch;  // gunPitch 已是车体相对角
+    if (this.parts.gun) {
+      if (this.parts.noTurret) this.parts.gun.rotation.y = SF.Util.angDiff(this.yaw, this.turretYaw);   // 歼击车: 炮管在射界内横摆
+      this.parts.gun.rotation.x = -this.gunPitch;  // gunPitch 已是车体相对角
+    }
   }
 
   /* 履带滚动: 负重轮旋转 + 履带纹理滚动(本地模拟与联机幽灵共用) */
