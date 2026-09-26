@@ -421,13 +421,14 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.4, max: 2.3, move: 1.6, hullTurn: 1.15, turretTurn: 0.6, fire: 1.15 }
     },
     /* ---------- 自行火炮(SPG): 高抛弹道 + 溅射伤害, Shift 鹰眼俯视瞄准 ----------
-       弹道参数按 WoT 火炮观感标定: 大重力+高仰角(78°) + 快弹速(飞行 ~3s, 不再飘); 中远程(~360m 起)走高抛吊射,
-       高抛仰角够不到的近距离退为低伸直射(火炮近战自保), 最大射程 ~860m 覆盖全图 */
+       弹道为纯曲射(WoT 火炮): 只走高抛根, 仰角 45°~84° 连续覆盖 ~180m 到最大射程;
+       近于最小射程(高抛根超 84°)压最大仰角打不进 —— 和 WoT 一样有最小射程, 绝不退化为直射;
+       最大射程 ~860-900m 覆盖全图, 飞行 ~2-3s */
     wespe: {
       name: '黄蜂', nation: 'GER', cls: 'SPG', tier: 'IV', hp: 460,
       maxSpeed: 11.1, reverseRatio: 0.4, accel: 3.6, brake: 8, coastDrag: 5.0,
       hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
-      gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
+      gunDepression: -8 * Math.PI / 180, gunElevation: 84 * Math.PI / 180,
       gun: { pen: 45, dmg: 340, reload: 13.5, speed: 540, grav: 339, splash: 4.4, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.4, w: 1.2 },
@@ -437,7 +438,7 @@ SF.CFG = {
       name: '野蜂', nation: 'GER', cls: 'SPG', tier: 'VI', hp: 540,
       maxSpeed: 12.5, reverseRatio: 0.4, accel: 3.8, brake: 8.5, coastDrag: 5.0,
       hullTraverse: 28 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
-      gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
+      gunDepression: -8 * Math.PI / 180, gunElevation: 84 * Math.PI / 180,
       gun: { pen: 62, dmg: 520, reload: 17, speed: 583, grav: 378, splash: 5.4, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.8, w: 1.4 },
@@ -447,7 +448,7 @@ SF.CFG = {
       name: 'M7 牧师', nation: 'USA', cls: 'SPG', tier: 'V', hp: 500,
       maxSpeed: 12.2, reverseRatio: 0.42, accel: 3.8, brake: 8.5, coastDrag: 5.2,
       hullTraverse: 32 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
-      gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
+      gunDepression: -8 * Math.PI / 180, gunElevation: 84 * Math.PI / 180,
       gun: { pen: 52, dmg: 430, reload: 15, speed: 550, grav: 348, splash: 4.8, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.9, w: 1.4 },
@@ -457,7 +458,7 @@ SF.CFG = {
       name: 'SU-26', nation: 'USSR', cls: 'SPG', tier: 'IV', hp: 480,
       maxSpeed: 10.3, reverseRatio: 0.4, accel: 3.4, brake: 8, coastDrag: 5.0,
       hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
-      gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
+      gunDepression: -8 * Math.PI / 180, gunElevation: 84 * Math.PI / 180,
       gun: { pen: 50, dmg: 330, reload: 12, speed: 517, grav: 310, splash: 4.0, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.4, w: 1.25 },

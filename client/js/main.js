@@ -581,7 +581,8 @@ SF.Main = (() => {
       const dx = aimPoint.pos.x - p.x, dz = aimPoint.pos.z - p.z;
       input.aimYaw = Math.atan2(dx, dz);
       input.aimPitch = Math.atan2(aimPoint.pos.y - (p.y + 2.2), Math.hypot(dx, dz));
-      // 自行火炮: 抛物线弹道解算仰角(WoT 高抛优先: 隔掩体吊射; 高抛仰角够不到的近距离退低伸直射)
+      // 自行火炮: 纯曲射解算(WoT 火炮) —— 只取高抛根, 永不直射;
+      // 近于最小射程(高抛根超出仰角上限)压最大仰角, 炮弹落在最小射程外(打不进近目标)
       if (p.spec.cls === 'SPG') {
         const v = p.spec.gun.speed, g = p.spec.gun.grav || SF.CFG.sim.shellGravity;
         const d = Math.hypot(dx, dz);
@@ -590,11 +591,8 @@ SF.Main = (() => {
         const disc = d * d - 4 * A * (A - h);
         const uMax = Math.tan(p.spec.gunElevation);
         let u = uMax;
-        if (d > 2 && disc >= 0) {
-          const uHi = (d + Math.sqrt(disc)) / (2 * A);       // 高抛解
-          u = uHi <= uMax ? uHi : (d - Math.sqrt(disc)) / (2 * A);   // 低伸解(直射自保)
-        }
-        input.aimPitch = Math.atan(Math.min(u, uMax));       // 超出射程: 压最大仰角
+        if (d > 2 && disc >= 0) u = Math.min((d + Math.sqrt(disc)) / (2 * A), uMax);   // 高抛解, 封顶
+        input.aimPitch = Math.atan(u);
       }
     } else { input.aimYaw = camYaw; input.aimPitch = 0; }
     // WoT 式右键自由视角: 按住右键时炮塔转角/炮管俯仰相对车体锁定(车体转动炮塔跟着走),
