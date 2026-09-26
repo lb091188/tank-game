@@ -17,6 +17,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Stamp version (commit time, seconds precision)
+        run: git log -1 --format=%cI > client/version.txt
+
       - name: Publish client/ → gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:

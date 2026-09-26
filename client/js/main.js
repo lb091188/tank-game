@@ -681,6 +681,16 @@ SF.Main = (() => {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('titleScreen').style.display = 'flex';
     showTip('tipOnTitle');
+    // 版本号: CI 部署时写入提交时刻(精确到秒); 本地无此文件则静默隐藏
+    fetch('version.txt?v=' + Date.now(), { cache: 'no-store' })
+      .then(r => r.ok ? r.text() : Promise.reject())
+      .then(t => {
+        const d = new Date(t.trim());
+        if (isNaN(d)) return;
+        const p2 = n => String(n).padStart(2, '0');
+        document.getElementById('verStamp').textContent =
+          `v${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+      }).catch(() => { });
     // 恢复上次选择的坦克与地图
     selTank = localStorage.getItem('sf_mp_tank') || selTank;
     selMap = localStorage.getItem('sf_map') || selMap;
