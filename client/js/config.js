@@ -33,7 +33,7 @@ SF.CFG = {
       dispersion: { base: 0.36, aimTime: 2.0, max: 2.2, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     jumbo: {
-      name: 'M4A3E2 突击型', nation: 'USA', cls: 'HT', tier: 'VI', hp: 1150,
+      name: 'M4A3E2', nation: 'USA', cls: 'HT', tier: 'VI', hp: 1150,
       maxSpeed: 11.0, reverseRatio: 0.4, accel: 3.2, brake: 8.5, coastDrag: 5.0,
       hullTraverse: 32 * Math.PI / 180, turretTraverse: 30 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -464,7 +464,7 @@ SF.CFG = {
       dispersion: { base: 1.1, aimTime: 4.4, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
     },
     medium: {
-      name: '敌方中型坦克', hp: 550,
+      name: '敌方中坦', hp: 550,
       maxSpeed: 12.5, reverseRatio: 0.45, accel: 3.8, brake: 9, coastDrag: 5.2,
       hullTraverse: 42 * Math.PI / 180, turretTraverse: 40 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 16 * Math.PI / 180,
@@ -473,7 +473,7 @@ SF.CFG = {
       dispersion: { base: 0.42, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     td: {
-      name: '敌方坦克歼击车', hp: 650,
+      name: '敌方歼击车', hp: 650,
       maxSpeed: 9.7, reverseRatio: 0.4, accel: 3.0, brake: 8, coastDrag: 4.6,
       hullTraverse: 20 * Math.PI / 180, turretTraverse: 0.45 * Math.PI / 180, gunArc: 10 * Math.PI / 180,   // 固定战斗室: ±10° 射界内横向伺服, 超界自动转车体
       gunDepression: -8 * Math.PI / 180, gunElevation: 12 * Math.PI / 180,
@@ -482,7 +482,7 @@ SF.CFG = {
       dispersion: { base: 0.30, aimTime: 2.6, max: 2.0, move: 2.0, hullTurn: 1.4, turretTurn: 0.5, fire: 1.8 }
     },
     heavy: {
-      name: '敌方重型坦克', hp: 1000,
+      name: '敌方重坦', hp: 1000,
       maxSpeed: 7.8, reverseRatio: 0.38, accel: 2.6, brake: 7.5, coastDrag: 4.2,
       hullTraverse: 24 * Math.PI / 180, turretTraverse: 28 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 14 * Math.PI / 180,
