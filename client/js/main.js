@@ -54,6 +54,7 @@ SF.Main = (() => {
   let spottedTimer = 0;
   const spotted = new Set();
   const spottedLast = new Map();   // 敌 → 最后点亮时刻
+  const lastKnown = new Map();     // 敌 → 最后已知位置(小地图丢亮点后原地保留, WoT 式)
   const spotStreak = new Map();    // 敌 → 本次持续点亮起始时刻(决定残留时长 5→10s)
   const spotLinger = new Map();    // 敌 → 丢失视野后的残留秒数(WoT: 最短 5s, 持续暴露可延至 10s)
   let lampT = 0;                   // 被敌人持续注视的时长(六感灯 3s 延迟, WoT)
@@ -128,7 +129,7 @@ SF.Main = (() => {
     buildTrajLine();
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
-      aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT,
+      aimPoint, gunAim, sniper, spotted, lastKnown, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT,
       mission: (() => {
         if (!world.map) return null;
         if (SF.Game_mp.mode === 'sp') return { idx: waveIdx, total: world.map.waves.length, name: (world.map.waves[waveIdx] || {}).name || '', kills: stats.kills, totalEnemies: stats.total };
@@ -608,7 +609,7 @@ SF.Main = (() => {
     SF.Bus.on('fire', (e) => {
       e.tank.lastFireT = world.time;
       if (e.tank.isPlayer) stats.shots++;
-      if (e.tank.team !== world.player.team) SF.HUD.shotFrom(e.pos, false);   // 敌方炮口小地图标记
+      if (e.tank.team !== world.player.team) { SF.HUD.shotFrom(e.pos, false); lastKnown.set(e.tank, { x: e.tank.x, z: e.tank.z }); }   // 敌方炮口小地图标记
       // 玩家(或友军)开炮: 炮声全图可闻 → 上报全队情报(误差随距离增大, 远处只知个大概)
       if (e.tank.isPlayer || e.tank.team === world.player.team) {
         let minD = 1e9;
@@ -775,6 +776,8 @@ SF.Main = (() => {
       for (const [e, t0] of spottedLast)
         if (world.time - t0 < (spotLinger.get(e) || 5)) spotted.add(e);
         else { spottedLast.delete(e); spotLinger.delete(e); }
+      for (const e of spotted) lastKnown.set(e, { x: e.x, z: e.z });   // 点亮=实时刷新最后已知位置
+      for (const [e] of lastKnown) if (!e.alive) lastKnown.delete(e);
     }
     if (MP.mode === 'host') {   // 死斗小地图红点: 其他玩家(同套隐蔽/通视/强制点亮)
       spottedTimer -= dt;
@@ -793,6 +796,8 @@ SF.Main = (() => {
         for (const [t, t0] of spottedLast)
           if (world.time - t0 < (spotLinger.get(t) || 5)) spotted.add(t);
           else { spottedLast.delete(t); spotLinger.delete(t); }
+        for (const t of spotted) lastKnown.set(t, { x: t.x, z: t.z });
+        for (const [t] of lastKnown) if (!t.alive) lastKnown.delete(t);
       }
     }
     let enemySeesMe = false;
@@ -1112,7 +1117,7 @@ SF.Main = (() => {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairDone = false; spottedTimer = 0;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
     vcx = innerWidth / 2; vcy = innerHeight / 2;
-    spottedLast.clear(); spotStreak.clear(); spotLinger.clear(); lampT = 0;
+    spottedLast.clear(); spotStreak.clear(); spotLinger.clear(); lastKnown.clear(); lampT = 0;
     stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   }
   function leaveBattle() {
@@ -1213,6 +1218,8 @@ SF.Main = (() => {
       for (const [t, t0] of spottedLast)
         if (world.time - t0 < (spotLinger.get(t) || 5)) spotted.add(t);
         else { spottedLast.delete(t); spotLinger.delete(t); }
+      for (const t of spotted) lastKnown.set(t, { x: t.x, z: t.z });
+      for (const [t] of lastKnown) if (!t.alive) lastKnown.delete(t);
     }
     const seenByHost = MP.gameMode === 'coop' ? (p.alive && !!(snap.dt && snap.dt[MP.myId])) : (p.alive && spotted.size > 0);
     if (seenByHost) { lampT += dt; lastSpottedT = world.time; }

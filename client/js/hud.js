@@ -158,9 +158,9 @@ SF.HUD = (() => {
   }
 
   // 小地图敌车类标(WoT 式): 完整菱形=轻坦, 竖缝一分为二=中坦, 三瓣=重坦, ▽歼击 □火炮
-  function clsMark(ctx, cls, x, y) {
+  function clsMark(ctx, cls, x, y, col) {
     const h = 6.6, w = h * 1.35, gap = 1.3;
-    ctx.fillStyle = '#e33';
+    ctx.fillStyle = col || '#e33';
     const n = cls === 'LT' ? 1 : cls === 'MT' ? 2 : cls === 'HT' ? 3 : 0;
     if (n) {
       const yTop = (xx) => xx <= w / 2 ? h / 2 - (h / w) * xx : (h / w) * (xx - w / 2);
@@ -280,13 +280,22 @@ SF.HUD = (() => {
       const [mx, my] = worldToMap(c.x, c.z, T);
       ctx.fillRect(mx - 1, my - 1, 2.5, 2.5);
     }
-    // 被发现/最近开火的敌人
+    // 敌标(WoT 式): 点亮=实时红标; 开炮暴露=亮标; 丢亮点=停在最后已知位置的暗标
     for (const e of world.enemies) {
       if (!e.alive) continue;
-      const spotted = uiState.spotted.has(e) || world.time - (e.lastFireT || -99) < 5;
-      if (!spotted) continue;
-      const [mx, my] = worldToMap(e.x, e.z, T);
-      clsMark(ctx, e.spec.cls, mx, my);
+      if (uiState.spotted.has(e)) {
+        const [mx, my] = worldToMap(e.x, e.z, T);
+        clsMark(ctx, e.spec.cls, mx, my);
+      } else if (world.time - (e.lastFireT || -99) < 5) {
+        const [mx, my] = worldToMap(e.x, e.z, T);
+        clsMark(ctx, e.spec.cls, mx, my);
+      } else {
+        const lk = uiState.lastKnown && uiState.lastKnown.get(e);
+        if (lk) {
+          const [mx, my] = worldToMap(lk.x, lk.z, T);
+          clsMark(ctx, e.spec.cls, mx, my, 'rgba(227,70,55,.45)');
+        }
+      }
     }
     // 玩家箭头
     const [px, py] = worldToMap(player.x, player.z, T);
