@@ -52,6 +52,7 @@ SF.Main = (() => {
   let keySeen = false, hintShown = false;   // 键盘诊断: 是否收到过按键
   let spottedTimer = 0;
   const spotted = new Set();
+  const spottedLast = new Map();   // 敌 → 最后点亮时刻(5s 残留, 丢视野不再瞬灭)
   let waveIdx = 0, waveEnemies = [], repairT = 0, repairDone = false, gameOver = false, loseT = -1;
   let stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   let aimPoint = null, gunAim = null;
@@ -726,23 +727,30 @@ SF.Main = (() => {
       checkWave();
     }
 
-    // 玩家对敌发现(小地图/血条显示用) + 点亮机制(被敌人看见 → 灯泡+滴滴)
+    // 玩家对敌发现(小地图/血条显示用): 多点通视(卖头也算点亮) + 5s 残留(丢视野不再瞬灭)
     spottedTimer -= dt;
     if (spottedTimer <= 0) {
       spottedTimer = 0.25;
+      for (const e of world.enemies) {
+        if (!e.alive) { spottedLast.delete(e); continue; }
+        if (U.dist2d(p.x, p.z, e.x, e.z) < SF.CFG.player.viewRange && SF.losClearAny(world, p.x, p.z, e.x, e.z))
+          spottedLast.set(e, world.time);
+      }
       spotted.clear();
-      for (const e of world.enemies)
-        if (e.alive && U.dist2d(p.x, p.z, e.x, e.z) < SF.CFG.player.viewRange && SF.losClear(world, p.x, p.z, e.x, e.z))
-          spotted.add(e);
+      for (const [e, t0] of spottedLast) if (world.time - t0 < 5) spotted.add(e);
     }
-    if (MP.mode === 'host') {   // 死斗小地图红点: 其他玩家
+    if (MP.mode === 'host') {   // 死斗小地图红点: 其他玩家(同套多点通视+残留)
       spottedTimer -= dt;
       if (spottedTimer <= 0) {
         spottedTimer = 0.25;
+        for (const [id, t] of MP.tanks) {
+          if (id === MP.myId) continue;
+          if (!t.alive) { spottedLast.delete(t); continue; }
+          if (U.dist2d(p.x, p.z, t.x, t.z) < SF.CFG.player.viewRange && SF.losClearAny(world, p.x, p.z, t.x, t.z))
+            spottedLast.set(t, world.time);
+        }
         spotted.clear();
-        for (const [id, t] of MP.tanks)
-          if (id !== MP.myId && t.alive && U.dist2d(p.x, p.z, t.x, t.z) < SF.CFG.player.viewRange && SF.losClear(world, p.x, p.z, t.x, t.z))
-            spotted.add(t);
+        for (const [t, t0] of spottedLast) if (world.time - t0 < 5) spotted.add(t);
       }
     }
     let enemySeesMe = false;
@@ -1056,6 +1064,7 @@ SF.Main = (() => {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairDone = false; spottedTimer = 0;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
     vcx = innerWidth / 2; vcy = innerHeight / 2;
+    spottedLast.clear();
     stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   }
   function leaveBattle() {

@@ -11,6 +11,20 @@ SF.losClear = function (world, ax, az, bx, bz) {
   return world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len) < 0;
 };
 
+// 多点通视(点亮用): 目标车体 1.2m / 塔心 2.0m / 炮塔顶 2.8m 任一点通视即算可见
+// ——卖头(只露炮塔)或半坡露体的坦克不能再"明明看得见却不点亮"
+SF.losClearAny = function (world, ax, az, bx, bz) {
+  const by0 = world.terrain.heightAt(bx, bz);
+  for (const h of [1.2, 2.0, 2.8]) {
+    const ay = world.terrain.heightAt(ax, az) + 2.0, by = by0 + h;
+    if (world.terrain.losBlocked(ax, az, ay, bx, bz, by)) continue;
+    const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
+    if (len < 1) return true;
+    if (world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len) < 0) return true;
+  }
+  return false;
+};
+
 // AI 目标选择: 合作模式多名玩家 → 锁定最近存活者; 单机 → world.player
 function nearestTarget(world, from) {
   if (world.mpTargets && world.mpTargets.length) {
@@ -91,7 +105,7 @@ SF.AI = class {
     this.seen = false;
     if (player && player.alive) {
       const d = SF.Util.dist2d(this.tank.x, this.tank.z, player.x, player.z);
-      if (d < SF.CFG.ai.viewRange && SF.losClear(world, this.tank.x, this.tank.z, player.x, player.z)) {
+      if (d < SF.CFG.ai.viewRange && SF.losClearAny(world, this.tank.x, this.tank.z, player.x, player.z)) {
         this.seen = true;
         this.lastSeen = { x: player.x, z: player.z, vx: player.velX || 0, vz: player.velZ || 0, t: world.time };
         this.lastTargetId = player.netId || 0;
@@ -192,14 +206,41 @@ SF.AI = class {
       const tgt = cands[0] || this.home;
       const intel = world.intel;
       const intelFresh = intel.level > 0 && world.time - intel.t < SF.CFG.ai.searchTime;
+      const intelFresh2 = intel.level === 2 && world.time - intel.t < 8;   // 确认接触且情报新鲜
       const hurtRecent = this._hurtT && world.time - this._hurtT < 12;   // 刚挨打: 反应升级
       // 守位单位(蹲点歼击/守线重坦): 敌情未确认只原地警戒炮口指向;
-      // 自己挨了打 / 全队已目视确认且警戒数秒无果 → 离位加入围剿
-      const holdHold = this.hold && !hurtRecent && !(intel.level === 2 && world.time - this._alertT > 7);
+      // 自己挨了打 / 全队确认接触且警戒数秒无果 → 离位加入围剿
+      const holdHold = this.hold && !hurtRecent && !(intelFresh2 && world.time - this._alertT > 4);
       if (holdHold) {
         this.input.throttle = 0; this.input.steer = 0;
         this.input.aimYaw = Math.atan2(tgt.x - t.x, tgt.z - t.z);
         this.input.aimPitch = 0.02;
+      } else if (intelFresh2 && !this.hold) {
+        /* --- 协同突入: 确认接触且情报新鲜 → 最近的先压上去掏人, 其余架枪支援后错峰跟进 ---
+           不再傻等"看见"才动: 你躲进反斜面/掩体, 他们直接压到脸上把你掀出来 */
+        let rank = 0, myD = SF.Util.dist2d(t.x, t.z, tgt.x, tgt.z);
+        for (const o of world.enemies) {
+          if (o === t || !o.alive || !o.ai || o.ai.state === 'combat') continue;
+          const od = SF.Util.dist2d(o.x, o.z, tgt.x, tgt.z);
+          if (od < myD || (od === myD && o.ai.flankSlot < this.flankSlot)) rank++;
+        }
+        if (this._intelT === undefined || intel.t > this._intelT + 0.5) {   // 情报刷新 → 重新排突入次序
+          this._intelT = intel.t;
+          this._pushAt = world.time + rank * 2.5;
+        }
+        if (world.time >= (this._pushAt || 0) || hurtRecent) {
+          this.navigate(tgt.x, tgt.z, dt, world);                          // 直插情报点
+          this.input.aimYaw = Math.atan2(tgt.x - t.x, tgt.z - t.z);        // 边压边瞄
+          this.input.aimPitch = 0.02;
+        } else {
+          // 等待突入次序: 压到自己的环位, 炮口始终瞄准情报点(支援架枪)
+          const ringR = (P.band[0] + P.band[1]) * 0.5;
+          const bx = tgt.x + Math.sin(this.flankSlot) * ringR, bz = tgt.z + Math.cos(this.flankSlot) * ringR;
+          if (SF.Util.dist2d(t.x, t.z, bx, bz) > 10) this.navigate(bx, bz, dt, world);
+          else { this.input.throttle = 0; this.input.steer = 0; }
+          this.input.aimYaw = Math.atan2(tgt.x - t.x, tgt.z - t.z);
+          this.input.aimPitch = 0.02;
+        }
       } else {
         // 有方法的围攻: 各车从自己的合围扇区接近; 刚挨打的车压得更近(报复性追击)
         const ringR = hurtRecent ? P.band[0] * 0.7 : (P.band[0] + P.band[1]) * 0.5;
@@ -207,12 +248,13 @@ SF.AI = class {
         if (SF.Util.dist2d(t.x, t.z, bx, bz) > 12) {
           this.navigate(bx, bz, dt, world);
         } else {
-          // 包围圈就位仍未接触: 围绕情报点游走搜索
+          // 包围圈就位仍未接触: 围绕情报点游走搜索(偏向内圈, 更敢掏)
           this._searchT -= dt;
           if (this._searchT <= 0 || !this._searchPt) {
             this._searchT = 3.5 + Math.random() * 3.5;
-            this._searchPt = { x: U.clamp(tgt.x + (Math.random() - .5) * ringR, -430, 430),
-                               z: U.clamp(tgt.z + (Math.random() - .5) * ringR, -430, 430) };
+            const rr = Math.random() < 0.5 ? ringR * 0.55 : ringR;
+            this._searchPt = { x: U.clamp(tgt.x + (Math.random() - .5) * 2 * rr, -430, 430),
+                               z: U.clamp(tgt.z + (Math.random() - .5) * 2 * rr, -430, 430) };
           }
           this.navigate(this._searchPt.x, this._searchPt.z, dt, world);
         }
@@ -222,7 +264,7 @@ SF.AI = class {
       }
       // 搜剿超时仍无果 → 回归巡逻(玩家一直开炮/命中则情报持续刷新, 搜剿不结束)
       if (!this.seenNow && !intelFresh && world.time - this._alertT > SF.CFG.ai.searchTime) {
-        this._alertT = 0; this._searchT = 0; this._searchPt = null; this.heard = null; this.state = 'patrol';
+        this._alertT = 0; this._searchT = 0; this._searchPt = null; this.heard = null; this._pushAt = null; this.state = 'patrol';
       }
     }
     else if (this.state === 'combat') {
@@ -277,9 +319,11 @@ SF.AI = class {
       this.input.aimPitch = SF.Util.clamp(Math.atan2(dy, Math.max(dh, 1)), t.spec.gunDepression, t.spec.gunElevation);
 
       // 开火纪律: 需 reaction 过后 + 炮口对准 + 缩圈达标(耐心差 → 圈大也开火 → 天然打不准)
+      // 近战豁免: 贴脸/狗斗(distP < 常驻距离下沿×1.2)时大幅放宽缩圈要求——绕圈也要敢开炮, 对枪靠走位弥补精度
       const aimed = Math.abs(SF.Util.angDiff(t.turretYaw, this.input.aimYaw)) < 0.05;
       const D = t.spec.dispersion;
-      const fireThreshold = D.base + (D.max - D.base) * (1 - P.aimPatience) * 0.8;
+      const brawl = distP < P.band[0] * 1.2;
+      const fireThreshold = D.base + (D.max - D.base) * (brawl ? 0.5 : (1 - P.aimPatience) * 0.8);
       this.input.fire = this.seenNow && this.reactT <= 0 && aimed && t.reloadT <= 0 && t.disp < fireThreshold;
     }
     return this.input;
