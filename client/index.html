@@ -163,7 +163,13 @@
   #sniperOverlay::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(20,20,20,.8); }
 
   /* 结算 */
-  #overlay { display: none; position: fixed; inset: 0; background: rgba(8, 10, 6, .78); z-index: 80; flex-direction: column; align-items: center; justify-content: center; }
+  #overlay { display: none; position: fixed; inset: 0; background: rgba(8, 10, 6, .78); z-index: 80; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: opacity .4s ease; }
+  #overlay.on { opacity: 1; }
+  /* 结算入场: 背景渐暗 + 标题/按钮/战报依次上浮 */
+  #overlay.on #endTitle { animation: endIn .5s .06s cubic-bezier(.2, .8, .3, 1) both; }
+  #overlay.on #endBtns { animation: endIn .5s .2s cubic-bezier(.2, .8, .3, 1) both; }
+  #overlay.on #endStats { animation: endIn .5s .34s cubic-bezier(.2, .8, .3, 1) both; }
+  @keyframes endIn { from { opacity: 0; transform: translateY(26px); } }
   #endTitle { font-size: 46px; letter-spacing: 10px; margin-bottom: 22px; }
   #endStats { color: #b9bfa8; font-size: 16px; line-height: 2; text-align: center; }
   #endStats b { color: #e0d6a8; }

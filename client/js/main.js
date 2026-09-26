@@ -1071,7 +1071,8 @@ SF.Main = (() => {
     if (MP.mode !== 'sp') { SF.Net.stopInputLoop(); SF.Net.close(); MP.mode = 'sp'; MP.tanks.clear(); }
     SF.Audio.stopBattle();
     document.getElementById('hud').style.display = 'none';
-    document.getElementById('overlay').style.display = 'none';
+    const ovEl = document.getElementById('overlay');
+    ovEl.classList.remove('on'); ovEl.style.display = 'none';
   }
   function exitToTitle() {
     leaveBattle();
@@ -1217,7 +1218,7 @@ SF.Main = (() => {
     SF.Net.on('end', (m) => {
       gameOver = true;
       const rows = m.scores.map(([id, name, k]) => `<div style="color:${id === MP.myId ? '#ffd97a' : '#b9bfa8'}">${id === MP.myId ? '★ ' : ''}${name} — ${k} 击杀</div>`).join('');
-      document.getElementById('overlay').style.display = 'flex';
+      SF.HUD.showOverlay();
       document.getElementById('endTitle').textContent = m.win ? '✓ 任务完成' : '对战结束';
       document.getElementById('endTitle').style.color = m.win ? '#8fd98f' : '#d8c887';
       document.getElementById('endStats').innerHTML = `<div style="font-size:20px;line-height:2.2">${rows}</div>`;
@@ -1232,7 +1233,7 @@ SF.Main = (() => {
     const scores = MP.players.map(pl => [pl.id, pl.name, MP.scores.get(pl.id) || 0]).sort((a, b) => b[2] - a[2]);
     SF.Net.send({ t: 'end', scores });
     const rows = scores.map(([id, name, k]) => `<div style="color:${id === MP.myId ? '#ffd97a' : '#b9bfa8'}">${id === MP.myId ? '★ ' : ''}${name} — ${k} 击杀</div>`).join('');
-    document.getElementById('overlay').style.display = 'flex';
+    SF.HUD.showOverlay();
     document.getElementById('endTitle').textContent = '对战结束';
     document.getElementById('endTitle').style.color = '#d8c887';
     document.getElementById('endStats').innerHTML = `<div style="font-size:20px;line-height:2.2">${rows}</div>`;

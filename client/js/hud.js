@@ -360,9 +360,17 @@ SF.HUD = (() => {
       s.classList.toggle('on', !!(uiState.keys && uiState.keys[s.dataset.k])));
   }
 
+  // 结算屏入场: 先 display 再强制回流后挂 .on, 让渐暗+上浮动画每次都完整播放
+  function showOverlay() {
+    const ov = $('overlay');
+    ov.style.display = 'flex';
+    void ov.offsetWidth;
+    ov.classList.add('on');
+  }
+
   function endGame(win, stats) {
     if (document.exitPointerLock) document.exitPointerLock();   // 结算界面需要鼠标操作, 释放锁定
-    $('overlay').style.display = 'flex';
+    showOverlay();
     // 再战一局仅单机可用(联机需回大厅重新匹配)
     $('btnRetry').style.display = (SF.Game_mp && SF.Game_mp.mode === 'sp') ? '' : 'none';
     $('endTitle').textContent = win ? '✓ 任务完成' : '✗ 任务失败';
@@ -384,5 +392,5 @@ SF.HUD = (() => {
     d.style.display = d.style.display === 'block' ? 'none' : 'block';
   }
 
-  return { init, update, dmgNumber, hitFrom, shotFrom, hitFeedback, alarm, log, showMsg, endGame, project, toggleMissionDetail, toggleBigMap };
+  return { init, update, dmgNumber, hitFrom, shotFrom, hitFeedback, alarm, log, showMsg, endGame, showOverlay, project, toggleMissionDetail, toggleBigMap };
 })();
