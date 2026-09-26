@@ -152,8 +152,18 @@ SF.Main = (() => {
     if (MP.mode !== 'sp')
       for (const pl of MP.players) pt = Math.max(pt, TIER_NUM[(SF.CFG.vehicles[pl.tank] || {}).tier] || 5);
     const waveBand = i === 0 ? [pt - 1, pt] : [pt, pt + 1];
-    const n = wave.enemies.length;
-    waveEnemies = wave.enemies.map((def, wi) => {
+    // 按玩家数量定敌军规模(带随机浮动): 单人少打一两个, 每多一名玩家约 +1.6 辆
+    const nP = MP.mode === 'sp' ? 1 : Math.max(1, MP.players.length);
+    const target = Math.max(1, Math.min(9, Math.round(
+      wave.enemies.length + (nP - 1) * 1.6 + (Math.random() - 0.5) * 1.5 + (nP === 1 ? -1 : 0))));
+    const defs = wave.enemies.slice();
+    while (defs.length > target) defs.splice((Math.random() * defs.length) | 0, 1);   // 随机裁减
+    while (defs.length < target) {                    // 增援: 优先复制机动单位, 出生位大幅偏移
+      const src = defs.find(d => !d.hold) || defs[0] || wave.enemies[0];
+      defs.push({ ...src, pos: [src.pos[0] + (Math.random() - 0.5) * 180, src.pos[1] + (Math.random() - 0.5) * 180] });
+    }
+    const n = defs.length;
+    waveEnemies = defs.map((def, wi) => {
       // 出生随机化(每局布局不同): 守位单位 ±18m, 机动单位 ±65m, 巡逻点独立再随机 ±25m
       const jr = def.hold ? 18 : 65;
       const dx = (Math.random() - 0.5) * 2 * jr, dz = (Math.random() - 0.5) * 2 * jr;
