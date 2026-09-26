@@ -92,13 +92,13 @@ SF.Tank = class {
     this.z += Math.cos(this.yaw) * this.speed * dt;
     this.x = U.clamp(this.x, -T.half + 16, T.half - 16);
     this.z = U.clamp(this.z, -T.half + 16, T.half - 16);
-    // 掩体碰撞: 车体 OBB(真实长宽) vs 掩体 SAT 推出; 顶着障碍硬闯 → 掉速(斜擦滑行不受罚)
+    // 掩体碰撞: 车体 OBB(真实长宽) vs 掩体 SAT 推出; 真正迎面顶撞才掉速(斜擦/狗斗贴靠不受罚)
     const cx0 = this.x, cz0 = this.z;
     [this.x, this.z] = world.covers.collideTank(this);
     if (this.x !== cx0 || this.z !== cz0) {
       const px2 = this.x - cx0, pz2 = this.z - cz0, pl = Math.hypot(px2, pz2) || 1;
-      const vdotn = (Math.sin(this.yaw) * this.speed * px2 + Math.cos(this.yaw) * this.speed * pz2) / pl;
-      if (vdotn < -0.4) this.speed *= 0.25;
+      const cosv = (Math.sin(this.yaw) * px2 + Math.cos(this.yaw) * pz2) / pl;   // 车头 vs 推出方向(纯方向, 不含速度)
+      if (cosv < -0.5 && Math.abs(this.speed) > 1) this.speed *= 0.3;            // 迎面 60° 锥内才算顶撞
     }
     // 车车碰撞: 含残骸(击毁的车也是实体); 车体 OBB 互推, 顶撞掉速
     // 快速剔除用真外接半径(hypot(半宽,半长)), 用小了会漏检头尾相触
@@ -112,8 +112,8 @@ SF.Tank = class {
       const push = SF.Util.obbPushOut(me, { x: o.x, z: o.z, yaw: o.yaw, hx: o.spec.sample.w, hz: o.spec.sample.l });
       if (push) {
         me.x += push[0]; me.z += push[1];
-        const vdotn = (Math.sin(this.yaw) * this.speed * push[0] + Math.cos(this.yaw) * this.speed * push[1]) / (Math.hypot(push[0], push[1]) || 1);
-        if (vdotn < -0.4) this.speed *= 0.4;
+        const cosv = (Math.sin(this.yaw) * push[0] + Math.cos(this.yaw) * push[1]) / (Math.hypot(push[0], push[1]) || 1);
+        if (cosv < -0.5 && Math.abs(this.speed) > 1) this.speed *= 0.4;
       }
     }
     this.x = me.x; this.z = me.z;

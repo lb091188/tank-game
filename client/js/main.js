@@ -500,7 +500,7 @@ SF.Main = (() => {
     });
   }
 
-  const IDLE_INPUT = (t) => ({ throttle: 0, steer: 0, aimYaw: t.turretYaw, aimPitch: t.gunPitch, fire: false });
+  const IDLE_INPUT = (t) => ({ throttle: 0, steer: 0, aimYaw: t.turretYaw, aimPitch: t.gunPitch, fire: false, holdTurret: true });
 
   // 自动瞄准(WoT E): 锁定准星方向最近的可见敌人, 炮塔持续跟踪
   function playerEnemies() {
@@ -708,12 +708,15 @@ SF.Main = (() => {
         }
       }
       MP.respawn = MP.respawn.filter(r => r.t > 0);
-      if (MP.gameMode === 'coop') for (const e of world.enemies) e.update(e.ai.update(dt, world), dt, world);
+      if (MP.gameMode === 'coop') for (const e of world.enemies) e.update(gameOver ? IDLE_INPUT(e) : e.ai.update(dt, world), dt, world);
       MP.timeLeft -= dt;
       if (MP.timeLeft <= 0 && !gameOver) endMatch();
     } else {
-      for (const e of world.enemies)
-        e.update(e.ai.update(dt, world), dt, world);   // 死亡车辆也要更新(残骸沉降/冒烟), update 内部分支处理
+      // 结算后敌人熄火滑停(不再绕圈搜索/扫炮), 在飞炮弹与特效照常结算
+      for (const e of world.enemies) {
+        const inp = gameOver ? IDLE_INPUT(e) : e.ai.update(dt, world);
+        e.update(inp, dt, world);   // 死亡车辆也要更新(残骸沉降/冒烟), update 内部分支处理
+      }
     }
 
     shells.update(dt, world);
