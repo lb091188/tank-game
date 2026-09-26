@@ -1069,7 +1069,7 @@ SF.Main = (() => {
     SF.Audio.stopBattle();
     document.getElementById('hud').style.display = 'none';
     const ovEl = document.getElementById('overlay');
-    ovEl.classList.remove('on'); ovEl.style.display = 'none';
+    ovEl.classList.remove('on', 'settled'); ovEl.style.display = 'none';
   }
   function exitToTitle() {
     leaveBattle();

@@ -360,12 +360,16 @@ SF.HUD = (() => {
       s.classList.toggle('on', !!(uiState.keys && uiState.keys[s.dataset.k])));
   }
 
-  // 结算屏入场: 先 display 再强制回流后挂 .on, 让渐暗+上浮动画每次都完整播放
+  // 结算屏入场: 先 display 再强制回流后挂 .on, 让渐暗+上浮动画每次都完整播放;
+  // 1 秒后挂 .settled 强制内容落定可见(动画不推进的环境下 both 填充会卡在透明 from 态)
   function showOverlay() {
     const ov = $('overlay');
+    ov.classList.remove('settled');
     ov.style.display = 'flex';
     void ov.offsetWidth;
     ov.classList.add('on');
+    clearTimeout(showOverlay._t);
+    showOverlay._t = setTimeout(() => ov.classList.add('settled'), 1000);
   }
 
   function endGame(win, stats) {

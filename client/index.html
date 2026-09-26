@@ -170,6 +170,9 @@
   #overlay.on #endBtns { animation: endIn .5s .2s cubic-bezier(.2, .8, .3, 1) both; }
   #overlay.on #endStats { animation: endIn .5s .34s cubic-bezier(.2, .8, .3, 1) both; }
   @keyframes endIn { from { opacity: 0; transform: translateY(26px); } }
+  /* 兜底: 内嵌浏览器/节流环境下动画可能不推进, both 填充会让内容永久卡在
+     from(全透明) → 1 秒后 JS 挂 .settled 强制落定可见(见 hud.showOverlay) */
+  #overlay.settled #endTitle, #overlay.settled #endBtns, #overlay.settled #endStats { animation: none; opacity: 1; transform: none; }
   #endTitle { font-size: 46px; letter-spacing: 10px; margin-bottom: 22px; }
   #endStats { color: #b9bfa8; font-size: 16px; line-height: 2; text-align: center; }
   #endStats b { color: #e0d6a8; }
