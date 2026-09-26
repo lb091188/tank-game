@@ -420,13 +420,15 @@ SF.CFG = {
       sample: { l: 3.1, w: 1.5 },
       dispersion: { base: 0.40, aimTime: 2.4, max: 2.3, move: 1.6, hullTurn: 1.15, turretTurn: 0.6, fire: 1.15 }
     },
-    /* ---------- 自行火炮(SPG): 高抛弹道 + 溅射伤害, Shift 鹰眼俯视瞄准 ---------- */
+    /* ---------- 自行火炮(SPG): 高抛弹道 + 溅射伤害, Shift 鹰眼俯视瞄准 ----------
+       弹道参数按 WoT 火炮观感标定: 大重力+高仰角(78°) → 中远程(~360m 起)走高抛吊射,
+       高抛仰角够不到的近距离退为低伸直射(火炮近战自保), 最大射程 ~860m 覆盖全图 */
     wespe: {
       name: '黄蜂 自行火炮', nation: 'GER', cls: 'SPG', tier: 'IV', hp: 460,
       maxSpeed: 11.1, reverseRatio: 0.4, accel: 3.6, brake: 8, coastDrag: 5.0,
       hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
-      gunDepression: -8 * Math.PI / 180, gunElevation: 46 * Math.PI / 180,
-      gun: { pen: 45, dmg: 340, reload: 13.5, speed: 150, grav: 22, splash: 4.4, life: 9 },
+      gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
+      gun: { pen: 45, dmg: 340, reload: 13.5, speed: 245, grav: 70, splash: 4.4, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.4, w: 1.2 },
       dispersion: { base: 1.15, aimTime: 4.6, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
@@ -435,8 +437,8 @@ SF.CFG = {
       name: '野蜂 自行火炮', nation: 'GER', cls: 'SPG', tier: 'VI', hp: 540,
       maxSpeed: 12.5, reverseRatio: 0.4, accel: 3.8, brake: 8.5, coastDrag: 5.0,
       hullTraverse: 28 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
-      gunDepression: -8 * Math.PI / 180, gunElevation: 46 * Math.PI / 180,
-      gun: { pen: 62, dmg: 520, reload: 17, speed: 160, grav: 24, splash: 5.4, life: 9 },
+      gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
+      gun: { pen: 62, dmg: 520, reload: 17, speed: 265, grav: 78, splash: 5.4, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.8, w: 1.4 },
       dispersion: { base: 1.3, aimTime: 5.0, max: 2.8, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
@@ -445,8 +447,8 @@ SF.CFG = {
       name: 'M7 牧师 自行火炮', nation: 'USA', cls: 'SPG', tier: 'V', hp: 500,
       maxSpeed: 12.2, reverseRatio: 0.42, accel: 3.8, brake: 8.5, coastDrag: 5.2,
       hullTraverse: 32 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
-      gunDepression: -8 * Math.PI / 180, gunElevation: 44 * Math.PI / 180,
-      gun: { pen: 52, dmg: 430, reload: 15, speed: 155, grav: 22, splash: 4.8, life: 9 },
+      gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
+      gun: { pen: 52, dmg: 430, reload: 15, speed: 250, grav: 72, splash: 4.8, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.9, w: 1.4 },
       dispersion: { base: 1.2, aimTime: 4.8, max: 2.7, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
@@ -455,8 +457,8 @@ SF.CFG = {
       name: 'SU-26 自行火炮', nation: 'USSR', cls: 'SPG', tier: 'IV', hp: 480,
       maxSpeed: 10.3, reverseRatio: 0.4, accel: 3.4, brake: 8, coastDrag: 5.0,
       hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
-      gunDepression: -8 * Math.PI / 180, gunElevation: 44 * Math.PI / 180,
-      gun: { pen: 50, dmg: 330, reload: 12, speed: 140, grav: 20, splash: 4.0, life: 9 },
+      gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
+      gun: { pen: 50, dmg: 330, reload: 12, speed: 235, grav: 64, splash: 4.0, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.4, w: 1.25 },
       dispersion: { base: 1.1, aimTime: 4.4, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
@@ -490,15 +492,17 @@ SF.CFG = {
     }
   },
 
-  // 装甲判定规则
+  // 装甲判定规则(WoT 对齐)
   armor: {
-    ricochetAngle: 70 * Math.PI / 180,  // 入射角超过即跳弹
+    ricochetAngle: 70 * Math.PI / 180,  // 入射角超过即跳弹(口径>3倍装甲除外, 见过穿)
     penVariance: 0.25,                  // 穿深 ±25% 浮动
+    dmgVariance: 0.25,                  // 伤害 ±25% 浮动(WoT 同款)
     modules: {
-      track:  { chance: 0.25, duration: 6, text: '履带断裂！' },
-      engine: { chance: 0.20, duration: 10, slow: 0.55, text: '发动机受损！' },
-      ammo:   { chance: 0.08, dmgMult: 1.6, text: '弹药架被击中！' },
-      gun:    { chance: 1.0,  duration: 8, dispPenalty: 1.6, text: '火炮受损！' }
+      // WoT: 只有履带自动修复; 发动机/火炮/弹药架损伤整局持续(波间维修可复位)
+      track:  { duration: 6, text: '履带断裂！' },
+      engine: { permanent: true, slow: 0.55, rearChance: 0.55, deckChance: 0.3, text: '发动机受损！' },
+      ammo:   { chance: 0.08, dmgMult: 1.6, reloadMult: 1.25, text: '弹药架被击中！' },
+      gun:    { permanent: true, dispPenalty: 1.6, text: '火炮受损！' }
     }
   },
 
@@ -554,6 +558,35 @@ SF.CFG = {
     const v = SF.CFG.vehicles[t];
     return { type: t, tag: (v.nation ? FLAG[v.nation] + ' ' : '') + (v.tier || '') + '级' + (CLS_CN[v.cls] || v.cls || ''), desc: v.name };
   });
+})();
+
+// 弹径(过穿判定)/视距(点亮)/隐蔽值 —— WoT 对齐: 每车独立视距与隐蔽, 弹径决定 2倍/3倍口径规则
+(() => {
+  const CAL = {   // mm, 近似史实口径
+    sherman: 75, sherman76: 76, jumbo: 75, hellcat: 90, pz3: 50, pz4: 75, panther: 75, tiger1: 88,
+    stug3: 75, jagdpanther: 88, bt7: 45, t34: 76, t3485: 85, kv1: 76, kv2: 152, is2: 122, su85: 85, su100: 100,
+    isu152: 152, m3lee: 75, m10: 76, m36: 90, matilda: 57, cromwell: 75, firefly: 76, churchill7: 75,
+    b1bis: 75, somua: 47, chiha: 57, chinu: 75, tiger2: 88, ferdinand: 88, is3: 122, t44: 100, m26: 90, t26e4: 90,
+    t29: 105, centurion: 76, chiri: 75, type62: 85, type59: 100, wz111: 122,
+    amx13: 75, amx50100: 100, lorr40t: 100, wespe: 105, hummel: 150, m7priest: 105, su26: 122,
+    medium: 75, td: 88, heavy: 105
+  };
+  const VIEW = {  // m, 点亮距离基数(再乘 (1-目标隐蔽))
+    sherman: 370, sherman76: 380, jumbo: 350, hellcat: 370, pz3: 350, pz4: 365, panther: 390, tiger1: 370,
+    stug3: 350, jagdpanther: 360, bt7: 330, t34: 350, t3485: 360, kv1: 330, kv2: 320, is2: 350, su85: 330, su100: 340,
+    isu152: 330, m3lee: 330, m10: 370, m36: 370, matilda: 330, cromwell: 360, firefly: 370, churchill7: 350,
+    b1bis: 310, somua: 320, chiha: 320, chinu: 340, tiger2: 380, ferdinand: 350, is3: 360, t44: 380, m26: 380, t26e4: 380,
+    t29: 380, centurion: 390, chiri: 360, type62: 390, type59: 380, wz111: 370,
+    amx13: 390, amx50100: 380, lorr40t: 380, wespe: 330, hummel: 330, m7priest: 330, su26: 330,
+    medium: 370, td: 350, heavy: 340
+  };
+  const CAMO_CLS = { LT: 0.16, MT: 0.12, HT: 0.07, TD: 0.22, SPG: 0.08 };   // 静止隐蔽(移动减半/开炮近零/灌木+0.2, 见 SF.camoOf)
+  for (const k in SF.CFG.vehicles) {
+    const v = SF.CFG.vehicles[k];
+    v.gun.cal = CAL[k] || 75;
+    v.view = VIEW[k] || 370;
+    v.camo = CAMO_CLS[v.cls] || 0.12;
+  }
 })();
 
 /* ---------- 通用小工具 ---------- */

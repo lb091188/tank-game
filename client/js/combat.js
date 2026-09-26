@@ -177,7 +177,7 @@ SF.Shells = class {
     const shell = {
       active: true, owner, team: owner.team,
       pos: pos.clone(), vel: d.clone().multiplyScalar(spec.speed),
-      pen: spec.pen, dmg: spec.dmg, life: spec.life || 4, tracer: null,
+      pen: spec.pen, dmg: spec.dmg, cal: spec.cal || 75, life: spec.life || 4, tracer: null,
       grav: spec.grav || SF.CFG.sim.shellGravity,    // 火炮 HE 用大重力打高抛弧线
       splash: spec.splash || 0
     };
@@ -212,9 +212,9 @@ SF.Shells = class {
       const coverT = world.covers.blocked(sh.pos.x, sh.pos.z, sh.pos.y, segDir.x, segDir.z, segLen, segDir.y);
       if (coverT >= 0 && coverT / segLen < hitT) { hitT = coverT / segLen; hitType = 'cover'; }
 
-      // 坦克部位网格(先粗筛包围球: 线段上离圆心最近点)
+      // 坦克部位网格(先粗筛包围球: 线段上离圆心最近点); 残骸同样挡弹(WoT: 击毁的车吸收炮弹)
       for (const tk of world.tanks) {
-        if (!tk.alive || tk.team === sh.team) continue;
+        if (tk.team === sh.team) continue;
         const c = tk.pos3;
         const oc = new THREE.Vector3().subVectors(c, sh.pos);   // 圆心相对炮弹起点
         const proj = U_cl(U_dot(oc, segDir), 0, segLen);
@@ -232,18 +232,21 @@ SF.Shells = class {
       // --- 处理命中 ---
       if (hitType) {
         const p = sh.pos.clone().addScaledVector(segDir, hitT * segLen - 0.05);
-        if (hitType === 'tank' && !sh.splash) {
+        const wreck = hitType === 'tank' && !hitData.tank.alive;   // 打中残骸: 弹丸被吸收, 不结算伤害
+        if (hitType === 'tank' && !sh.splash && !wreck) {
           const { tank, hit } = hitData;
           const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
-          tank.takeHit(sh.owner, { pen: sh.pen, dmg: sh.dmg }, {
+          tank.takeHit(sh.owner, { pen: sh.pen, dmg: sh.dmg, cal: sh.cal }, {
             zone: hit.object.userData.zone, armor: hit.object.userData.armor || 0,
             point: hit.point, normal, dir: segDir
           });
         } else {
           this.fx.impact(hitType === 'ground' ? 'ground' : 'cover', p);
-          if (sh.owner.isPlayer && !sh.splash) SF.Bus.emit('playerMiss', { point: p });   // 打飞了也要有反馈
+          if (sh.owner.isPlayer && !sh.splash && !wreck) SF.Bus.emit('playerMiss', { point: p });   // 打飞了也要有反馈
         }
-        if (sh.splash) this._explodeHE(sh, p, world, hitType === 'tank' ? hitData.tank : null);
+        if (sh.splash)
+          this._explodeHE(sh, p, world, (hitType === 'tank' && !wreck) ? hitData.tank : null,
+            hitType === 'tank' && hitData.hit ? (hitData.hit.object.userData.armor || 0) : 0);
         this._kill(sh);
         continue;
       }
@@ -264,16 +267,24 @@ SF.Shells = class {
     if (sh.trailLine) { sh.trailLine.visible = false; sh.trailLine = null; }
   }
 
-  /* --- 火炮 HE 溅射: 爆炸特效 + 范围伤害(直接命中者全额, 周围按距离衰减) --- */
-  _explodeHE(sh, p, world, directTank) {
+  /* --- 火炮 HE 溅射: 爆炸特效 + 范围伤害(直接命中过装甲判定, 周围按距离衰减) --- */
+  _explodeHE(sh, p, world, directTank, directArmor = 0) {
     this.fx.explosion(p);
     SF.Audio.play('explosion', p, { gain: directTank ? 1.3 : 1.0 });
+    const A = SF.CFG.armor;
+    const alpha = sh.dmg * (1 + (Math.random() * 2 - 1) * A.dmgVariance);   // 单发 ±25%(WoT)
     for (const tk of world.tanks) {
       if (!tk.alive || tk.team === sh.team) continue;
       const d = Math.hypot(tk.x - p.x, (tk.y + 1.2) - p.y, tk.z - p.z);
       if (d > sh.splash) continue;
-      if (tk === directTank) { tk.takeSplash(sh.owner, sh.dmg, p); continue; }   // 直接命中: 全额
-      tk.takeSplash(sh.owner, sh.dmg * (1 - 0.65 * d / sh.splash), p);
+      if (tk === directTank) {
+        // WoT HE 直击: 掷穿深 — 穿透全额; 穿不透按装甲衰减, 厚甲可完全吸收
+        const pen = sh.pen * (1 + (Math.random() * 2 - 1) * A.penVariance);
+        if (pen >= directArmor) tk.takeSplash(sh.owner, alpha, p);
+        else tk.takeSplash(sh.owner, alpha * 0.5 * Math.max(0, 1 - directArmor / (1.1 * Math.max(pen, 1))), p);
+        continue;
+      }
+      tk.takeSplash(sh.owner, alpha * (1 - 0.65 * d / sh.splash), p);
     }
   }
 };

@@ -174,7 +174,7 @@ SF.HUD = (() => {
       ? Array.from({ length: _al.clip }, (_, i) => `<i class="${i < player.clipLeft ? 'full' : ''}"></i>`).join('') + `<em>${player.clipLeft}/${_al.clip}</em>`
       : '';
     $('speedText').textContent = Math.abs(Math.round(player.speed * 3.6)) + ' km/h';
-    $('moduleTags').innerHTML = ['track', 'engine', 'gun']
+    $('moduleTags').innerHTML = ['track', 'engine', 'gun', 'ammo']
       .filter(k => player.modules[k] > 0)
       .map(k => `<span class="mod">${SF.CFG.armor.modules[k].text}</span>`).join('');
 
@@ -222,18 +222,21 @@ SF.HUD = (() => {
         + (uiState.trajT > 0 ? ` · 飞行 ${uiState.trajT.toFixed(1)}s` : '');
     else
       dEl.textContent = uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '';
-    // 装甲等效指示(WoT 看甲): 瞄准敌人部位时显示 等效厚度/可否击穿/跳弹警告
+    // 装甲等效指示(WoT 看甲): 瞄准敌人部位时显示 等效厚度/可否击穿/跳弹警告(含过穿与归一化)
     const ai = $('armorInfo');
     const ap = uiState.gunAim;   // 用炮口指向(实际弹道将命中的部位)
-    if (ap && ap.hit && ap.hit.armor > 0 && ap.hit.normal) {
+    if (ap && ap.hit && ap.hit.armor > 0 && ap.hit.normal && (!ap.hit.tank || ap.hit.tank.alive)) {
       const camDir = new THREE.Vector3();
       SF.Game.camera.getWorldDirection(camDir);
       const inc = Math.acos(SF.Util.clamp(-camDir.dot(ap.hit.normal), -1, 1));
-      if (inc > SF.CFG.armor.ricochetAngle) {
+      const armor = ap.hit.armor, cal = player.spec.gun.cal || 75;
+      if (inc > SF.CFG.armor.ricochetAngle && !(cal > armor * 3)) {
         ai.textContent = '大角度 · 会跳弹';
         ai.style.color = '#9aa0a6';
       } else {
-        const eff = Math.round(ap.hit.armor / Math.max(Math.cos(inc), 0.05));
+        let norm = 5 * Math.PI / 180;
+        if (cal > armor * 2) norm *= 2;   // 2 倍口径: 归一化翻倍
+        const eff = Math.round(armor / Math.max(Math.cos(Math.max(0, inc - norm)), 0.05));
         const pen = player.spec.gun.pen * 0.9;   // 按平均穿深(含浮动)估
         const ok = pen >= eff;
         ai.textContent = `等效 ${eff}mm · ${ok ? '可击穿' : '难击穿'}`;

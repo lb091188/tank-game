@@ -25,6 +25,19 @@ SF.losClearAny = function (world, ax, az, bx, bz) {
   return false;
 };
 
+// 隐蔽值(WoT camo): 基础值按车型; 移动减半, 开炮后 3s 近乎清零, 蹲灌木 +0.2
+// 实际点亮距离 = 视距 × (1 - 隐蔽值)
+SF.camoOf = function (t, world) {
+  const c0 = (t.spec && t.spec.camo !== undefined) ? t.spec.camo : 0.12;
+  let c = c0;
+  if (Math.abs(t.speed) > 1.2 || Math.abs(t.lastYawRate || 0) > 0.08) c *= 0.5;
+  if (world.time - (t.lastFireT || -99) < 3) c = Math.min(c, c0 * 0.1);
+  const bushes = world.covers.bushes || (world.covers.bushes = world.covers.list.filter(b => b.type === 'bush'));
+  for (const b of bushes)
+    if (Math.hypot(b.x - t.x, b.z - t.z) < b.r + 2.6) { c += 0.2; break; }
+  return Math.min(c, 0.75);
+};
+
 // AI 目标选择: 合作模式多名玩家 → 锁定最近存活者; 单机 → world.player
 function nearestTarget(world, from) {
   if (world.mpTargets && world.mpTargets.length) {
@@ -105,7 +118,9 @@ SF.AI = class {
     this.seen = false;
     if (player && player.alive) {
       const d = SF.Util.dist2d(this.tank.x, this.tank.z, player.x, player.z);
-      if (d < SF.CFG.ai.viewRange && SF.losClearAny(world, this.tank.x, this.tank.z, player.x, player.z)) {
+      // 点亮(WoT): 50m 内无视遮挡强制点亮; 否则 视距×(1-目标隐蔽) + 多点通视
+      const vr = this.tank.spec.view || SF.CFG.ai.viewRange;
+      if (d < 50 || (d < vr * (1 - SF.camoOf(player, world)) && SF.losClearAny(world, this.tank.x, this.tank.z, player.x, player.z))) {
         this.seen = true;
         this.lastSeen = { x: player.x, z: player.z, vx: player.velX || 0, vz: player.velZ || 0, t: world.time };
         this.lastTargetId = player.netId || 0;
@@ -320,10 +335,14 @@ SF.AI = class {
 
       // 开火纪律: 需 reaction 过后 + 炮口对准 + 缩圈达标(耐心差 → 圈大也开火 → 天然打不准)
       // 近战豁免: 贴脸/狗斗(distP < 常驻距离下沿×1.2)时大幅放宽缩圈要求——绕圈也要敢开炮, 对枪靠走位弥补精度
+      // 阈值下限 1.08×base: disp 收敛于 base 只能从上方逼近, 恰等于 base 会导致永远不敢开火;
+      // 火炮受损(永久扩圈)按同样倍数放宽, 损炮不是哑炮
       const aimed = Math.abs(SF.Util.angDiff(t.turretYaw, this.input.aimYaw)) < 0.05;
       const D = t.spec.dispersion;
+      const gunBad = t.modules.gun > 0 ? SF.CFG.armor.modules.gun.dispPenalty : 1;
       const brawl = distP < P.band[0] * 1.2;
-      const fireThreshold = D.base + (D.max - D.base) * (brawl ? 0.5 : (1 - P.aimPatience) * 0.8);
+      let fireThreshold = D.base + (D.max - D.base) * (brawl ? 0.5 : (1 - P.aimPatience) * 0.8);
+      fireThreshold = Math.min(D.max, Math.max(D.base * 1.08, fireThreshold) * gunBad);
       this.input.fire = this.seenNow && this.reactT <= 0 && aimed && t.reloadT <= 0 && t.disp < fireThreshold;
     }
     return this.input;

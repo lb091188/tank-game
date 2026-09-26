@@ -52,7 +52,10 @@ SF.Main = (() => {
   let keySeen = false, hintShown = false;   // 键盘诊断: 是否收到过按键
   let spottedTimer = 0;
   const spotted = new Set();
-  const spottedLast = new Map();   // 敌 → 最后点亮时刻(5s 残留, 丢视野不再瞬灭)
+  const spottedLast = new Map();   // 敌 → 最后点亮时刻
+  const spotStreak = new Map();    // 敌 → 本次持续点亮起始时刻(决定残留时长 5→10s)
+  const spotLinger = new Map();    // 敌 → 丢失视野后的残留秒数(WoT: 最短 5s, 持续暴露可延至 10s)
+  let lampT = 0;                   // 被敌人持续注视的时长(六感灯 3s 延迟, WoT)
   let waveIdx = 0, waveEnemies = [], repairT = 0, repairDone = false, gameOver = false, loseT = -1;
   let stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   let aimPoint = null, gunAim = null;
@@ -199,8 +202,10 @@ SF.Main = (() => {
       if (!repairDone) {
         repairDone = true; repairT = world.map.repairBetweenWaves.duration;
         const heal = Math.round(world.player.spec.hp * world.map.repairBetweenWaves.hpRatio);
-        if (MP.mode === 'sp') world.player.hp = Math.min(world.player.spec.hp, world.player.hp + heal);
-        else for (const [id, t] of MP.tanks) if (id < 100 && t.alive) t.hp = Math.min(t.spec.hp, t.hp + heal);
+        // 波间维修同时修复受损模块(WoT 没有波间; 有维修包——这里波间即"整备")
+        const fix = (t) => { t.hp = Math.min(t.spec.hp, t.hp + heal); t.modules = { track: 0, engine: 0, gun: 0, ammo: 0 }; };
+        if (MP.mode === 'sp') fix(world.player);
+        else for (const [id, t] of MP.tanks) if (id < 100 && t.alive) fix(t);
         SF.HUD.showMsg(world.map.repairBetweenWaves.text + ` (+${heal} HP)`, repairT);
       }
       if (repairT > 0) return;
@@ -296,9 +301,9 @@ SF.Main = (() => {
       }
       if (t > 500 && py > 160 && dir.y > 0) break;
     }
-    // 掩体与敌坦克
+    // 掩体与敌坦克(含残骸: 挡弹即挡瞄, 不出幽灵准星)
     const objs = [world.covers.group];
-    for (const e of world.enemies) if (e.alive) objs.push(...e.parts.zones);
+    for (const e of world.enemies) objs.push(...e.parts.zones);
     _ray.set(origin, dir); _ray.far = Math.min(bestT, maxDist);
     const hits = _ray.intersectObjects(objs, true);
     let hitInfo = null;
@@ -307,7 +312,8 @@ SF.Main = (() => {
       const obj = hits[0].object;
       if (obj.userData && obj.userData.zone)
         hitInfo = { zone: obj.userData.zone, armor: obj.userData.armor || 0,
-                    normal: hits[0].face ? hits[0].face.normal.clone().transformDirection(obj.matrixWorld).normalize() : null };
+                    normal: hits[0].face ? hits[0].face.normal.clone().transformDirection(obj.matrixWorld).normalize() : null,
+                    tank: world.enemies.find(e => e.parts.zones.includes(obj)) || null };
     }
     return best ? { pos: best, dist: bestT, hit: hitInfo } : null;
   }
@@ -330,7 +336,7 @@ SF.Main = (() => {
 
   /* ---------- 鹰眼弹道预览线: 从炮口按真实弹道积分, 被地形/建筑遮挡则截断变红 ---------- */
   let trajLine = null, trajFlightT = 0;   // trajFlightT: 炮弹到落点的飞行时间(秒)
-  const TRAJ_N = 72, TRAJ_DT = 0.06;
+  const TRAJ_N = 140, TRAJ_DT = 0.06;     // 高抛弹道全程可达 ~8s, 积分长度要罩得住
   function buildTrajLine() {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAJ_N * 3), 3));
@@ -477,7 +483,8 @@ SF.Main = (() => {
             // 弹夹车: R = 丢弃剩余弹, 立即开始整夹长装填(弹夹已满且就绪时无效)
             if (p.clipPhase !== 'long' && (p.clipLeft < al.clip || p.reloadT > 0)) {
               const dump = p.clipLeft;
-              p.reloadT = p.reloadTotal = al.long; p.clipPhase = 'long'; p.clipLeft = al.clip;
+              const rack = p.modules.ammo > 0 ? (SF.CFG.armor.modules.ammo.reloadMult || 1) : 1;
+              p.reloadT = p.reloadTotal = al.long * rack; p.clipPhase = 'long'; p.clipLeft = al.clip;
               SF.HUD.showMsg(`重置弹夹 · 丢弃 ${dump} 发 · 长装填 ${al.long.toFixed(1)}s`, 1.8);
             } else SF.HUD.showMsg(p.reloadT > 0 ? '整夹长装填中…' : '弹夹已满', 1.2);
           } else { cruise = 1; SF.HUD.showMsg('巡航 · 前进', 1.2); }
@@ -550,16 +557,20 @@ SF.Main = (() => {
       const dx = aimPoint.pos.x - p.x, dz = aimPoint.pos.z - p.z;
       input.aimYaw = Math.atan2(dx, dz);
       input.aimPitch = Math.atan2(aimPoint.pos.y - (p.y + 2.2), Math.hypot(dx, dz));
-      // 自行火炮: 抛物线弹道解算仰角(含炮口高度修正的低伸解), 炮弹落点即瞄准点
+      // 自行火炮: 抛物线弹道解算仰角(WoT 高抛优先: 隔掩体吊射; 高抛仰角够不到的近距离退低伸直射)
       if (p.spec.cls === 'SPG') {
         const v = p.spec.gun.speed, g = p.spec.gun.grav || SF.CFG.sim.shellGravity;
         const d = Math.hypot(dx, dz);
         const h = (p.y + 2.2) - aimPoint.pos.y;              // 炮口高于落点
         const A = g * d * d / (2 * v * v);
         const disc = d * d - 4 * A * (A - h);
-        const u = (d > 2 && disc >= 0) ? (d - Math.sqrt(disc)) / (2 * A)
-                                       : Math.tan(p.spec.gunElevation);   // 超出射程: 压最大仰角
-        input.aimPitch = Math.atan(u);
+        const uMax = Math.tan(p.spec.gunElevation);
+        let u = uMax;
+        if (d > 2 && disc >= 0) {
+          const uHi = (d + Math.sqrt(disc)) / (2 * A);       // 高抛解
+          u = uHi <= uMax ? uHi : (d - Math.sqrt(disc)) / (2 * A);   // 低伸解(直射自保)
+        }
+        input.aimPitch = Math.atan(Math.min(u, uMax));       // 超出射程: 压最大仰角
       }
     } else { input.aimYaw = camYaw; input.aimPitch = 0; }
     // WoT 式右键自由视角: 按住右键时炮塔转角/炮管俯仰相对车体锁定(车体转动炮塔跟着走),
@@ -586,8 +597,8 @@ SF.Main = (() => {
   }
 
   /* ---------- 事件接线(模拟 → 表现) ---------- */
-  const HIT_TEXT = { pen: '击穿', bounce: '跳弹', nopen: '未击穿', gun: '火炮损伤', splash: '命中' };
-  const HIT_COLOR = { pen: '#ffb35c', bounce: '#f2f2f2', nopen: '#9aa0a6', gun: '#ffd97a', splash: '#ffb35c' };
+  const HIT_TEXT = { pen: '击穿', bounce: '跳弹', nopen: '未击穿', gun: '火炮损伤', splash: '命中', absorb: '履带吸收', ram: '撞击' };
+  const HIT_COLOR = { pen: '#ffb35c', bounce: '#f2f2f2', nopen: '#9aa0a6', gun: '#ffd97a', splash: '#ffb35c', absorb: '#9fd0ff', ram: '#ffb35c' };
   const MODULE_TAG = { track: '·履带', engine: '·发动机', ammo: '·弹药架', gun: '' };
 
   function bindBus() {
@@ -617,7 +628,8 @@ SF.Main = (() => {
         stats.hits++; if (r.kind === 'pen') stats.pens++;
         stats.dmg += r.dmg;
       }
-      const text = { pen: `-${r.dmg}`, bounce: '跳弹', nopen: '未击穿', gun: '火炮受损', splash: `-${r.dmg}` }[r.kind] || '';
+      const text = { pen: `-${r.dmg}`, bounce: '跳弹', nopen: '未击穿', gun: '火炮受损', absorb: '履带吸收', ram: `-${r.dmg}`,
+                     splash: r.dmg > 0 ? `-${r.dmg}` : '未击穿' }[r.kind] || '';
       SF.HUD.dmgNumber(r.point, text, HIT_COLOR[r.kind] || '#fff');
       const snd = r.kind === 'pen' ? 'pen' : r.kind === 'bounce' ? 'bounce' : 'nopen';
       // 音量: 自己挨打最响; 自己打中的反馈音用慢衰减(atten 大)保证清晰
@@ -625,19 +637,22 @@ SF.Main = (() => {
         SF.Audio.play(snd, target.isPlayer ? null : r.point, { gain: target.isPlayer ? 1.7 : 1.0, atten: 140 });
       // 归属分明的提示: 我打出去的 → 准星下方; 我挨打的 → 顶部红色警报 (文字+语音)
       if (shooter && shooter.isPlayer) {
-        SF.HUD.hitFeedback(HIT_TEXT[r.kind] + (r.module ? MODULE_TAG[r.module] : ''), HIT_COLOR[r.kind]);
+        SF.HUD.hitFeedback(HIT_TEXT[r.kind] + (r.module && r.kind !== 'absorb' ? MODULE_TAG[r.module] : ''), HIT_COLOR[r.kind]);
         if (r.module) SF.HUD.log(`敌方${MODULE_TAG[r.module] || ''}损伤`, '#a8d0a8');
-        SF.Audio.playVoice({ pen: 'v_pen', bounce: 'v_bounce', nopen: 'v_nopen', gun: 'v_nopen' }[r.kind]);
+        SF.Audio.playVoice({ pen: 'v_pen', bounce: 'v_bounce', nopen: 'v_nopen', gun: 'v_nopen', absorb: 'v_track' }[r.kind]);
       } else if (target.isPlayer) {
         if (r.kind === 'pen') {
           SF.HUD.alarm(`被击穿 -${r.dmg}` + (r.module ? ` · ${SF.CFG.armor.modules[r.module].text}` : ''));
           SF.Audio.playVoice('v_hitpen', true);
           if (r.module) SF.Audio.playVoice({ track: 'v_track', engine: 'v_engine', ammo: 'v_ammo', gun: 'v_gun' }[r.module], true);
         }
+        else if (r.kind === 'absorb') SF.HUD.alarm('履带被打断 · 伤害被吸收');
+        else if (r.kind === 'ram') SF.HUD.alarm(`被撞击 -${r.dmg}`);
         else if (r.kind === 'bounce') SF.HUD.hitFeedback('跳弹', '#9fd0ff');
-        else if (r.kind === 'splash') SF.HUD.alarm(`被炮击 -${r.dmg}`);
+        else if (r.kind === 'splash') SF.HUD.alarm(r.dmg > 0 ? `被炮击 -${r.dmg}` : '炮击被装甲吸收');
       }
-      if (target.isPlayer && shooter) SF.HUD.hitFrom(shooter);
+      // 受击方向: 指弹着点方位(来弹方向), 而非敌人当前站位(移速快的会偏)
+      if (target.isPlayer && shooter) SF.HUD.hitFrom(r.point || shooter);
       if (target.isPlayer) shakeT = Math.max(shakeT, 0.7);
       if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 1.2 });
     });
@@ -727,30 +742,50 @@ SF.Main = (() => {
       checkWave();
     }
 
-    // 玩家对敌发现(小地图/血条显示用): 多点通视(卖头也算点亮) + 5s 残留(丢视野不再瞬灭)
+    // 玩家对敌发现: 视距×(1-目标隐蔽) + 多点通视 + 50m 强制点亮 + 5~10s 残留
     spottedTimer -= dt;
     if (spottedTimer <= 0) {
       spottedTimer = 0.25;
-      for (const e of world.enemies) {
-        if (!e.alive) { spottedLast.delete(e); continue; }
-        if (U.dist2d(p.x, p.z, e.x, e.z) < SF.CFG.player.viewRange && SF.losClearAny(world, p.x, p.z, e.x, e.z))
+      const vr = p.spec.view || SF.CFG.player.viewRange;
+      const markSpot = (e, visible) => {
+        if (visible) {
+          if (!spotStreak.has(e)) spotStreak.set(e, world.time);
           spottedLast.set(e, world.time);
+        } else if (spotStreak.has(e)) {
+          spotLinger.set(e, U.clamp(5 + (world.time - spotStreak.get(e)) * 0.5, 5, 10));
+          spotStreak.delete(e);
+        }
+      };
+      const lit = (e) => {
+        const d = U.dist2d(p.x, p.z, e.x, e.z);
+        return d < 50 || (d < vr * (1 - SF.camoOf(e, world)) && SF.losClearAny(world, p.x, p.z, e.x, e.z));
+      };
+      for (const e of world.enemies) {
+        if (!e.alive) { spottedLast.delete(e); spotStreak.delete(e); spotLinger.delete(e); continue; }
+        markSpot(e, lit(e));
       }
       spotted.clear();
-      for (const [e, t0] of spottedLast) if (world.time - t0 < 5) spotted.add(e);
+      for (const [e, t0] of spottedLast)
+        if (world.time - t0 < (spotLinger.get(e) || 5)) spotted.add(e);
+        else { spottedLast.delete(e); spotLinger.delete(e); }
     }
-    if (MP.mode === 'host') {   // 死斗小地图红点: 其他玩家(同套多点通视+残留)
+    if (MP.mode === 'host') {   // 死斗小地图红点: 其他玩家(同套隐蔽/通视/强制点亮)
       spottedTimer -= dt;
       if (spottedTimer <= 0) {
         spottedTimer = 0.25;
+        const vr = p.spec.view || SF.CFG.player.viewRange;
         for (const [id, t] of MP.tanks) {
           if (id === MP.myId) continue;
-          if (!t.alive) { spottedLast.delete(t); continue; }
-          if (U.dist2d(p.x, p.z, t.x, t.z) < SF.CFG.player.viewRange && SF.losClearAny(world, p.x, p.z, t.x, t.z))
-            spottedLast.set(t, world.time);
+          if (!t.alive) { spottedLast.delete(t); spotStreak.delete(t); spotLinger.delete(t); continue; }
+          const d = U.dist2d(p.x, p.z, t.x, t.z);
+          const vis = d < 50 || (d < vr * (1 - SF.camoOf(t, world)) && SF.losClearAny(world, p.x, p.z, t.x, t.z));
+          if (vis) { if (!spotStreak.has(t)) spotStreak.set(t, world.time); spottedLast.set(t, world.time); }
+          else if (spotStreak.has(t)) { spotLinger.set(t, U.clamp(5 + (world.time - spotStreak.get(t)) * 0.5, 5, 10)); spotStreak.delete(t); }
         }
         spotted.clear();
-        for (const [t, t0] of spottedLast) if (world.time - t0 < 5) spotted.add(t);
+        for (const [t, t0] of spottedLast)
+          if (world.time - t0 < (spotLinger.get(t) || 5)) spotted.add(t);
+          else { spottedLast.delete(t); spotLinger.delete(t); }
       }
     }
     let enemySeesMe = false;
@@ -758,14 +793,20 @@ SF.Main = (() => {
       if (MP.gameMode === 'coop') {
         for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow && e.ai.lastTargetId === p.netId) { enemySeesMe = true; break; }
       } else {
-        for (const [id, t] of MP.tanks)
-          if (id !== MP.myId && t.alive && U.dist2d(p.x, p.z, t.x, t.z) < SF.CFG.player.viewRange && SF.losClear(world, p.x, p.z, t.x, t.z)) { enemySeesMe = true; break; }
+        for (const [id, t] of MP.tanks) {
+          if (id === MP.myId || !t.alive) continue;
+          const d = U.dist2d(p.x, p.z, t.x, t.z);
+          const vr = t.spec.view || SF.CFG.player.viewRange;   // 对方的视距 × 我的隐蔽
+          if (d < 50 || (d < vr * (1 - SF.camoOf(p, world)) && SF.losClearAny(world, t.x, t.z, p.x, p.z))) { enemySeesMe = true; break; }
+        }
       }
     } else {
       for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow) { enemySeesMe = true; break; }
     }
-    if (enemySeesMe) lastSpottedT = world.time;
-    const detected = p.alive && (world.time - lastSpottedT < 2.0);
+    // 六感灯(WoT): 被持续注视 3 秒后才亮起; 不再被盯后余亮 2 秒
+    if (enemySeesMe) { lampT += dt; lastSpottedT = world.time; }
+    else lampT = 0;
+    const detected = p.alive && lampT >= 3 && (world.time - lastSpottedT < 2.0);
     if (detected && !wasDetected) SF.Audio.play('beep', null, { gain: 1.1 });
     wasDetected = detected;
 
@@ -1064,7 +1105,7 @@ SF.Main = (() => {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairDone = false; spottedTimer = 0;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
     vcx = innerWidth / 2; vcy = innerHeight / 2;
-    spottedLast.clear();
+    spottedLast.clear(); spotStreak.clear(); spotLinger.clear(); lampT = 0;
     stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   }
   function leaveBattle() {
@@ -1147,20 +1188,29 @@ SF.Main = (() => {
     MP.timeLeft = snap.timeLeft;
     if (snap.scores) for (const id in snap.scores) MP.scores.set(+id, snap.scores[id]);
     if (snap.wv) MP.waveInfo = { idx: snap.wv[0], total: snap.wv[1], name: snap.wv[2], kills: snap.wv[3], totalEnemies: snap.wv[4] };
-    // 点亮: 主机裁决(dt 表)分发; 小地图红点用本地 LOS
+    // 点亮: 主机裁决(dt 表)分发; 小地图红点用本地 视距×(1-隐蔽)+通视+50m 强制
     const p = world.player;
     spottedTimer -= dt;
     if (spottedTimer <= 0) {
       spottedTimer = 0.25;
+      const vr = p.spec.view || SF.CFG.player.viewRange;
+      for (const [id, t] of MP.tanks) {
+        if (id === MP.myId) continue;
+        if (!t.alive) { spottedLast.delete(t); spotStreak.delete(t); spotLinger.delete(t); continue; }
+        const d = U.dist2d(p.x, p.z, t.x, t.z);
+        const vis = d < 50 || (d < vr * (1 - SF.camoOf(t, world)) && SF.losClearAny(world, p.x, p.z, t.x, t.z));
+        if (vis) { if (!spotStreak.has(t)) spotStreak.set(t, world.time); spottedLast.set(t, world.time); }
+        else if (spotStreak.has(t)) { spotLinger.set(t, U.clamp(5 + (world.time - spotStreak.get(t)) * 0.5, 5, 10)); spotStreak.delete(t); }
+      }
       spotted.clear();
-      for (const [id, t] of MP.tanks)
-        if (id !== MP.myId && t.alive && U.dist2d(p.x, p.z, t.x, t.z) < SF.CFG.player.viewRange && SF.losClear(world, p.x, p.z, t.x, t.z))
-          spotted.add(t);
+      for (const [t, t0] of spottedLast)
+        if (world.time - t0 < (spotLinger.get(t) || 5)) spotted.add(t);
+        else { spottedLast.delete(t); spotLinger.delete(t); }
     }
-    const detected = MP.gameMode === 'coop' ? (p.alive && !!(snap.dt && snap.dt[MP.myId]))
-                                            : (p.alive && spotted.size > 0);
-    if (detected) lastSpottedT = world.time;
-    const dNow = p.alive && (world.time - lastSpottedT < 2.0);
+    const seenByHost = MP.gameMode === 'coop' ? (p.alive && !!(snap.dt && snap.dt[MP.myId])) : (p.alive && spotted.size > 0);
+    if (seenByHost) { lampT += dt; lastSpottedT = world.time; }
+    else lampT = 0;
+    const dNow = p.alive && lampT >= 3 && (world.time - lastSpottedT < 2.0);   // 六感灯 3s 延迟
     if (dNow && !wasDetected) SF.Audio.play('beep', null, { gain: 1.1 });
     wasDetected = dNow;
     world.time += 0;   // 时钟由 step 推进

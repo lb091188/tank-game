@@ -34,7 +34,7 @@ SF.Tank = class {
     this.clipLeft = _al ? _al.clip : 0;                  // 弹夹余弹(0=非弹夹炮)
     this.clipPhase = _al ? 'intra' : 'single';           // intra=夹内短装填 long=整夹长装填
     this.disp = this.spec.dispersion.max;   // 起始满圈
-    this.modules = { track: 0, engine: 0, gun: 0 };
+    this.modules = { track: 0, engine: 0, gun: 0, ammo: 0 };
     this.lastYawRate = 0; this.lastTurretRate = 0;
     this.stats = { shots: 0, hits: 0, pens: 0, dmgDealt: 0 };
     this.smokeT = 0;
@@ -86,6 +86,8 @@ SF.Tank = class {
     const yawRate = S.hullTraverse * input.steer * steerAuth * U.clamp(1 - Math.abs(this.speed) / (maxF * 2), 0.55, 1);
     this.yaw += yawRate * dt;
     this.lastYawRate = yawRate;
+    // 转向掉速(WoT): 急转履带侧滑损耗动量, 持续满舵明显掉速; 原地转向速度≈0不受影响
+    if (Math.abs(this.speed) > 0.5) this.speed -= this.speed * Math.abs(input.steer) * 0.4 * dt;
 
     /* --- 位移与碰撞 --- */
     this.x += Math.sin(this.yaw) * this.speed * dt;
@@ -112,8 +114,20 @@ SF.Tank = class {
       const push = SF.Util.obbPushOut(me, { x: o.x, z: o.z, yaw: o.yaw, hx: o.spec.sample.w, hz: o.spec.sample.l });
       if (push) {
         me.x += push[0]; me.z += push[1];
-        const cosv = (Math.sin(this.yaw) * push[0] + Math.cos(this.yaw) * push[1]) / (Math.hypot(push[0], push[1]) || 1);
+        const plen = Math.hypot(push[0], push[1]) || 1;
+        // 撞击逼近速度要先于顶撞掉速取值(掉速会把冲量砍到阈值下, 高速对撞变轻碰)
+        const nvx = Math.sin(this.yaw) * this.speed, nvz = Math.cos(this.yaw) * this.speed;
+        const ovx = Math.sin(o.yaw) * o.speed, ovz = Math.cos(o.yaw) * o.speed;
+        const closing = -((nvx - ovx) * push[0] / plen + (nvz - ovz) * push[1] / plen);
+        const cosv = (Math.sin(this.yaw) * push[0] + Math.cos(this.yaw) * push[1]) / plen;
         if (cosv < -0.5 && Math.abs(this.speed) > 1) this.speed *= 0.4;
+        // 撞击伤害(WoT): 高速互撞双方掉血, 逼近速度平方×质量占比, 重车占便宜(残骸不伤人)
+        if (o.team !== this.team && o.alive && closing > 4 && world.time - (this._ramT || -9) > 0.5) {
+          this._ramT = o._ramT = world.time;   // 双方共冷却, 一次接触只结算一回
+          const m1 = this._mass(), m2 = o._mass(), e = closing * closing * 0.55;
+          this.takeRam(o, Math.round(e * m2 / (m1 + m2)));
+          o.takeRam(this, Math.round(e * m1 / (m1 + m2)));
+        }
       }
     }
     this.x = me.x; this.z = me.z;
@@ -230,7 +244,7 @@ SF.Tank = class {
     this.hp = this.spec.hp; this.alive = true; this.reloadT = 1; this.reloadTotal = 1;
     if (this.spec.gun.autoloader) { this.clipLeft = this.spec.gun.autoloader.clip; this.clipPhase = 'intra'; }
     this.disp = this.spec.dispersion.max;
-    this.modules = { track: 0, engine: 0, gun: 0 };
+    this.modules = { track: 0, engine: 0, gun: 0, ammo: 0 };
     this._wreck = null; this._deadTinted = false;
     this.velX = 0; this.velZ = 0; this.trackOffset = 0;
   }
@@ -254,10 +268,11 @@ SF.Tank = class {
     if (!this.alive || this.reloadT > 0) return false;
     const S = this.spec;
     const al = S.gun.autoloader;
+    const rack = this.modules.ammo > 0 ? (SF.CFG.armor.modules.ammo.reloadMult || 1) : 1;   // 弹药架受损: 装填永久变慢
     if (al) {
-      if (this.clipLeft > 1) { this.clipLeft--; this.reloadT = al.intra; this.clipPhase = 'intra'; }
-      else { this.clipLeft = al.clip; this.reloadT = al.long; this.clipPhase = 'long'; }   // 打完最后一发 → 整夹长装填
-    } else this.reloadT = S.gun.reload;
+      if (this.clipLeft > 1) { this.clipLeft--; this.reloadT = al.intra * rack; this.clipPhase = 'intra'; }
+      else { this.clipLeft = al.clip; this.reloadT = al.long * rack; this.clipPhase = 'long'; }   // 打完最后一发 → 整夹长装填
+    } else this.reloadT = S.gun.reload * rack;
     this.reloadTotal = this.reloadT;
     this.stats.shots++;
     let disp = this.disp;
@@ -269,34 +284,50 @@ SF.Tank = class {
     return true;
   }
 
-  /* --- 承弹: 部位查表装甲判定 ---
+  /* --- 承弹: 部位查表装甲判定(WoT 对齐) ---
+     过穿: 口径>3倍装甲永不跳弹; >2倍归一化(5°)翻倍
+     部位化模块: 打中履带必断(未击穿=履带吸收0伤), 炮管吸收弹丸(0伤+火炮损),
+     打发动机舱(尾甲)/动力甲板伤发动机, 弹药架掷点=殉爆加伤+装填永久变慢
      hitInfo: {zone, armor, point, normal(世界法线), dir(炮弹方向)} */
   takeHit(shooter, shellSpec, hitInfo) {
     const A = SF.CFG.armor;
     const result = { target: this, shooter, point: hitInfo.point, zone: hitInfo.zone, dmg: 0, kind: 'nopen', module: null };
-    const cosA = U_cos(hitInfo.dir, hitInfo.normal);   // 1=垂直命中
-    const incidence = Math.acos(Math.min(1, Math.max(-1, -cosA))); // 与法线夹角
+    const incidence = Math.acos(Math.min(1, Math.max(-1, -U_cos(hitInfo.dir, hitInfo.normal)))); // 与法线夹角
+    const armor = hitInfo.armor || 0, cal = shellSpec.cal || 75;
+    const setMod = (k, permanent) => { this.modules[k] = permanent ? Infinity : A.modules[k].duration; };
 
-    // 火炮部位: 吸收伤害 + 火炮损伤
+    const over3 = armor > 0 && cal > armor * 3;                    // 3 倍口径: 永不跳弹
+    let inc = Math.abs(incidence);
+    let norm = 5 * Math.PI / 180;                                  // AP 归一化 5°
+    if (armor > 0 && cal > armor * 2) norm *= 2;                   // 2 倍口径: 归一化翻倍
+    const eff = armor / Math.max(Math.cos(Math.max(0, inc - norm)), 0.05);   // 等效装甲
+    const pen = shellSpec.pen * (1 + (Math.random() * 2 - 1) * A.penVariance);
+    const rico = armor > 0 && !over3 && inc > A.ricochetAngle;
+    const rollDmg = () => Math.round(shellSpec.dmg * (1 + (Math.random() * 2 - 1) * A.dmgVariance));
+
     if (hitInfo.zone === 'gun') {
-      this.modules.gun = A.modules.gun.duration;
-      result.kind = 'gun'; result.module = 'gun'; result.dmg = Math.round(shellSpec.dmg * 0.3);
-      this.hp -= result.dmg;
-    } else if (Math.abs(incidence) > A.ricochetAngle && hitInfo.armor > 0) {
+      // WoT: 炮管吸收弹丸 — 火炮受损(永久), 不掉血
+      setMod('gun', true); result.kind = 'gun'; result.module = 'gun';
+    } else if (hitInfo.zone === 'tracks') {
+      // WoT 履带: 打中即断; 击穿照常掉血, 未击穿=履带吸收(断带但 0 伤)
+      setMod('track'); result.module = 'track';
+      if (rico) result.kind = 'bounce';
+      else if (pen >= eff) { result.kind = 'pen'; result.dmg = rollDmg(); this.hp -= result.dmg; }
+      else result.kind = 'absorb';
+    } else if (rico) {
       result.kind = 'bounce'; result.dmg = 0;                        // 跳弹
-    } else {
-      const eff = hitInfo.armor / Math.max(Math.cos(incidence), 0.05); // 等效装甲
-      const pen = shellSpec.pen * (1 + (Math.random() * 2 - 1) * A.penVariance);
-      if (pen >= eff) {
-        result.kind = 'pen';                                          // 击穿
-        let dmg = shellSpec.dmg;
-        if (Math.random() < A.modules.ammo.chance) { dmg = Math.round(dmg * A.modules.ammo.dmgMult); result.module = 'ammo'; }
-        else if (Math.random() < A.modules.track.chance) { this.modules.track = A.modules.track.duration; result.module = 'track'; }
-        else if (Math.random() < A.modules.engine.chance) { this.modules.engine = A.modules.engine.duration; result.module = 'engine'; }
-        result.dmg = dmg;
-        this.hp -= dmg;
-      } else { result.kind = 'nopen'; result.dmg = 0; }
-    }
+    } else if (pen >= eff) {
+      result.kind = 'pen';                                          // 击穿
+      let dmg = shellSpec.dmg * (1 + (Math.random() * 2 - 1) * A.dmgVariance);
+      if (Math.random() < A.modules.ammo.chance) {                  // 弹药架: 殉爆加伤 + 装填永久变慢
+        dmg *= A.modules.ammo.dmgMult; result.module = 'ammo'; setMod('ammo', true);
+      } else if ((hitInfo.zone === 'hullRear' && Math.random() < A.modules.engine.rearChance) ||
+                 (hitInfo.zone === 'hullTop' && Math.random() < A.modules.engine.deckChance)) {
+        result.module = 'engine'; setMod('engine', true);           // 打发动机舱/动力甲板: 永久减速
+      }
+      result.dmg = Math.round(dmg);
+      this.hp -= dmg;
+    } else { result.kind = 'nopen'; result.dmg = 0; }
 
     if (this.hp <= 0 && this.alive) {
       this.hp = 0; this.alive = false;
@@ -310,7 +341,11 @@ SF.Tank = class {
   /* --- 溅射承伤(自行火炮 HE): 无穿深判定, 按距离衰减的固定伤害 --- */
   takeSplash(shooter, dmg, point) {
     if (!this.alive) return;
-    dmg = Math.max(1, Math.round(dmg));
+    dmg = Math.max(0, Math.round(dmg));
+    if (dmg <= 0) {   // 厚甲完全吸收(WoT: 击中未穿透)
+      SF.Bus.emit('hit', { target: this, shooter, point, zone: 'splash', dmg: 0, kind: 'splash', module: null });
+      return;
+    }
     this.hp -= dmg;
     if (this.hp <= 0 && this.alive) {
       this.hp = 0; this.alive = false;
@@ -318,6 +353,24 @@ SF.Tank = class {
     }
     if (this.ai && this.alive && shooter && shooter.team !== this.team) this.ai.onHurt(shooter);
     SF.Bus.emit('hit', { target: this, shooter, point, zone: 'splash', dmg, kind: 'splash', module: null });
+  }
+
+  /* --- 撞击承伤: 无装甲判定, 直接掉血(高速重车碾压) --- */
+  takeRam(shooter, dmg) {
+    if (!this.alive || dmg <= 0) return;
+    this.hp -= dmg;
+    if (this.hp <= 0 && this.alive) {
+      this.hp = 0; this.alive = false;
+      SF.Bus.emit('destroyed', { tank: this, shooter });
+    }
+    if (this.ai && this.alive && shooter && shooter.team !== this.team) this.ai.onHurt(shooter);
+    SF.Bus.emit('hit', { target: this, shooter, point: new THREE.Vector3(this.x, this.y + 1, this.z), zone: 'ram', dmg, kind: 'ram', module: null });
+  }
+
+  // 撞击质量估算(吨): 车型密度 × 车体投影面积(谢尔曼规格=1)
+  _mass() {
+    const DENS = { LT: 14, MT: 32, HT: 48, TD: 34, SPG: 24 };
+    return (DENS[this.spec.cls] || 32) * (this.spec.sample.l * this.spec.sample.w) / (3.05 * 1.45);
   }
 
   // 被击毁 → 残骸形态: 沉降侧倾(悬挂塌) + 炮塔歪斜卡死 + 炮管下垂 + 烧漆斑驳 + 烟与余烬

@@ -48,7 +48,7 @@ SF.Models = (() => {
     const g = new THREE.Group();
     g.position.set(c.x, y, c.z);
     g.rotation.y = c.yaw || 0;
-    let col = { blocksMove: true, blocksShells: true, x: c.x, z: c.z, r: 2, h: 3, shape: 'circle', yaw: c.yaw || 0 };
+    let col = { type: c.type, blocksMove: true, blocksShells: true, x: c.x, z: c.z, r: 2, h: 3, shape: 'circle', yaw: c.yaw || 0 };
     // 方形掩体用 OBB 一比一碰撞(hx 半宽·局部x / hz 半长·局部z), r 退化为包围圆(快速剔除用)
     const OBB = (hx, hz) => ({ shape: 'box', hx, hz, yaw: c.yaw || 0, r: Math.hypot(hx, hz) });
 
