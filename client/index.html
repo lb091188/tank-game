@@ -28,12 +28,14 @@
   #titleTop { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 30px 0; gap: 20px; }
   #titleBrand h1 { color: #d8c887; font-size: 34px; letter-spacing: 10px; margin-bottom: 2px; text-shadow: 0 2px 10px #000; }
   #titleBrand h2 { color: #9aa08a; font-weight: normal; letter-spacing: 3px; font-size: 14px; text-shadow: 0 1px 6px #000; }
-  #garageStats { margin-top: 14px; padding: 8px 14px; text-align: left; width: max-content; max-width: 42vw; }
+  #garageStats { padding: 8px 14px; text-align: left; width: max-content; max-width: 42vw; }
   #garageStats b { display: block; color: #e8dcae; font-size: 17px; letter-spacing: 1px; }
   #garageStats span { color: #a8ad99; font-size: 12px; }
   #mapPick { text-align: right; max-width: 50vw; }
   #mapPick .pickLabel { margin: 0 0 8px; }
-  #bottomDock { padding: 0 26px 14px; }
+  #bottomDock { padding: 0 26px; }
+  #dockRow { display: flex; align-items: flex-end; gap: 18px; padding-bottom: 8px; }
+  #dockRow #tipOnTitle { flex: 1; margin: 0; align-self: center; }
   #bottomDock > .pickLabel { margin: 0 0 6px; text-shadow: 0 1px 4px #000; }
   .pickLabel { color: #8b9080; font-size: 13px; letter-spacing: 3px; margin: 12px 0 8px; }
   .cards { display: flex; gap: 10px; }
@@ -42,11 +44,15 @@
   .hscroll::-webkit-scrollbar-track { background: rgba(14,16,11,.55); border-radius: 4px; }
   .hscroll::-webkit-scrollbar-thumb { background: #6f6230; border-radius: 4px; }
   .hscroll::-webkit-scrollbar-thumb:hover { background: #c8b26a; }
-  #garageRow { padding: 8px 12px; background: rgba(10,12,8,.4); border: 1px solid rgba(200,178,106,.14); border-radius: 8px; }
+  #garageRow { padding: 8px 12px; background: rgba(10,12,8,.4); border: 1px solid rgba(200,178,106,.14); border-bottom: none; border-radius: 8px 8px 0 0; }
   #garageRow .card { flex: 0 0 auto; width: 150px; padding: 8px 10px; }
   #mapRow { justify-content: flex-end; padding: 4px; }
   #mapRow .card { flex: 0 0 auto; width: 200px; padding: 8px 12px; background: rgba(10,12,8,.5); }
-  #btnRow { display: flex; gap: 14px; justify-content: center; margin-top: 10px; }
+  #btnRow { display: flex; gap: 14px; justify-content: flex-end; margin: 0; }
+  #btnStart { font-size: 19px; padding: 12px 58px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
+  #titleBrand #btnMp { display: none; margin: 14px 0 0; font-size: 14px; padding: 8px 24px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 3px; cursor: pointer; }
+  #titleBrand #btnMp:hover { background: #2e3325; }
+  #titleBrand #btnMp.on { display: inline-block; }
   .card { width: 170px; padding: 12px 14px; background: rgba(255,255,255,.045); border: 1px solid rgba(200,178,106,.25); border-radius: 6px; cursor: pointer; text-align: left; transition: all .12s; }
   .card:hover { background: rgba(255,255,255,.08); }
   .card.sel { border-color: #c8b26a; background: rgba(200,178,106,.14); box-shadow: 0 0 12px rgba(200,178,106,.25); }
@@ -56,13 +62,7 @@
   .card em { display: block; font-style: normal; color: #7f8574; font-size: 11px; margin-top: 5px; }
   #controls { color: #b8bda9; font-size: 15px; line-height: 2; background: rgba(255,255,255,.04); padding: 18px 34px; border-radius: 8px; margin-bottom: 36px; }
   #controls b { color: #e0d6a8; display: inline-block; min-width: 130px; }
-  #btnStart { font-size: 19px; padding: 12px 58px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
-  #btnRow #btnMp { display: none; margin: 0; font-size: 15px; padding: 12px 30px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 3px; cursor: pointer; }
-  #btnRow #btnMp:hover { background: #2e3325; }
-  #btnRow #btnMp.on { display: inline-block; }
   #btnStart:hover { filter: brightness(1.15); }
-  #btnMp { display: block; margin: 18px auto 0; font-size: 15px; padding: 9px 38px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 4px; cursor: pointer; }
-  #btnMp:hover { background: #2e3325; }
   #lobbyScreen { display: none; position: fixed; inset: 0; background: rgba(14,16,11,.92); z-index: 95; align-items: center; justify-content: center; }
   #lobbyBox { width: 460px; padding: 26px 30px; }
   #lobbyBox h3 { color: #d8c887; letter-spacing: 6px; margin-bottom: 18px; text-align: center; }
@@ -239,7 +239,7 @@
       <div id="titleBrand">
         <h1>钢 铁 前 沿</h1>
         <h2>单机战役 · 选择你的坦克与战场</h2>
-        <div id="garageStats" class="panel"></div>
+        <button id="btnMp">⚔ 联机对战</button>
       </div>
       <div id="mapPick">
         <div class="pickLabel">战 场</div>
@@ -247,13 +247,15 @@
       </div>
     </div>
     <div id="bottomDock">
+      <div id="dockRow">
+        <div id="garageStats" class="panel"></div>
+        <div id="tipOnTitle"></div>
+        <div id="btnRow">
+          <button id="btnStart">出 击</button>
+        </div>
+      </div>
       <div class="pickLabel">坦 克</div>
       <div id="garageRow" class="cards hscroll"></div>
-      <div id="tipOnTitle"></div>
-      <div id="btnRow">
-        <button id="btnStart">出 击</button>
-        <button id="btnMp" style="display:none">⚔ 联机对战</button>
-      </div>
     </div>
   </div>
 </div>
