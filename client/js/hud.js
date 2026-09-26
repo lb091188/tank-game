@@ -157,13 +157,26 @@ SF.HUD = (() => {
     return [(x + T.half) / T.size * 180, (z + T.half) / T.size * 180];
   }
 
+  // 小地图敌车类标(WoT 式): ◇轻坦 ◇◇中坦 ◇◇◇重坦 ▽歼击 □火炮
+  function clsMark(ctx, cls, x, y) {
+    const r = 2.6;
+    ctx.fillStyle = '#e33';
+    const dm = (cx) => { ctx.beginPath(); ctx.moveTo(cx, y - r); ctx.lineTo(cx + r, y); ctx.lineTo(cx, y + r); ctx.lineTo(cx - r, y); ctx.closePath(); ctx.fill(); };
+    if (cls === 'LT') dm(x);
+    else if (cls === 'MT') { dm(x - r - 1); dm(x + r + 1); }
+    else if (cls === 'HT') { dm(x - 2 * r - 2); dm(x); dm(x + 2 * r + 2); }
+    else if (cls === 'TD') { ctx.beginPath(); ctx.moveTo(x - r * 1.5, y - r * 0.9); ctx.lineTo(x + r * 1.5, y - r * 0.9); ctx.lineTo(x, y + r * 1.2); ctx.closePath(); ctx.fill(); }
+    else if (cls === 'SPG') ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    else { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+  }
+
   function update(dt, world, uiState) {
     const player = world.player, T = world.terrain;
     const U = SF.Util;
 
     // 状态条
     $('hpFill').style.width = (player.hp / player.spec.hp * 100) + '%';
-    $('hpText').textContent = `${player.spec.name}　${Math.ceil(player.hp)} / ${player.spec.hp}`;
+    $('hpText').innerHTML = `${SF.ClsIcon(player.spec.cls)} ${player.spec.name}　${Math.ceil(player.hp)} / ${player.spec.hp}`;
     const rlTotal = player.reloadTotal || player.spec.gun.reload;
     const rl = player.reloadT > 0 ? player.reloadT / rlTotal : 0;
     $('reloadFill').style.width = ((1 - rl) * 100) + '%';
@@ -260,8 +273,7 @@ SF.HUD = (() => {
       const spotted = uiState.spotted.has(e) || world.time - (e.lastFireT || -99) < 5;
       if (!spotted) continue;
       const [mx, my] = worldToMap(e.x, e.z, T);
-      ctx.fillStyle = '#e33';
-      ctx.beginPath(); ctx.arc(mx, my, 3.5, 0, 7); ctx.fill();
+      clsMark(ctx, e.spec.cls, mx, my);
     }
     // 玩家箭头
     const [px, py] = worldToMap(player.x, player.z, T);
@@ -324,26 +336,26 @@ SF.HUD = (() => {
       const locked = e === uiState.autoTarget;
       if (locked) name = '🎯 ' + name;
       const hpPct = SF.Util.clamp(e.hp / e.spec.hp, 0, 1) * 100;
-      d.innerHTML = `<b>${name}</b><i><em style="width:${hpPct}%"></em></i>`;
+      d.innerHTML = `${SF.ClsIcon(e.spec.cls)} <b>${name}</b><i><em style="width:${hpPct}%"></em></i>`;
       if (locked) { d.style.border = '1px solid rgba(255,255,255,.85)'; d.style.padding = '2px 3px'; d.style.borderRadius = '3px'; }
       marks.appendChild(d);
     }
 
     // 任务进程(单机 PVE): 简略条 + Tab 详细面板
     if (uiState.mission) {
-      const SYM = { LT: '◇', MT: '◈', TD: '△', HT: '●' };
-      const DEF_CLS = { medium: 'MT', td: 'TD', heavy: 'HT', sherman: 'MT', sherman76: 'MT', jumbo: 'HT', hellcat: 'TD' };
+      const DEF_CLS = { medium: 'MT', td: 'TD', heavy: 'HT' };
       const clsOf = (e) => (e.spec && e.spec.cls) || DEF_CLS[e.type] || 'MT';
       const groups = {};
       for (const e of world.enemies) if (e.alive) { const c = clsOf(e); groups[c] = (groups[c] || 0) + 1; }
       const m = uiState.mission;
-      const symLine = Object.entries(groups).map(([t, n]) => `<span class="sym">${SYM[t] || '◆'}×${n}</span>`).join('') || '<span class="sym" style="color:#8fd98f">已肃清</span>';
+      const symLine = Object.entries(groups).map(([t, n]) => `<span class="sym">${SF.ClsIcon(t)} ×${n}</span>`).join('') || '<span class="sym" style="color:#8fd98f">已肃清</span>';
       $('missionBar').style.display = 'block';
       $('missionBar').innerHTML = `任务 ${m.idx + 1}/${m.total}　残敌 ${symLine}`;
       const detail = $('missionDetail');
       if (detail.style.display === 'block') {
+        const CLS_FULL = { MT: '中型坦克', HT: '重型坦克', TD: '歼击车', LT: '轻型坦克', SPG: '自行火炮' };
         const rows = Object.entries(groups).map(([c, n]) =>
-          `<div class="row"><span>${SYM[c] || '◆'} ${c === 'MT' ? '中型坦克' : c === 'HT' ? '重型坦克' : c === 'TD' ? '歼击车' : '轻型坦克'}</span><span>×${n}</span></div>`).join('');
+          `<div class="row"><span>${SF.ClsIcon(c)} ${CLS_FULL[c] || '坦克'}</span><span>×${n}</span></div>`).join('');
         detail.innerHTML = `<h4>${m.name}</h4>${rows || '<div style="color:#8fd98f">本波已肃清</div>'}<div class="k">已击毁 ${m.kills} / ${m.totalEnemies}　·　Tab 收起</div>`;
       }
     }

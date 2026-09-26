@@ -1089,7 +1089,7 @@ SF.Main = (() => {
       const v = SF.CFG.vehicles[t.type];
       const el = document.createElement('div');
       el.className = 'card' + (t.type === selTank ? ' sel' : '');
-      el.innerHTML = `<b>${v.name}</b><i>${t.tag}</i><span>${t.desc}</span><em>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · 极速 ${Math.round(v.maxSpeed * 3.6)}</em>`;
+      el.innerHTML = `<b>${v.name}</b><i>${SF.ClsIcon(t.cls)} ${t.tag}</i><span>${t.desc}</span><em>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · 极速 ${Math.round(v.maxSpeed * 3.6)}</em>`;
       el.onclick = () => { selTank = t.type; localStorage.setItem('sf_mp_tank', t.type); [...g.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); setGarageTank(t.type); };
       g.appendChild(el);
     }

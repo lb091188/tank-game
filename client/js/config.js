@@ -12,7 +12,7 @@ SF.CFG = {
   // 车辆参数 —— 手感核心, 改这里就是改手感
   vehicles: {
     sherman: {
-      name: 'M4 谢尔曼', hp: 900,
+      name: 'M4 谢尔曼', nation: 'USA', cls: 'MT', tier: 'V', hp: 900,
       maxSpeed: 13.3, reverseRatio: 0.42,     // 极速 48km/h, 倒车 42%
       accel: 4.0, brake: 9.5, coastDrag: 5.5, // 履带滚动阻力大: 松油门快速站住
       hullTraverse: 40 * Math.PI / 180,       // 车体回转 40°/s
@@ -24,7 +24,7 @@ SF.CFG = {
         move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 } // 各动作扩圈系数
     },
     sherman76: {
-      name: "谢尔曼 M4A3E8'闪电'", hp: 850,
+      name: "谢尔曼 M4A3E8'闪电'", nation: 'USA', cls: 'MT', tier: 'VI', hp: 850,
       maxSpeed: 15.6, reverseRatio: 0.5, accel: 4.8, brake: 10, coastDrag: 5.6,
       hullTraverse: 45 * Math.PI / 180, turretTraverse: 44 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 18 * Math.PI / 180,
@@ -33,7 +33,7 @@ SF.CFG = {
       dispersion: { base: 0.36, aimTime: 2.0, max: 2.2, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     jumbo: {
-      name: '谢尔曼 M4A3E2 突击型', hp: 1150,
+      name: '谢尔曼 M4A3E2 突击型', nation: 'USA', cls: 'HT', tier: 'VI', hp: 1150,
       maxSpeed: 11.0, reverseRatio: 0.4, accel: 3.2, brake: 8.5, coastDrag: 5.0,
       hullTraverse: 32 * Math.PI / 180, turretTraverse: 30 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -42,7 +42,7 @@ SF.CFG = {
       dispersion: { base: 0.42, aimTime: 2.4, max: 2.3, move: 1.5, hullTurn: 1.1, turretTurn: 0.6, fire: 1.7 }
     },
     hellcat: {
-      name: 'M18 地狱猫', hp: 620,
+      name: 'M18 地狱猫', nation: 'USA', cls: 'TD', tier: 'VI', hp: 620,
       maxSpeed: 20.0, reverseRatio: 0.55, accel: 6.5, brake: 11, coastDrag: 6.0,
       hullTraverse: 50 * Math.PI / 180, turretTraverse: 40 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 18 * Math.PI / 180,
@@ -545,6 +545,20 @@ SF.CFG = {
   }
 };
 
+// 车类图标(WoT 式, 全游戏统一): ◇轻坦 ◇◇中坦 ◇◇◇重坦 ▽歼击 □火炮 —— innerHTML 场景用
+SF.ClsIcon = function (cls, opts = {}) {
+  const s = opts.size || 9, col = opts.color || 'currentColor', gap = 2;
+  const dm = (x) => `<polygon fill="${col}" points="${x + s / 2},0 ${x + s},${s / 2} ${x + s / 2},${s} ${x},${s / 2}"/>`;
+  let w = s, body = '';
+  if (cls === 'LT') body = dm(0);
+  else if (cls === 'MT') { w = s * 2 + gap; body = dm(0) + dm(s + gap); }
+  else if (cls === 'HT') { w = s * 3 + gap * 2; body = dm(0) + dm(s + gap) + dm(s * 2 + gap * 2); }
+  else if (cls === 'TD') body = `<polygon fill="${col}" points="0,0 ${s},0 ${s / 2},${s}"/>`;
+  else if (cls === 'SPG') body = `<rect fill="${col}" x="0.5" y="0.5" width="${s - 1}" height="${s - 1}"/>`;
+  else return '';
+  return `<svg width="${w}" height="${s}" viewBox="0 0 ${w} ${s}" style="vertical-align:-1px">${body}</svg>`;
+};
+
 // 车库列表(依赖 vehicles 数据, 必须在 CFG 定义后生成)
 (() => {
   const sel = ['sherman', 'sherman76', 'jumbo', 'hellcat', 'pz3', 'pz4', 'panther', 'tiger1', 'stug3', 'jagdpanther',
@@ -552,11 +566,12 @@ SF.CFG = {
     'matilda', 'cromwell', 'firefly', 'churchill7', 'b1bis', 'somua', 'chiha', 'chinu',
     'tiger2', 'ferdinand', 'is3', 't44', 'm26', 't26e4', 't29', 'centurion', 'chiri',
     'type62', 'type59', 'wz111', 'amx13', 'amx50100', 'lorr40t', 'wespe', 'hummel', 'm7priest', 'su26'];
-  const FLAG = { USA: '🇺🇸', GER: '🇩🇪', USSR: '🇷🇺', UK: '🇬🇧', FRA: '🇫🇷', JPN: '🇯🇵', CHN: '🇨🇳' };
-  const CLS_CN = { LT: '轻坦', MT: '中坦', HT: '重坦', TD: '反坦克', SPG: '火炮' };
+  const NATION = { USA: 'US', GER: 'DE', USSR: 'RU', UK: 'UK', FRA: 'FR', JPN: 'JP', CHN: 'CN' };   // 国别码(纯首字母 US/USSR/UK 会撞车)
+  const CLS_CN = { LT: '轻坦', MT: '中坦', HT: '重坦', TD: '歼击车', SPG: '火炮' };
   SF.CFG.garage = sel.filter(t => SF.CFG.vehicles[t]).map(t => {
     const v = SF.CFG.vehicles[t];
-    return { type: t, tag: (v.nation ? FLAG[v.nation] + ' ' : '') + (v.tier || '') + '级' + (CLS_CN[v.cls] || v.cls || ''), desc: v.name };
+    const nat = v.nation ? NATION[v.nation] + '·' : '';
+    return { type: t, tag: nat + (v.tier || '') + '级' + (CLS_CN[v.cls] || v.cls || ''), cls: v.cls, desc: v.name };
   });
 })();
 
