@@ -353,30 +353,18 @@ SF.Main = (() => {
     const p = world.player;
     const show = sniper && p.alive && p.spec.cls === 'SPG' && !gameOver;
     if (!trajLine) return;
-    trajLine.visible = show;
-    if (groundLine) {
-      // 地面引导线: 车体→视野中心落点, 32 段贴地采样
-      groundLine.visible = show;
-      if (show) {
-        const arr = groundLine.geometry.attributes.position.array, G = 32, T2 = world.terrain;
-        for (let i = 0; i < G; i++) {
-          const k = i / (G - 1);
-          const x = p.x + (artyX - p.x) * k, z = p.z + (artyZ - p.z) * k;
-          arr[i * 3] = x; arr[i * 3 + 1] = T2.heightAt(x, z) + 0.4; arr[i * 3 + 2] = z;
-        }
-        groundLine.geometry.attributes.position.needsUpdate = true;
-        groundLine.computeLineDistances();
-      }
-    }
+    // 弹道仿真照跑(飞行时间/遮挡判定用), 但 3D 弧线在鹰眼里不画:
+    // 高抛弧顶(300-400m)远超俯视相机高度, 穿过相机平面的线段会被透视放大成
+    // 横扫屏幕的巨线("炮线从别的角飞出来") —— WoT 鹰眼同样只看地面引导线
+    trajLine.visible = false;
+    if (groundLine) groundLine.visible = show;
     if (!show) return;
     const pos = p.muzzleWorld();
     const vel = p.gunDir().multiplyScalar(p.spec.gun.speed);
     const g = p.spec.gun.grav || SF.CFG.sim.shellGravity;
     const T = world.terrain;
-    const arr = trajLine.geometry.attributes.position.array;
-    let n = 0, endType = 'air';   // ground=正常落点 / cover=被掩体遮挡 / air=超时
-    for (let i = 0; i < TRAJ_N; i++) {
-      arr[n * 3] = pos.x; arr[n * 3 + 1] = pos.y; arr[n * 3 + 2] = pos.z; n++;
+    let endType = 'air', n = 0;   // ground=正常落点 / cover=被掩体遮挡 / air=超时
+    for (; n < TRAJ_N; n++) {
       const nx = pos.x + vel.x * TRAJ_DT, ny = pos.y + vel.y * TRAJ_DT, nz = pos.z + vel.z * TRAJ_DT;
       const seg = Math.hypot(nx - pos.x, ny - pos.y, nz - pos.z) || 0.001;
       const bt = world.covers.blocked(pos.x, pos.z, pos.y, (nx - pos.x) / seg, (nz - pos.z) / seg, seg, (ny - pos.y) / seg);
@@ -384,12 +372,21 @@ SF.Main = (() => {
       pos.x = nx; pos.y = ny; pos.z = nz; vel.y -= g * TRAJ_DT;
       if (pos.y <= T.heightAt(pos.x, pos.z)) { endType = 'ground'; break; }     // 触地
     }
-    trajLine.geometry.setDrawRange(0, n);
-    trajLine.geometry.attributes.position.needsUpdate = true;
-    trajFlightT = n * TRAJ_DT;
-    // 着色: 落点距瞄准点太远(中途撞山)或撞掩体 → 红色警告; 正常落地 → 金色
-    const endErr = aimPoint ? Math.hypot(pos.x - aimPoint.pos.x, pos.z - aimPoint.pos.z) : 0;
-    trajLine.material.color.setHex((endType === 'cover' || (endType === 'ground' && endErr > 20)) ? 0xe06c5a : 0xffd97a);
+    trajFlightT = (n + 1) * TRAJ_DT;
+    // 地面引导线着色: 中途撞掩体/撞山(落点远离瞄准点) → 红色警告; 正常 → 金色
+    const endErr = endType === 'ground' && aimPoint ? Math.hypot(pos.x - aimPoint.pos.x, pos.z - aimPoint.pos.z) : 0;
+    const warn = endType === 'cover' || (endType === 'ground' && endErr > 20);
+    if (groundLine) {
+      const arr = groundLine.geometry.attributes.position.array, G = 32;
+      for (let i = 0; i < G; i++) {
+        const k = i / (G - 1);
+        const x = p.x + (artyX - p.x) * k, z = p.z + (artyZ - p.z) * k;
+        arr[i * 3] = x; arr[i * 3 + 1] = T.heightAt(x, z) + 0.4; arr[i * 3 + 2] = z;
+      }
+      groundLine.geometry.attributes.position.needsUpdate = true;
+      groundLine.computeLineDistances();
+      groundLine.material.color.setHex(warn ? 0xe06c5a : 0xc8b26a);
+    }
   }
 
   /* ---------- 输入 ---------- */
