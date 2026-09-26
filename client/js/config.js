@@ -24,7 +24,7 @@ SF.CFG = {
         move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 } // 各动作扩圈系数
     },
     sherman76: {
-      name: "谢尔曼 M4A3E8'闪电'", nation: 'USA', cls: 'MT', tier: 'VI', hp: 850,
+      name: 'M4A3E8 闪电', nation: 'USA', cls: 'MT', tier: 'VI', hp: 850,
       maxSpeed: 15.6, reverseRatio: 0.5, accel: 4.8, brake: 10, coastDrag: 5.6,
       hullTraverse: 45 * Math.PI / 180, turretTraverse: 44 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 18 * Math.PI / 180,
@@ -33,7 +33,7 @@ SF.CFG = {
       dispersion: { base: 0.36, aimTime: 2.0, max: 2.2, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     jumbo: {
-      name: '谢尔曼 M4A3E2 突击型', nation: 'USA', cls: 'HT', tier: 'VI', hp: 1150,
+      name: 'M4A3E2 突击型', nation: 'USA', cls: 'HT', tier: 'VI', hp: 1150,
       maxSpeed: 11.0, reverseRatio: 0.4, accel: 3.2, brake: 8.5, coastDrag: 5.0,
       hullTraverse: 32 * Math.PI / 180, turretTraverse: 30 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -51,7 +51,7 @@ SF.CFG = {
       dispersion: { base: 0.34, aimTime: 2.1, max: 2.0, move: 1.8, hullTurn: 1.2, turretTurn: 0.5, fire: 1.8 }
     },
     pz3: {
-      name: '四号坦克III型 J', nation: 'GER', cls: 'MT', tier: 'IV', hp: 620,
+      name: '三号 J 型', nation: 'GER', cls: 'MT', tier: 'IV', hp: 620,
       maxSpeed: 17.78, reverseRatio: 0.42, accel: 5.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 42.0 * Math.PI / 180, turretTraverse: 40.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -60,7 +60,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     pz4: {
-      name: '四号坦克 H 型', nation: 'GER', cls: 'MT', tier: 'V', hp: 720,
+      name: '四号 H 型', nation: 'GER', cls: 'MT', tier: 'V', hp: 720,
       maxSpeed: 11.67, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 38.0 * Math.PI / 180, turretTraverse: 35.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -78,7 +78,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     tiger1: {
-      name: '虎 I 重型坦克', nation: 'GER', cls: 'HT', tier: 'VII', hp: 1400,
+      name: '虎 I', nation: 'GER', cls: 'HT', tier: 'VII', hp: 1400,
       maxSpeed: 11.11, reverseRatio: 0.42, accel: 3.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 35.0 * Math.PI / 180, turretTraverse: 32.0 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -87,7 +87,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     stug3: {
-      name: '三号突击炮 G', nation: 'GER', cls: 'TD', tier: 'V', hp: 700,
+      name: '三号突击炮', nation: 'GER', cls: 'TD', tier: 'V', hp: 700,
       maxSpeed: 11.11, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 37.0 * Math.PI / 180, turretTraverse: 0.45 * Math.PI / 180, gunArc: 10 * Math.PI / 180,   // 固定战斗室: ±10° 射界内横向伺服, 超界自动转车体
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -96,7 +96,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     jagdpanther: {
-      name: '猎豹歼击车', nation: 'GER', cls: 'TD', tier: 'VII', hp: 1250,
+      name: '猎豹', nation: 'GER', cls: 'TD', tier: 'VII', hp: 1250,
       maxSpeed: 12.78, reverseRatio: 0.42, accel: 3.8, brake: 9, coastDrag: 5.2,
       hullTraverse: 41.0 * Math.PI / 180, turretTraverse: 26.0 * Math.PI / 180, gunArc: 11 * Math.PI / 180,   // 固定战斗室: ±11° 射界内横向伺服, 超界自动转车体
       gunDepression: -9 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -105,7 +105,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     bt7: {
-      name: 'BT-7 快速坦克', nation: 'USSR', cls: 'LT', tier: 'III', hp: 420,
+      name: 'BT-7', nation: 'USSR', cls: 'LT', tier: 'III', hp: 420,
       maxSpeed: 19.44, reverseRatio: 0.42, accel: 6.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 48.0 * Math.PI / 180, turretTraverse: 42.0 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -132,7 +132,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     kv1: {
-      name: 'KV-1 重型坦克', nation: 'USSR', cls: 'HT', tier: 'V', hp: 1050,
+      name: 'KV-1', nation: 'USSR', cls: 'HT', tier: 'V', hp: 1050,
       maxSpeed: 8.33, reverseRatio: 0.42, accel: 2.8, brake: 9, coastDrag: 5.2,
       hullTraverse: 30.0 * Math.PI / 180, turretTraverse: 30.0 * Math.PI / 180,
       gunDepression: -9 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -141,7 +141,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     kv2: {
-      name: 'KV-2 突击坦克', nation: 'USSR', cls: 'HT', tier: 'VI', hp: 950,
+      name: 'KV-2', nation: 'USSR', cls: 'HT', tier: 'VI', hp: 950,
       maxSpeed: 7.22, reverseRatio: 0.42, accel: 2.4, brake: 9, coastDrag: 5.2,
       hullTraverse: 24.0 * Math.PI / 180, turretTraverse: 20.0 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -150,7 +150,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     is2: {
-      name: 'IS-2 重型坦克', nation: 'USSR', cls: 'HT', tier: 'VII', hp: 1300,
+      name: 'IS-2', nation: 'USSR', cls: 'HT', tier: 'VII', hp: 1300,
       maxSpeed: 10.28, reverseRatio: 0.42, accel: 3.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 28.0 * Math.PI / 180, turretTraverse: 28.0 * Math.PI / 180,
       gunDepression: -6 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -159,7 +159,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     su85: {
-      name: 'SU-85 歼击车', nation: 'USSR', cls: 'TD', tier: 'V', hp: 700,
+      name: 'SU-85', nation: 'USSR', cls: 'TD', tier: 'V', hp: 700,
       maxSpeed: 13.06, reverseRatio: 0.42, accel: 4.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 38.0 * Math.PI / 180, turretTraverse: 0.45 * Math.PI / 180, gunArc: 10 * Math.PI / 180,   // 固定战斗室: ±10° 射界内横向伺服, 超界自动转车体
       gunDepression: -7 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -168,7 +168,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     su100: {
-      name: 'SU-100 歼击车', nation: 'USSR', cls: 'TD', tier: 'VI', hp: 900,
+      name: 'SU-100', nation: 'USSR', cls: 'TD', tier: 'VI', hp: 900,
       maxSpeed: 13.33, reverseRatio: 0.42, accel: 4.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 38.0 * Math.PI / 180, turretTraverse: 0.42 * Math.PI / 180, gunArc: 11 * Math.PI / 180,   // 固定战斗室: ±11° 射界内横向伺服, 超界自动转车体
       gunDepression: -7 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -186,7 +186,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     m3lee: {
-      name: 'M3 李 中型坦克', nation: 'USA', cls: 'MT', tier: 'IV', hp: 700,
+      name: 'M3 李', nation: 'USA', cls: 'MT', tier: 'IV', hp: 700,
       maxSpeed: 11.67, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 40.0 * Math.PI / 180, turretTraverse: 38.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -213,7 +213,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     matilda: {
-      name: '玛蒂尔达 II', nation: 'UK', cls: 'HT', tier: 'IV', hp: 750,
+      name: '玛蒂尔达', nation: 'UK', cls: 'HT', tier: 'IV', hp: 750,
       maxSpeed: 6.67, reverseRatio: 0.42, accel: 2.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 30.0 * Math.PI / 180, turretTraverse: 34.0 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -222,7 +222,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     cromwell: {
-      name: '克伦威尔 VII', nation: 'UK', cls: 'MT', tier: 'VI', hp: 900,
+      name: '克伦威尔', nation: 'UK', cls: 'MT', tier: 'VI', hp: 900,
       maxSpeed: 17.78, reverseRatio: 0.42, accel: 6.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 48.0 * Math.PI / 180, turretTraverse: 44.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -231,7 +231,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     firefly: {
-      name: '谢尔曼 萤火虫', nation: 'UK', cls: 'MT', tier: 'VI', hp: 850,
+      name: '萤火虫', nation: 'UK', cls: 'MT', tier: 'VI', hp: 850,
       maxSpeed: 11.11, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 40.0 * Math.PI / 180, turretTraverse: 34.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -240,7 +240,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     churchill7: {
-      name: '丘吉尔 VII', nation: 'UK', cls: 'HT', tier: 'VI', hp: 1250,
+      name: '丘吉尔', nation: 'UK', cls: 'HT', tier: 'VI', hp: 1250,
       maxSpeed: 6.67, reverseRatio: 0.42, accel: 2.4, brake: 9, coastDrag: 5.2,
       hullTraverse: 26.0 * Math.PI / 180, turretTraverse: 28.0 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -249,7 +249,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     b1bis: {
-      name: 'B1 bis 重型坦克', nation: 'FRA', cls: 'HT', tier: 'IV', hp: 720,
+      name: 'B1 bis', nation: 'FRA', cls: 'HT', tier: 'IV', hp: 720,
       maxSpeed: 7.78, reverseRatio: 0.42, accel: 2.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 30.0 * Math.PI / 180, turretTraverse: 32.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -267,7 +267,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     chiha: {
-      name: '九七式中坦克', nation: 'JPN', cls: 'MT', tier: 'III', hp: 460,
+      name: '九七式中战', nation: 'JPN', cls: 'MT', tier: 'III', hp: 460,
       maxSpeed: 12.22, reverseRatio: 0.42, accel: 4.2, brake: 9, coastDrag: 5.2,
       hullTraverse: 40.0 * Math.PI / 180, turretTraverse: 36.0 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -276,7 +276,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     chinu: {
-      name: '三式中坦克', nation: 'JPN', cls: 'MT', tier: 'IV', hp: 640,
+      name: '三式中战', nation: 'JPN', cls: 'MT', tier: 'IV', hp: 640,
       maxSpeed: 12.50, reverseRatio: 0.42, accel: 4.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 40.0 * Math.PI / 180, turretTraverse: 36.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -285,7 +285,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     tiger2: {
-      name: '虎 II 重型坦克', nation: 'GER', cls: 'HT', tier: 'VIII', hp: 1650,
+      name: '虎 II', nation: 'GER', cls: 'HT', tier: 'VIII', hp: 1650,
       maxSpeed: 10.56, reverseRatio: 0.42, accel: 2.8, brake: 9, coastDrag: 5.2,
       hullTraverse: 30.0 * Math.PI / 180, turretTraverse: 28.0 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -294,7 +294,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     ferdinand: {
-      name: '斐迪南歼击车', nation: 'GER', cls: 'TD', tier: 'VII', hp: 1250,
+      name: '斐迪南', nation: 'GER', cls: 'TD', tier: 'VII', hp: 1250,
       maxSpeed: 8.33, reverseRatio: 0.42, accel: 2.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 28.0 * Math.PI / 180, turretTraverse: 0.4 * Math.PI / 180, gunArc: 14 * Math.PI / 180,   // 固定战斗室: ±14° 射界内横向伺服, 超界自动转车体
       gunDepression: -9 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -303,7 +303,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     is3: {
-      name: 'IS-3 重型坦克', nation: 'USSR', cls: 'HT', tier: 'VIII', hp: 1550,
+      name: 'IS-3', nation: 'USSR', cls: 'HT', tier: 'VIII', hp: 1550,
       maxSpeed: 10.28, reverseRatio: 0.42, accel: 3.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 28.0 * Math.PI / 180, turretTraverse: 26.0 * Math.PI / 180,
       gunDepression: -6 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -312,7 +312,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     t44: {
-      name: 'T-44 中型坦克', nation: 'USSR', cls: 'MT', tier: 'VIII', hp: 1450,
+      name: 'T-44', nation: 'USSR', cls: 'MT', tier: 'VIII', hp: 1450,
       maxSpeed: 14.17, reverseRatio: 0.42, accel: 4.8, brake: 9, coastDrag: 5.2,
       hullTraverse: 44.0 * Math.PI / 180, turretTraverse: 42.0 * Math.PI / 180,
       gunDepression: -9 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -330,7 +330,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     t26e4: {
-      name: 'T26E4 超级潘兴', nation: 'USA', cls: 'MT', tier: 'VIII', hp: 1500,
+      name: 'T26E4 超潘', nation: 'USA', cls: 'MT', tier: 'VIII', hp: 1500,
       maxSpeed: 11.11, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 38.0 * Math.PI / 180, turretTraverse: 36.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -339,7 +339,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     t29: {
-      name: 'T29 重型坦克', nation: 'USA', cls: 'HT', tier: 'VII', hp: 1350,
+      name: 'T29', nation: 'USA', cls: 'HT', tier: 'VII', hp: 1350,
       maxSpeed: 9.72, reverseRatio: 0.42, accel: 3.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 32.0 * Math.PI / 180, turretTraverse: 30.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -348,7 +348,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     centurion: {
-      name: '百人队长 Mk.I', nation: 'UK', cls: 'MT', tier: 'VIII', hp: 1500,
+      name: '百人队长', nation: 'UK', cls: 'MT', tier: 'VIII', hp: 1500,
       maxSpeed: 9.44, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 40.0 * Math.PI / 180, turretTraverse: 40.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -357,7 +357,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     chiri: {
-      name: '三式奇狸 中坦克', nation: 'JPN', cls: 'MT', tier: 'VII', hp: 1100,
+      name: '三式奇狸', nation: 'JPN', cls: 'MT', tier: 'VII', hp: 1100,
       maxSpeed: 10.56, reverseRatio: 0.42, accel: 4.0, brake: 9, coastDrag: 5.2,
       hullTraverse: 40.0 * Math.PI / 180, turretTraverse: 36.0 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -366,7 +366,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     type62: {
-      name: '62式轻型坦克', nation: 'CHN', cls: 'LT', tier: 'VII', hp: 900,
+      name: '62式', nation: 'CHN', cls: 'LT', tier: 'VII', hp: 900,
       maxSpeed: 16.67, reverseRatio: 0.45, accel: 5.4, brake: 10, coastDrag: 5.6,
       hullTraverse: 46 * Math.PI / 180, turretTraverse: 44 * Math.PI / 180,
       gunDepression: -7 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -375,7 +375,7 @@ SF.CFG = {
       dispersion: { base: 0.38, aimTime: 2.1, max: 2.2, move: 1.6, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     type59: {
-      name: '59式中型坦克', nation: 'CHN', cls: 'MT', tier: 'VIII', hp: 1450,
+      name: '59式', nation: 'CHN', cls: 'MT', tier: 'VIII', hp: 1450,
       maxSpeed: 13.89, reverseRatio: 0.45, accel: 4.6, brake: 9.5, coastDrag: 5.4,
       hullTraverse: 44 * Math.PI / 180, turretTraverse: 42 * Math.PI / 180,
       gunDepression: -9 * Math.PI / 180, gunElevation: 16 * Math.PI / 180,
@@ -384,7 +384,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     wz111: {
-      name: 'WZ-111 重型坦克', nation: 'CHN', cls: 'HT', tier: 'VIII', hp: 1550,
+      name: 'WZ-111', nation: 'CHN', cls: 'HT', tier: 'VIII', hp: 1550,
       maxSpeed: 12.5, reverseRatio: 0.42, accel: 3.6, brake: 9, coastDrag: 5.2,
       hullTraverse: 34 * Math.PI / 180, turretTraverse: 34 * Math.PI / 180,
       gunDepression: -7 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
@@ -394,7 +394,7 @@ SF.CFG = {
     },
     /* ---------- 弹夹(连发)车: 夹内短装填连打, 打完整夹长装填 ---------- */
     amx13: {
-      name: 'AMX 13 75 轻型坦克', nation: 'FRA', cls: 'LT', tier: 'VI', hp: 750,
+      name: 'AMX 13 75', nation: 'FRA', cls: 'LT', tier: 'VI', hp: 750,
       maxSpeed: 16.7, reverseRatio: 0.5, accel: 5.6, brake: 10.5, coastDrag: 5.8,
       hullTraverse: 46 * Math.PI / 180, turretTraverse: 42 * Math.PI / 180,
       gunDepression: -7 * Math.PI / 180, gunElevation: 14 * Math.PI / 180,
@@ -403,7 +403,7 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.2, max: 2.2, move: 1.6, hullTurn: 1.2, turretTurn: 0.6, fire: 1.2 }
     },
     amx50100: {
-      name: 'AMX 50 100 重型坦克', nation: 'FRA', cls: 'HT', tier: 'VIII', hp: 1500,
+      name: 'AMX 50 100', nation: 'FRA', cls: 'HT', tier: 'VIII', hp: 1500,
       maxSpeed: 15.0, reverseRatio: 0.45, accel: 3.8, brake: 9, coastDrag: 5.2,
       hullTraverse: 32 * Math.PI / 180, turretTraverse: 32 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 13 * Math.PI / 180,
@@ -412,7 +412,7 @@ SF.CFG = {
       dispersion: { base: 0.44, aimTime: 2.6, max: 2.5, move: 1.7, hullTurn: 1.2, turretTurn: 0.65, fire: 1.1 }
     },
     lorr40t: {
-      name: '洛林 40t 中型坦克', nation: 'FRA', cls: 'MT', tier: 'VIII', hp: 1150,
+      name: '洛林 40t', nation: 'FRA', cls: 'MT', tier: 'VIII', hp: 1150,
       maxSpeed: 18.0, reverseRatio: 0.5, accel: 5.0, brake: 10, coastDrag: 5.5,
       hullTraverse: 40 * Math.PI / 180, turretTraverse: 38 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 12 * Math.PI / 180,
@@ -424,7 +424,7 @@ SF.CFG = {
        弹道参数按 WoT 火炮观感标定: 大重力+高仰角(78°) → 中远程(~360m 起)走高抛吊射,
        高抛仰角够不到的近距离退为低伸直射(火炮近战自保), 最大射程 ~860m 覆盖全图 */
     wespe: {
-      name: '黄蜂 自行火炮', nation: 'GER', cls: 'SPG', tier: 'IV', hp: 460,
+      name: '黄蜂', nation: 'GER', cls: 'SPG', tier: 'IV', hp: 460,
       maxSpeed: 11.1, reverseRatio: 0.4, accel: 3.6, brake: 8, coastDrag: 5.0,
       hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
@@ -434,7 +434,7 @@ SF.CFG = {
       dispersion: { base: 1.15, aimTime: 4.6, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
     },
     hummel: {
-      name: '野蜂 自行火炮', nation: 'GER', cls: 'SPG', tier: 'VI', hp: 540,
+      name: '野蜂', nation: 'GER', cls: 'SPG', tier: 'VI', hp: 540,
       maxSpeed: 12.5, reverseRatio: 0.4, accel: 3.8, brake: 8.5, coastDrag: 5.0,
       hullTraverse: 28 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
@@ -444,7 +444,7 @@ SF.CFG = {
       dispersion: { base: 1.3, aimTime: 5.0, max: 2.8, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
     },
     m7priest: {
-      name: 'M7 牧师 自行火炮', nation: 'USA', cls: 'SPG', tier: 'V', hp: 500,
+      name: 'M7 牧师', nation: 'USA', cls: 'SPG', tier: 'V', hp: 500,
       maxSpeed: 12.2, reverseRatio: 0.42, accel: 3.8, brake: 8.5, coastDrag: 5.2,
       hullTraverse: 32 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
@@ -454,7 +454,7 @@ SF.CFG = {
       dispersion: { base: 1.2, aimTime: 4.8, max: 2.7, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
     },
     su26: {
-      name: 'SU-26 自行火炮', nation: 'USSR', cls: 'SPG', tier: 'IV', hp: 480,
+      name: 'SU-26', nation: 'USSR', cls: 'SPG', tier: 'IV', hp: 480,
       maxSpeed: 10.3, reverseRatio: 0.4, accel: 3.4, brake: 8, coastDrag: 5.0,
       hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 78 * Math.PI / 180,
