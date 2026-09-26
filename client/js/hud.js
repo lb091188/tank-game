@@ -205,6 +205,8 @@ SF.HUD = (() => {
       .map(k => `<span class="mod">${SF.CFG.armor.modules[k].text}</span>`).join('');
 
     updateAimCircle(player, world, uiState);
+    // 鹰眼(火炮俯视)无中心十字: 落点即准星(绿色散布椭圆), WoT 式
+    $('crosshair').style.display = (uiState.sniper && player.spec.cls === 'SPG') ? 'none' : 'block';
 
     // 伤害数字上浮
     for (const d of dmgFloats) {
@@ -304,6 +306,15 @@ SF.HUD = (() => {
     ctx.fillStyle = '#7fd67f';
     ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.2, 5); ctx.lineTo(-4.2, 5); ctx.closePath(); ctx.fill();
     ctx.restore();
+
+    // 鹰眼视野范围(WoT 火炮): 绿框=俯视相机当前看得到的地面区域, 中心随准星移动
+    if (uiState.arty) {
+      const [vx, vy] = worldToMap(uiState.arty.x, uiState.arty.z, T);
+      const s = 180 / T.size;
+      ctx.strokeStyle = 'rgba(127,214,127,.95)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(vx - uiState.arty.w * s / 2, vy - uiState.arty.h * s / 2, uiState.arty.w * s, uiState.arty.h * s);
+    }
 
     // 任务地点: 当前波次敌军区域中心(随任务推进自动移动), 金色脉冲圈
     if (uiState.mission && world.map && world.map.waves[uiState.mission.idx]) {

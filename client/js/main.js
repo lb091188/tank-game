@@ -130,6 +130,12 @@ SF.Main = (() => {
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
       aimPoint, gunAim, sniper, spotted, lastKnown, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT,
+      // 鹰眼俯视视野足迹(小地图绿框): 中心=artyX/Z, w/h=当前 fov 与高度下的地面可视范围
+      arty: (() => {
+        if (!(sniper && world && world.player && world.player.spec.cls === 'SPG')) return null;
+        const v = 2 * artyH * Math.tan(camera.fov * Math.PI / 360);
+        return { x: artyX, z: artyZ, w: v * camera.aspect, h: v };
+      })(),
       mission: (() => {
         if (!world.map) return null;
         if (SF.Game_mp.mode === 'sp') return { idx: waveIdx, total: world.map.waves.length, name: (world.map.waves[waveIdx] || {}).name || '', kills: stats.kills, totalEnemies: stats.total };
