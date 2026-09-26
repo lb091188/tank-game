@@ -231,17 +231,9 @@ SF.Main = (() => {
       p.group.visible = true;
       camera.fov = U.lerp(camera.fov, 32, 1 - Math.exp(-12 * dt));
       artyX = U.clamp(artyX, -470, 470); artyZ = U.clamp(artyZ, -470, 470);
-      // 屏幕边缘平移(RTS 式): 虚拟光标压边即按深度比例平移; 悬停 HUD 交互区时暂停
-      vcHit = uiHitTest(vcx, vcy);
-      if (!vcHit) {
-        const EW = 52, SPD = 95;
-        const ox = vcx < EW ? (vcx - EW) / EW : (vcx > innerWidth - EW ? (vcx - (innerWidth - EW)) / EW : 0);
-        const oz = vcy < EW ? (vcy - EW) / EW : (vcy > innerHeight - EW ? (vcy - (innerHeight - EW)) / EW : 0);
-        artyX = U.clamp(artyX + ox * SPD * dt, -470, 470);
-        artyZ = U.clamp(artyZ + oz * SPD * dt, -470, 470);
-      }
+      vcHit = uiHitTest(vcx, vcy);   // 悬停 HUD 交互区时光标变金(平移已在 mousemove 暂停)
       const gy = world.terrain.heightAt(artyX, artyZ);
-      camera.position.set(artyX, gy + 130, artyZ + 10);
+      camera.position.set(artyX, gy + artyH, artyZ + 10);   // 高度档位生效(滚轮变焦)
       camera.lookAt(artyX, gy, artyZ);
     } else if (sniper) {
       p.group.visible = false;   // 狙击镜视角隐藏自己(WoT 式, 也避免相机被炮塔内壁糊住)
@@ -336,7 +328,7 @@ SF.Main = (() => {
   }
 
   /* ---------- 鹰眼弹道预览线: 从炮口按真实弹道积分, 被地形/建筑遮挡则截断变红 ---------- */
-  let trajLine = null, trajFlightT = 0;   // trajFlightT: 炮弹到落点的飞行时间(秒)
+  let trajLine = null, groundLine = null, trajFlightT = 0;   // trajFlightT: 炮弹到落点的飞行时间(秒)
   const TRAJ_N = 140, TRAJ_DT = 0.06;     // 高抛弹道全程可达 ~8s, 积分长度要罩得住
   function buildTrajLine() {
     const geo = new THREE.BufferGeometry();
@@ -346,12 +338,34 @@ SF.Main = (() => {
     trajLine.frustumCulled = false;
     trajLine.renderOrder = 5;
     scene.add(trajLine);
+    // 地面引导线(虚线): 车体 → 瞄准落点, 贴地形起伏(WoT 火炮鹰眼)
+    const G = 32;
+    const g2 = new THREE.BufferGeometry();
+    g2.setAttribute('position', new THREE.BufferAttribute(new Float32Array(G * 3), 3));
+    groundLine = new THREE.Line(g2, new THREE.LineDashedMaterial({ color: 0xc8b26a, dashSize: 3, gapSize: 2.5, transparent: true, opacity: 0.75, depthTest: false }));
+    groundLine.frustumCulled = false;
+    groundLine.renderOrder = 5;
+    scene.add(groundLine);
   }
   function updateTraj() {
     const p = world.player;
     const show = sniper && p.alive && p.spec.cls === 'SPG' && !gameOver;
     if (!trajLine) return;
     trajLine.visible = show;
+    if (groundLine) {
+      // 地面引导线: 车体→视野中心落点, 32 段贴地采样
+      groundLine.visible = show;
+      if (show) {
+        const arr = groundLine.geometry.attributes.position.array, G = 32, T2 = world.terrain;
+        for (let i = 0; i < G; i++) {
+          const k = i / (G - 1);
+          const x = p.x + (artyX - p.x) * k, z = p.z + (artyZ - p.z) * k;
+          arr[i * 3] = x; arr[i * 3 + 1] = T2.heightAt(x, z) + 0.4; arr[i * 3 + 2] = z;
+        }
+        groundLine.geometry.attributes.position.needsUpdate = true;
+        groundLine.computeLineDistances();
+      }
+    }
     if (!show) return;
     const pos = p.muzzleWorld();
     const vel = p.gunDir().multiplyScalar(p.spec.gun.speed);
@@ -400,6 +414,12 @@ SF.Main = (() => {
         if (locked) {
           if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;   // 锁定偶发大跳变丢弃
           vcx = U.clamp(vcx + e.movementX, 0, innerWidth); vcy = U.clamp(vcy + e.movementY, 0, innerHeight);
+          // 直接拖动平移(WoT 鹰眼): 位移×每像素世界米数(随视场档位缩放); 悬停 HUD 交互区时暂停
+          if (!uiHitTest(vcx, vcy)) {
+            const wpp = artyH * 0.573 / innerHeight * 4;
+            artyX = U.clamp(artyX + e.movementX * wpp, -470, 470);
+            artyZ = U.clamp(artyZ + e.movementY * wpp, -470, 470);
+          }
         } else { vcx = U.clamp(e.clientX, 0, innerWidth); vcy = U.clamp(e.clientY, 0, innerHeight); }
         return;
       }
@@ -1121,6 +1141,7 @@ SF.Main = (() => {
     if (timerId) { clearInterval(timerId); timerId = null; }   // 降级定时器一并停, 否则退出后仍在空跑旧战场
     try { if (document.exitPointerLock) document.exitPointerLock(); } catch (e) { }
     // 释放上一场战斗的画布与 GL 上下文: 残留 canvas 会把新画布顶出屏幕(重开后画面像冻结), 上下文累积也会耗尽 WebGL 配额
+    trajLine = null; groundLine = null;
     if (renderer) {
       try { renderer.dispose(); if (renderer.forceContextLoss) renderer.forceContextLoss(); } catch (e) { }
       renderer.domElement.remove();
