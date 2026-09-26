@@ -423,13 +423,14 @@ SF.CFG = {
     /* ---------- 自行火炮(SPG): 高抛弹道 + 溅射伤害, Shift 鹰眼俯视瞄准 ----------
        弹道为纯曲射(WoT 火炮): 只走高抛根, 仰角 45°~84° 连续覆盖 ~180m 到最大射程;
        近于最小射程(高抛根超 84°)压最大仰角打不进 —— 和 WoT 一样有最小射程, 绝不退化为直射;
-       最大射程 ~860-900m 覆盖全图, 飞行 ~2-3s */
+       最大射程 ~860-900m 覆盖全图;
+       弹速/重力做保形放大(历史值 ×3.96 / ×15.7): 弧线形状与射程不变, 飞行时间压到 WoT 手感 ~1.3-1.8s */
     wespe: {
       name: '黄蜂', nation: 'GER', cls: 'SPG', tier: 'IV', hp: 460,
       maxSpeed: 11.1, reverseRatio: 0.4, accel: 3.6, brake: 8, coastDrag: 5.0,
       hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 84 * Math.PI / 180,
-      gun: { pen: 45, dmg: 340, reload: 13.5, speed: 540, grav: 339, splash: 4.4, life: 10 },
+      gun: { pen: 45, dmg: 340, reload: 13.5, speed: 972, grav: 1098, splash: 4.4, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.4, w: 1.2 },
       dispersion: { base: 1.15, aimTime: 4.6, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
@@ -439,7 +440,7 @@ SF.CFG = {
       maxSpeed: 12.5, reverseRatio: 0.4, accel: 3.8, brake: 8.5, coastDrag: 5.0,
       hullTraverse: 28 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 84 * Math.PI / 180,
-      gun: { pen: 62, dmg: 520, reload: 17, speed: 583, grav: 378, splash: 5.4, life: 10 },
+      gun: { pen: 62, dmg: 520, reload: 17, speed: 1049, grav: 1225, splash: 5.4, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.8, w: 1.4 },
       dispersion: { base: 1.3, aimTime: 5.0, max: 2.8, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
@@ -449,7 +450,7 @@ SF.CFG = {
       maxSpeed: 12.2, reverseRatio: 0.42, accel: 3.8, brake: 8.5, coastDrag: 5.2,
       hullTraverse: 32 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 84 * Math.PI / 180,
-      gun: { pen: 52, dmg: 430, reload: 15, speed: 550, grav: 348, splash: 4.8, life: 10 },
+      gun: { pen: 52, dmg: 430, reload: 15, speed: 990, grav: 1128, splash: 4.8, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.9, w: 1.4 },
       dispersion: { base: 1.2, aimTime: 4.8, max: 2.7, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
@@ -459,7 +460,7 @@ SF.CFG = {
       maxSpeed: 10.3, reverseRatio: 0.4, accel: 3.4, brake: 8, coastDrag: 5.0,
       hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 84 * Math.PI / 180,
-      gun: { pen: 50, dmg: 330, reload: 12, speed: 517, grav: 310, splash: 4.0, life: 10 },
+      gun: { pen: 50, dmg: 330, reload: 12, speed: 931, grav: 1004, splash: 4.0, life: 10 },
       gunArc: 6 * Math.PI / 180,
       sample: { l: 2.4, w: 1.25 },
       dispersion: { base: 1.1, aimTime: 4.4, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }

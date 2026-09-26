@@ -97,18 +97,21 @@ SF.FX = class {
   updateTrail(shell) {
     const line = shell.trailLine;
     if (!line) return;
+    // 鹰眼俯视相机在弧顶之下: 高于相机平面的拖尾点会穿过视锥近平面, 被透视放大成
+    // 横扫屏幕/镜像到对侧角落的巨线 —— 钳到相机平面以下(拖尾贴着视野上限沿弹道方向走)
+    const clampY = (SF.Game && SF.Game.trailClampY) || Infinity;
     const last = shell.trailPts[shell.trailPts.length - 1];
     if (!last || last.distanceTo(shell.pos) > 8) {
       shell.trailPts.push(shell.pos.clone());
       if (shell.trailPts.length > 7) shell.trailPts.shift();
-      this.burst(shell.pos, shell.trailCol, 1, 0.5, 0.1);   // 沿途微粒子增粗观感
+      if (shell.pos.y <= clampY) this.burst(shell.pos, shell.trailCol, 1, 0.5, 0.1);   // 沿途微粒子增粗观感
     }
     const pts = [...shell.trailPts, shell.pos].slice(-8);
     const pos = line.geometry.attributes.position, col = line.geometry.attributes.color;
     const off = 8 - pts.length;
     for (let i = 0; i < 8; i++) {
       const pt = pts[Math.max(0, i - off)];
-      pos.setXYZ(i, pt.x, pt.y, pt.z);
+      pos.setXYZ(i, pt.x, Math.min(pt.y, clampY), pt.z);
       const k = 0.12 + 0.88 * Math.max(0, (i - off + 1) / 8);   // 尾暗头亮
       col.setXYZ(i, shell.trailCol[0] * k, shell.trailCol[1] * k, shell.trailCol[2] * k);
     }

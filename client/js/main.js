@@ -256,6 +256,8 @@ SF.Main = (() => {
       camera.lookAt(pivot.clone().add(new THREE.Vector3(
         Math.sin(camYaw) * 8, Math.sin(-camPitch) * 8, Math.cos(camYaw) * 8)));
     }
+    // 曳光高度上限: 仅火炮鹰眼俯视时限制(相机在弧顶之下, 拖尾穿相机平面会被透视放大成扫屏巨线)
+    SF.Game.trailClampY = (sniper && p.spec.cls === 'SPG') ? camera.position.y - 4 : Infinity;
     // 鹰眼虚拟光标: 按住 Alt 才显示(WoT 式), 悬停 HUD 交互区变金色; 平时指针锁定下无光标
     const vc = document.getElementById('vcursor');
     const vcShow = eagle() && document.pointerLockElement === canvas && altHeld;
@@ -331,7 +333,7 @@ SF.Main = (() => {
 
   /* ---------- 鹰眼弹道预览线: 从炮口按真实弹道积分, 被地形/建筑遮挡则截断变红 ---------- */
   let trajLine = null, groundLine = null, trajFlightT = 0;   // trajFlightT: 炮弹到落点的飞行时间(秒)
-  const TRAJ_N = 140, TRAJ_DT = 0.06;     // 高抛弹道全程可达 ~8s, 积分长度要罩得住
+  const TRAJ_N = 140, TRAJ_DT = 0.02;     // 飞行 ~1.3-1.8s; 步长要细(粗了落点判定会漂进 20m 警戒区)
   function buildTrajLine() {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAJ_N * 3), 3));
