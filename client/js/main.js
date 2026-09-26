@@ -8,6 +8,7 @@ SF.Main = (() => {
   let camYaw = Math.PI, camPitch = 0.30, camDist = SF.CFG.camera.dist;
   let sniper = false, mouseDown = false, shakeT = 0, freeLook = false;   // 右键按住: 自由视角(炮塔锁定)
   let artyX = 0, artyZ = 0;   // 火炮鹰眼: 俯视视野中心(世界坐标)
+  let sniperFov = SF.CFG.camera.sniperFovMax;   // 当前狙镜视场(滚轮镜内变焦)
   let cruise = 0;              // 巡航控制: 1 前进 / -1 倒车 / 0 关
   let autoTarget = null;       // 自动瞄准目标(WoT E 键)
   const keys = {};
@@ -176,7 +177,7 @@ SF.Main = (() => {
       camera.lookAt(artyX, gy, artyZ);
     } else if (sniper) {
       p.group.visible = false;   // 狙击镜视角隐藏自己(WoT 式, 也避免相机被炮塔内壁糊住)
-      camera.fov = U.lerp(camera.fov, SF.CFG.camera.sniperFov, 1 - Math.exp(-12 * dt));
+      camera.fov = U.lerp(camera.fov, sniperFov, 1 - Math.exp(-12 * dt));
       const tp = new THREE.Vector3(p.x, p.y + 2.85, p.z);
       const dir = new THREE.Vector3(
         Math.sin(camYaw) * Math.cos(camPitch), Math.sin(-camPitch) + 0.04, Math.cos(camYaw) * Math.cos(camPitch)).normalize();
@@ -290,24 +291,26 @@ SF.Main = (() => {
         artyZ += e.movementY * 0.22;
         return;
       }
-      const s = SF.CFG.camera.sens * (sniper ? SF.CFG.camera.sniperSens : 1);
+      // 灵敏度随镜内倍率缩放(放大越多越细腻; 26→8 连续变化)
+      const s = SF.CFG.camera.sens * (sniper ? SF.CFG.camera.sniperSens * (sniperFov / 15) : 1);
       camYaw -= e.movementX * s;
       camPitch = U.clamp(camPitch + e.movementY * s, -0.12, 1.1);
     });
     document.addEventListener('mousedown', (e) => { if (e.button === 0) mouseDown = true; if (e.button === 2) freeLook = true; });
     document.addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; if (e.button === 2) freeLook = false; });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
-    // 滚轮(WoT 式): 第三人称上滚逐步拉近相机, 已拉到最近再上滚 → 开狙镜;
-    // 狙镜/鹰眼中只有下滚才退镜(上滚忽略, 否则连续上滚会在开镜瞬间来回闪烁), 退镜后相机停在最近继续下滚拉远
+    // 滚轮(WoT 式连续变焦): 第三人称上滚拉近相机, 最近后开镜(从最广镜开始);
+    // 镜内上滚继续放大 / 下滚降低倍率, 最广时下滚才退镜(上滚忽略防闪烁)
     document.addEventListener('wheel', (e) => {
       const down = e.deltaY > 0;
       if (sniper) {
-        if (!down) return;
-        sniper = false; camDist = SF.CFG.camera.minDist;
+        if (!down) sniperFov = Math.max(SF.CFG.camera.sniperFovMin, sniperFov * 0.87);
+        else if (sniperFov >= SF.CFG.camera.sniperFovMax - 0.01) { sniper = false; camDist = SF.CFG.camera.minDist; }
+        else sniperFov = Math.min(SF.CFG.camera.sniperFovMax, sniperFov * 1.15);
         return;
       }
       if (!down) {
-        if (camDist <= SF.CFG.camera.minDist + 0.01) sniper = true;
+        if (camDist <= SF.CFG.camera.minDist + 0.01) { sniper = true; sniperFov = SF.CFG.camera.sniperFovMax; }
         else camDist = U.clamp(camDist - 2.4, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
       } else {
         camDist = U.clamp(camDist + 2.4, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
@@ -321,6 +324,7 @@ SF.Main = (() => {
       if (k === 'Shift') {
         if (!e.repeat) {
           sniper = !sniper;
+          if (sniper) sniperFov = SF.CFG.camera.sniperFovMax;   // 开镜从最广视场开始
           // 火炮开鹰眼: 视野中心定位到当前瞄准点(太近则车前方 220m)
           if (sniper && world.player && world.player.spec.cls === 'SPG') {
             const apd = aimPoint ? Math.hypot(aimPoint.pos.x - world.player.x, aimPoint.pos.z - world.player.z) : 0;

@@ -515,7 +515,7 @@ SF.CFG = {
   },
 
   // 相机灵敏度: 数值=每像素弧度; 觉得快→调小, 慢→调大(参考: 0.0009 约为鼠标垫横扫一圈)
-  camera: { dist: 15, minDist: 6.5, maxDist: 30, height: 4.0, pitch: 0.30, fov: 55, sniperFov: 15, sens: 0.0009, sniperSens: 0.25 },
+  camera: { dist: 15, minDist: 6.5, maxDist: 30, height: 4.0, pitch: 0.30, fov: 55, sniperFovMax: 26, sniperFovMin: 8, sens: 0.0009, sniperSens: 0.25 },
 
   player: { viewRange: 445 },   // WoT 级视野上限
 
