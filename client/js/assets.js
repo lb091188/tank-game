@@ -5,16 +5,25 @@ window.SF = window.SF || {};
 SF.Assets = (() => {
   const A = { models: {}, maps: {}, sounds: {} };
 
+  // 缓存戳: 沿用本页 main.js 引用上的 ?v=(CI 发布时盖版本戳), 本地无参则原样
+  const V = (() => {
+    try {
+      const el = document.querySelector('script[src*="js/main.js"]');
+      const q = el && el.src.split('v=')[1];
+      return q ? '?v=' + encodeURIComponent(q) : '';
+    } catch (e) { return ''; }
+  })();
+
   function fetchErr(url) { throw new Error(`资源加载失败(文件缺失?): ${url}`); }
 
   async function fetchJSON(url) {
-    const r = await fetch(url);
+    const r = await fetch(url + V);
     if (!r.ok) fetchErr(url);
     return r.json();
   }
 
   async function fetchArrayBuffer(url) {
-    const r = await fetch(url);
+    const r = await fetch(url + V);
     if (!r.ok) fetchErr(url);
     return r.arrayBuffer();
   }
@@ -41,13 +50,13 @@ SF.Assets = (() => {
         resolve(h);
       };
       img.onerror = () => reject(new Error(`高程图加载失败: ${url}`));
-      img.src = url;
+      img.src = url + V;
     });
   }
 
   function loadGLB(url) {
     return new Promise((resolve, reject) => {
-      fetch(url).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+      fetch(url + V).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
         .then(buf => new THREE.GLTFLoader().parse(buf, '', gltf => resolve(gltf), err => reject(err)))
         .catch(() => reject(new Error(`模型加载失败: ${url}`)));
     });

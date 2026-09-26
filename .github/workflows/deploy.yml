@@ -18,7 +18,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Stamp version (commit time, seconds precision)
-        run: git log -1 --format=%cI > client/version.txt
+        run: |
+          git log -1 --format=%cI > client/version.txt
+          # 资源 URL 盖版本戳: GitHub Pages 默认缓存 10 分钟, 不破缓存会跑到旧 JS
+          V=$(cat client/version.txt)
+          sed -i "s|src=\"js/\([^\"?]*\)\"|src=\"js/\1?v=\${V//:/_}\"|g" client/index.html
 
       - name: Publish client/ → gh-pages
         uses: peaceiris/actions-gh-pages@v4

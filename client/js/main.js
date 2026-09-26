@@ -50,7 +50,6 @@ SF.Main = (() => {
     waveInfo: null, aiId: 100                                 // coop: AI 实体 id 从 100 起
   };
   let keySeen = false, hintShown = false;   // 键盘诊断: 是否收到过按键
-  let lastMouseT = -9;                      // 最近一次鼠标甩动(炮塔随车体走的豁免窗口)
   let spottedTimer = 0;
   const spotted = new Set();
   const spottedLast = new Map();   // 敌 → 最后点亮时刻
@@ -411,7 +410,6 @@ SF.Main = (() => {
       const s = SF.CFG.camera.sens * (sniper ? SF.CFG.camera.sniperSens * (sniperFov / 15) : 1);
       camYaw -= e.movementX * s;
       camPitch = U.clamp(camPitch + e.movementY * s, -0.12, 1.1);
-      lastMouseT = performance.now();
     });
     // HUD 交互区命中测试见模块层 uiHitTest()
     document.addEventListener('mousedown', (e) => {
@@ -554,8 +552,7 @@ SF.Main = (() => {
       throttle: manual || cruise,
       // 注意: yaw 增大 = 向左转(俯视逆时针), 所以 A=+1 / D=-1
       steer: (keys.KeyA || keys.ArrowLeft ? 1 : 0) + (keys.KeyD || keys.ArrowRight ? -1 : 0),
-      fire: mouseDown,
-      aimSlew: performance.now() - lastMouseT < 350   // 正在用鼠标瞄准: 炮塔不由车体接管
+      fire: mouseDown
     };
     if (aimPoint) {
       const dx = aimPoint.pos.x - p.x, dz = aimPoint.pos.z - p.z;
