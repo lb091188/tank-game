@@ -47,7 +47,7 @@ SF.CFG = {
       hullTraverse: 50 * Math.PI / 180, turretTraverse: 40 * Math.PI / 180,
       gunDepression: -12 * Math.PI / 180, gunElevation: 18 * Math.PI / 180,
       gun: { pen: 132, dmg: 240, reload: 7.5, speed: 850 },
-      sample: { l: 3.2, w: 1.4 },
+      sample: { l: 2.75, w: 1.4 },   // 一比一贴合 5.5m 小车体(史实 M18 全长 6.65m 含炮)
       dispersion: { base: 0.34, aimTime: 2.1, max: 2.0, move: 1.8, hullTurn: 1.2, turretTurn: 0.5, fire: 1.8 }
     },
     pz3: {

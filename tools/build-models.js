@@ -411,53 +411,56 @@ function buildHellcat() {
   const C = OLIVE;
   const root = N('hellcat', { extras: { type: 'hellcat' } });
   const tracks = Z('tracks', 10);
-  runningGear(root, tracks, 1.02, 5, 0.46, 6.4, 0.76, 0);
+  runningGear(root, tracks, 1.02, 5, 0.44, 5.6, 0.72, 0);
   root.children.push(tracks);
 
-  const hw = 1.18, hy = 0.98, hl = 6.2, sh = 0.72;
+  // M18 史实小车体: 全长 5.2m(旧 6.2 偏大), 车体顶面 ~1.2m——低矮是地狱猫的立身之本
+  const hw = 1.16, hy = 0.84, hl = 5.2, sh = 0.62;
   const hullSide = Z('hullSide', 13);   // 薄甲: 侧面 13mm
   hullSide.parts.push(part(box(0.14, sh, hl), M4x(-hw, hy, 0), C));
   hullSide.parts.push(part(box(0.14, sh, hl), M4x(hw, hy, 0), C));
-  hullSide.parts.push(part(box(0.14, 0.4, 1.6), M4x(-hw + 0.08, hy + sh / 2 + 0.16, 1.6, 0, 0.5, 0), C));  // 前侧斜
-  hullSide.parts.push(part(box(0.14, 0.4, 1.6), M4x(hw - 0.08, hy + sh / 2 + 0.16, 1.6, 0, -0.5, 0), C));
-  fenders(hullSide, hw, hy + sh / 2 + 0.04, 5.9, C);
+  hullSide.parts.push(part(box(0.14, 0.36, 1.4), M4x(-hw + 0.08, hy + sh / 2 + 0.14, 1.4, 0, 0.5, 0), C));  // 前侧斜
+  hullSide.parts.push(part(box(0.14, 0.36, 1.4), M4x(hw - 0.08, hy + sh / 2 + 0.14, 1.4, 0, -0.5, 0), C));
+  fenders(hullSide, hw, hy + sh / 2 + 0.04, 5.0, C);
   root.children.push(hullSide);
 
   const glacis = Z('glacis', 25);       // 25mm@47°
-  glacis.parts.push(part(box(2.3, 1.5, 0.16), M4x(0, hy + sh / 2 - Math.cos(0.82) * 0.75, hl / 2 - 0.26 + Math.sin(0.82) * 0.75, -0.82, 0, 0), C));
+  glacis.parts.push(part(box(2.26, 1.3, 0.16), M4x(0, hy + sh / 2 - Math.cos(0.82) * 0.65, hl / 2 - 0.26 + Math.sin(0.82) * 0.65, -0.82, 0, 0), C));
   root.children.push(glacis);
   const lower = Z('lowerPlate', 19);
-  lower.parts.push(part(box(2.3, sh * 0.72, 0.16), M4x(0, hy - sh * 0.12, hl / 2 - 0.02, -0.3, 0, 0), C));
+  lower.parts.push(part(box(2.26, sh * 0.72, 0.16), M4x(0, hy - sh * 0.12, hl / 2 - 0.02, -0.3, 0, 0), C));
   root.children.push(lower);
   const rear = Z('hullRear', 13);
-  rear.parts.push(part(box(2.4, sh, 0.14), M4x(0, hy, -hl / 2 + 0.02, 0.3, 0, 0), C));
-  engineDeck(rear, rear, 2.4, hy + sh / 2, -hl / 2 + 1.0, C);   // 排气并入尾部
+  rear.parts.push(part(box(2.36, sh, 0.14), M4x(0, hy, -hl / 2 + 0.02, 0.3, 0, 0), C));
+  engineDeck(rear, rear, 2.36, hy + sh / 2, -hl / 2 + 0.9, C);   // 排气并入尾部
   root.children.push(rear);
   const top = Z('hullTop', 10);
-  top.parts.push(part(box(2.4, 0.1, hl), M4x(0, hy + sh / 2 + 0.05, 0), C));
+  top.parts.push(part(box(2.36, 0.1, hl), M4x(0, hy + sh / 2 + 0.05, 0), C));
   root.children.push(top);
 
-  // 后置小炮塔(敞篷感用低矮圆柱)
-  const T = { ring: [0, 1.66, -0.85], w: 1.5, l: 1.8, h: 0.6 };
-  const turret = N('turret', { translation: T.ring });
-  const ty = T.h / 2;
-  const tFront = Z('turretFront', 60);
-  tFront.parts.push(part(cyl(0.78, 0.84, T.h, 14), M4x(0, ty, 0), C));
+  // 后置敞篷炮塔(M18 史实开顶): 矮篮墙 + 大炮盾 + 尾部配重箱, 无顶盖——俯射会掉进战斗室打车体顶
+  const deckY = hy + sh / 2 + 0.12;
+  const turret = N('turret', { translation: [0, deckY, -0.5] });
+  const tb = 0.09, th = 0.62, tw = 1.62, tl = 1.9;   // 篮墙: 板厚/墙高/篮宽/篮长
+  const tFront = Z('turretFront', 25);
+  tFront.parts.push(part(box(tw, th * 0.7, tb), M4x(0, th * 0.35, tl / 2 - 0.05), C));   // 前矮墙(藏在大炮盾后)
   turret.children.push(tFront);
-  const tSide = Z('turretSide', 25);
-  tSide.parts.push(part(cyl(0.8, 0.84, 0.05, 14), M4x(0, T.h + 0.02, 0), C));
+  const tSide = Z('turretSide', 12);
+  for (const sx of [-1, 1]) tSide.parts.push(part(box(tb, th, tl), M4x(sx * (tw / 2 - 0.04), th / 2, 0), C));
+  tSide.parts.push(part(cyl(0.05, 0.05, 0.4, 8), M4x(tw / 2 - 0.1, th + 0.03, 0.2, 0, 0, Math.PI / 2), DARK));  // 篮沿工具筒
   turret.children.push(tSide);
-  const tRear = Z('turretRear', 19);
-  tRear.parts.push(part(box(1.1, 0.4, 0.24), M4x(0, ty - 0.05, -0.95), C));
+  const tRear = Z('turretRear', 12);   // 尾部配重箱(M18 显著特征)
+  tRear.parts.push(part(box(tw * 0.94, th * 0.8, 0.55), M4x(0, th * 0.4, -tl / 2 - 0.26), C));
+  tRear.parts.push(part(box(tb, th, 0.55), M4x(0, th / 2, -tl / 2 + 0.25), C));
   turret.children.push(tRear);
-  const tRoof = Z('turretRoof', 10);
-  tRoof.parts.push(part(cyl(0.77, 0.77, 0.08, 14), M4x(0, T.h + 0.05, 0), C));   // 敞篷: 仅前部小顶棚
-  tRoof.parts.push(part(box(0.9, 0.08, 0.7), M4x(0, T.h + 0.1, 0.55), C));
+  const tRoof = Z('turretRoof', 10);   // 敞篷无顶: 只留尾部储物筐小平台(小面积俯射命中区)
+  tRoof.parts.push(part(box(tw * 0.7, 0.14, 0.5), M4x(0, th * 0.82, -tl / 2 - 0.28), DARK));
   turret.children.push(tRoof);
-  const mantlet = Z('mantlet', 90);
-  mantlet.parts.push(part(cyl(0.38, 0.38, 0.28, 12), M4x(0, ty + 0.02, T.l / 2 + 0.04, Math.PI / 2, 0, 0), C));
+  const mantlet = Z('mantlet', 90);    // 大炮盾(M18 标志)
+  mantlet.parts.push(part(box(1.04, 0.82, 0.16), M4x(0, th * 0.6, tl / 2 + 0.06), C));
+  mantlet.parts.push(part(cyl(0.3, 0.3, 0.32, 12), M4x(0, th * 0.6, tl / 2 + 0.16, Math.PI / 2, 0, 0), C));
   turret.children.push(mantlet);
-  turret.children.push(buildGun([0, 0.3, 0.9], 0.068, 3.4, GUN_C, true));
+  turret.children.push(buildGun([0, th * 0.6, tl / 2 + 0.22], 0.068, 3.3, GUN_C, true));
   root.children.push(turret);
   return root;
 }
@@ -533,11 +536,18 @@ function buildRosterTank(T) {
     for (const sx of [-1, 1]) casS.parts.push(part(box(0.16, T.casH, T.casL || 2.4), M4x(sx * H.w * 0.4, cy + T.casH / 2, H.l / 2 - 1.2 + cz), C));
     root.children.push(casS);
     const casT = Z('turretRoof', T.armor.top);
-    casT.parts.push(part(box(H.w * 0.85, 0.12, (T.casL || 2.4) + 0.4), M4x(0, cy + T.casH + 0.05, H.l / 2 - 1.25 + cz), C));
-    casT.parts.push(part(cyl(0.26, 0.28, 0.06, 10), M4x(-H.w * 0.18, cy + T.casH + 0.12, H.l / 2 - 1.6 + cz), C));      // 车长舱盖
-    casT.parts.push(part(cyl(0.2, 0.22, 0.05, 10), M4x(H.w * 0.2, cy + T.casH + 0.1, H.l / 2 - 1.1 + cz), C));          // 装填手舱盖
-    casT.parts.push(part(sphereSeg(0.13, 8, 5, 0, Math.PI * 2), M4x(0, cy + T.casH + 0.14, H.l / 2 - 0.7 + cz), C));    // 通风罩
-    casT.parts.push(part(cyl(0.014, 0.02, 1.3, 5), M4x(H.w * 0.32, cy + T.casH + 0.6, H.l / 2 - 1.5 + cz, 0.08, 0, 0.05), DARK));  // 天线
+    if (T.openCab) {
+      // 敞篷战斗室(黄蜂/野蜂/牧师史实开顶): 无顶板——俯射掉进战斗室打车体顶; 只留防水布卷+通风罩+天线
+      casT.parts.push(part(cyl(0.055, 0.055, (T.casL || 2.4) * 0.9, 8), M4x(0, cy + T.casH + 0.05, H.l / 2 - 1.35 + cz, 0, 0, Math.PI / 2), CANVAS));  // 后防水布卷
+      casT.parts.push(part(sphereSeg(0.13, 8, 5, 0, Math.PI * 2), M4x(-H.w * 0.18, cy + T.casH + 0.12, H.l / 2 - 1.6 + cz), C));                      // 通风罩
+      casT.parts.push(part(cyl(0.014, 0.02, 1.3, 5), M4x(H.w * 0.32, cy + T.casH + 0.6, H.l / 2 - 1.5 + cz, 0.08, 0, 0.05), DARK));                    // 天线
+    } else {
+      casT.parts.push(part(box(H.w * 0.85, 0.12, (T.casL || 2.4) + 0.4), M4x(0, cy + T.casH + 0.05, H.l / 2 - 1.25 + cz), C));
+      casT.parts.push(part(cyl(0.26, 0.28, 0.06, 10), M4x(-H.w * 0.18, cy + T.casH + 0.12, H.l / 2 - 1.6 + cz), C));      // 车长舱盖
+      casT.parts.push(part(cyl(0.2, 0.22, 0.05, 10), M4x(H.w * 0.2, cy + T.casH + 0.1, H.l / 2 - 1.1 + cz), C));          // 装填手舱盖
+      casT.parts.push(part(sphereSeg(0.13, 8, 5, 0, Math.PI * 2), M4x(0, cy + T.casH + 0.14, H.l / 2 - 0.7 + cz), C));    // 通风罩
+      casT.parts.push(part(cyl(0.014, 0.02, 1.3, 5), M4x(H.w * 0.32, cy + T.casH + 0.6, H.l / 2 - 1.5 + cz, 0.08, 0, 0.05), DARK));  // 天线
+    }
     root.children.push(casT);
     root.children.push(buildGun([0, cy + T.casH * 0.6, H.l / 2 + 0.05 + cz], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
   } else {
@@ -797,15 +807,15 @@ const ROSTER = [
   // 自行火炮(无塔战斗室 + 短粗榴弹炮)
   { type: 'wespe', nation: 'GER', hw: 1.08, wheels: 5, wr: 0.34, tl: 4.4, th: 0.78,
     hull: { l: 4.4, w: 2.25, h: 0.9, y: 1.05 }, gl: 1.1, ga: 0.55, gl2: 2.2, gr: 0.095, brake: false,
-    turret: 'casemate', casH: 0.72, casA: 0.55, casL: 1.8, casZ: 0.35,
+    turret: 'casemate', openCab: true, casH: 0.72, casA: 0.55, casL: 1.8, casZ: 0.35,
     armor: { glacis: 30, lower: 30, side: 20, rear: 16, top: 10, turretSide: 20, mantlet: 40 } },
   { type: 'hummel', nation: 'GER', hw: 1.36, wheels: 6, wr: 0.42, tl: 5.2, th: 0.86,
     hull: { l: 5.2, w: 2.8, h: 1.05, y: 1.25 }, gl: 1.5, ga: 0.7, gl2: 2.7, gr: 0.105, brake: false,
-    turret: 'casemate', casH: 0.9, casA: 0.6, casL: 2.1, casZ: 0.5,
+    turret: 'casemate', openCab: true, casH: 0.9, casA: 0.6, casL: 2.1, casZ: 0.5,
     armor: { glacis: 30, lower: 30, side: 20, rear: 16, top: 10, turretSide: 20, mantlet: 40 } },
   { type: 'm7priest', nation: 'USA', hw: 1.28, wheels: 6, wr: 0.42, tl: 5.4, th: 0.84,
     hull: { l: 5.4, w: 2.65, h: 1.0, y: 1.25 }, gl: 1.3, ga: 0.6, gl2: 2.5, gr: 0.1, brake: false,
-    turret: 'casemate', casH: 0.78, casA: 0.5, casL: 1.9, casZ: 0.55,
+    turret: 'casemate', openCab: true, casH: 0.78, casA: 0.5, casL: 1.9, casZ: 0.55,
     armor: { glacis: 50, lower: 40, side: 30, rear: 25, top: 12, turretSide: 25, mantlet: 45 } },
   { type: 'su26', nation: 'USSR', hw: 1.1, wheels: 5, wr: 0.38, tl: 4.5, th: 0.8,
     hull: { l: 4.5, w: 2.4, h: 1.0, y: 1.12 }, gl: 1.0, ga: 0.6, gl2: 2.1, gr: 0.1, brake: false,
