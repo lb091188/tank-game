@@ -7,6 +7,7 @@ SF.Main = (() => {
   let world, fx, shells;
   let camYaw = Math.PI, camPitch = 0.30, camDist = SF.CFG.camera.dist;
   let sniper = false, mouseDown = false, shakeT = 0, freeLook = false;   // 右键按住: 自由视角(炮塔锁定)
+  let artyX = 0, artyZ = 0;   // 火炮鹰眼: 俯视视野中心(世界坐标)
   let cruise = 0;              // 巡航控制: 1 前进 / -1 倒车 / 0 关
   let autoTarget = null;       // 自动瞄准目标(WoT E 键)
   const keys = {};
@@ -165,7 +166,15 @@ SF.Main = (() => {
   /* ---------- 相机与瞄准 ---------- */
   function updateCamera(dt) {
     const p = world.player;
-    if (sniper) {
+    if (sniper && p.spec.cls === 'SPG') {
+      // 火炮鹰眼: 高空俯视炮击视野, 准星即炮弹落点
+      p.group.visible = true;
+      camera.fov = U.lerp(camera.fov, 32, 1 - Math.exp(-12 * dt));
+      artyX = U.clamp(artyX, -470, 470); artyZ = U.clamp(artyZ, -470, 470);
+      const gy = world.terrain.heightAt(artyX, artyZ);
+      camera.position.set(artyX, gy + 130, artyZ + 10);
+      camera.lookAt(artyX, gy, artyZ);
+    } else if (sniper) {
       p.group.visible = false;   // 狙击镜视角隐藏自己(WoT 式, 也避免相机被炮塔内壁糊住)
       camera.fov = U.lerp(camera.fov, SF.CFG.camera.sniperFov, 1 - Math.exp(-12 * dt));
       const tp = new THREE.Vector3(p.x, p.y + 2.85, p.z);
@@ -275,6 +284,12 @@ SF.Main = (() => {
       if (document.pointerLockElement !== canvas) return;
       // 指针锁定偶发的大跳变(>300px)丢弃, 防画面猛甩
       if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
+      // 火炮鹰眼: 鼠标平移俯视视野(屏幕上=-Z / 右=+X)
+      if (sniper && world && world.player && world.player.spec.cls === 'SPG') {
+        artyX += e.movementX * 0.22;
+        artyZ += e.movementY * 0.22;
+        return;
+      }
       const s = SF.CFG.camera.sens * (sniper ? SF.CFG.camera.sniperSens : 1);
       camYaw -= e.movementX * s;
       camPitch = U.clamp(camPitch + e.movementY * s, -0.12, 1.1);
@@ -292,7 +307,18 @@ SF.Main = (() => {
       const k = keyOf(e);
       if (!k) return;
       keySeen = true;
-      if (k === 'Shift') { if (!e.repeat) sniper = !sniper; keys.Shift = true; return; }
+      if (k === 'Shift') {
+        if (!e.repeat) {
+          sniper = !sniper;
+          // 火炮开鹰眼: 视野中心定位到当前瞄准点(太近则车前方 220m)
+          if (sniper && world.player && world.player.spec.cls === 'SPG') {
+            const apd = aimPoint ? Math.hypot(aimPoint.pos.x - world.player.x, aimPoint.pos.z - world.player.z) : 0;
+            if (aimPoint && apd > 60) { artyX = aimPoint.pos.x; artyZ = aimPoint.pos.z; }
+            else { artyX = world.player.x + Math.sin(camYaw) * 220; artyZ = world.player.z + Math.cos(camYaw) * 220; }
+          }
+        }
+        keys.Shift = true; return;
+      }
       if (k === 'Tab') { e.preventDefault(); if (!e.repeat) SF.HUD.toggleMissionDetail(); return; }
       if (k === 'KeyR') { if (!e.repeat) { cruise = 1; SF.HUD.showMsg('巡航 · 前进', 1.2); } return; }
       if (k === 'KeyF') { if (!e.repeat) { cruise = -1; SF.HUD.showMsg('巡航 · 倒车', 1.2); } return; }
@@ -361,6 +387,17 @@ SF.Main = (() => {
       const dx = aimPoint.pos.x - p.x, dz = aimPoint.pos.z - p.z;
       input.aimYaw = Math.atan2(dx, dz);
       input.aimPitch = Math.atan2(aimPoint.pos.y - (p.y + 2.2), Math.hypot(dx, dz));
+      // 自行火炮: 抛物线弹道解算仰角(含炮口高度修正的低伸解), 炮弹落点即瞄准点
+      if (p.spec.cls === 'SPG') {
+        const v = p.spec.gun.speed, g = p.spec.gun.grav || SF.CFG.sim.shellGravity;
+        const d = Math.hypot(dx, dz);
+        const h = (p.y + 2.2) - aimPoint.pos.y;              // 炮口高于落点
+        const A = g * d * d / (2 * v * v);
+        const disc = d * d - 4 * A * (A - h);
+        const u = (d > 2 && disc >= 0) ? (d - Math.sqrt(disc)) / (2 * A)
+                                       : Math.tan(p.spec.gunElevation);   // 超出射程: 压最大仰角
+        input.aimPitch = Math.atan(u);
+      }
     } else { input.aimYaw = camYaw; input.aimPitch = 0; }
     // WoT 式右键自由视角: 按住右键时炮塔锁定原方向, 相机自由查看四周
     if (freeLook) { input.aimYaw = p.turretYaw; input.aimPitch = p.gunPitch; }
@@ -380,8 +417,8 @@ SF.Main = (() => {
   }
 
   /* ---------- 事件接线(模拟 → 表现) ---------- */
-  const HIT_TEXT = { pen: '击穿', bounce: '跳弹', nopen: '未击穿', gun: '火炮损伤' };
-  const HIT_COLOR = { pen: '#ffb35c', bounce: '#f2f2f2', nopen: '#9aa0a6', gun: '#ffd97a' };
+  const HIT_TEXT = { pen: '击穿', bounce: '跳弹', nopen: '未击穿', gun: '火炮损伤', splash: '命中' };
+  const HIT_COLOR = { pen: '#ffb35c', bounce: '#f2f2f2', nopen: '#9aa0a6', gun: '#ffd97a', splash: '#ffb35c' };
   const MODULE_TAG = { track: '·履带', engine: '·发动机', ammo: '·弹药架', gun: '' };
 
   function bindBus() {
@@ -399,11 +436,12 @@ SF.Main = (() => {
         stats.hits++; if (r.kind === 'pen') stats.pens++;
         stats.dmg += r.dmg;
       }
-      const text = { pen: `-${r.dmg}`, bounce: '跳弹', nopen: '未击穿', gun: '火炮受损' }[r.kind] || '';
+      const text = { pen: `-${r.dmg}`, bounce: '跳弹', nopen: '未击穿', gun: '火炮受损', splash: `-${r.dmg}` }[r.kind] || '';
       SF.HUD.dmgNumber(r.point, text, HIT_COLOR[r.kind] || '#fff');
       const snd = r.kind === 'pen' ? 'pen' : r.kind === 'bounce' ? 'bounce' : 'nopen';
       // 音量: 自己挨打最响; 自己打中的反馈音用慢衰减(atten 大)保证清晰
-      SF.Audio.play(snd, target.isPlayer ? null : r.point, { gain: target.isPlayer ? 1.7 : 1.0, atten: 140 });
+      if (r.kind !== 'splash')   // HE 溅射的爆炸声已在弹着点播过
+        SF.Audio.play(snd, target.isPlayer ? null : r.point, { gain: target.isPlayer ? 1.7 : 1.0, atten: 140 });
       // 归属分明的提示: 我打出去的 → 准星下方; 我挨打的 → 顶部红色警报 (文字+语音)
       if (shooter && shooter.isPlayer) {
         SF.HUD.hitFeedback(HIT_TEXT[r.kind] + (r.module ? MODULE_TAG[r.module] : ''), HIT_COLOR[r.kind]);
@@ -416,12 +454,17 @@ SF.Main = (() => {
           if (r.module) SF.Audio.playVoice({ track: 'v_track', engine: 'v_engine', ammo: 'v_ammo', gun: 'v_gun' }[r.module], true);
         }
         else if (r.kind === 'bounce') SF.HUD.hitFeedback('跳弹', '#9fd0ff');
+        else if (r.kind === 'splash') SF.HUD.alarm(`被炮击 -${r.dmg}`);
       }
       if (target.isPlayer && shooter) SF.HUD.hitFrom(shooter);
       if (target.isPlayer) shakeT = Math.max(shakeT, 0.7);
       if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 1.2 });
     });
-    SF.Bus.on('reloaded', (e) => { if (e.tank.isPlayer) SF.Audio.play('reload', null, { gain: 1.5 }); });
+    SF.Bus.on('reloaded', (e) => {
+      // 弹夹炮夹内短装填不播"装填完成"(连发会刷屏), 只在整夹装填/普通炮播
+      if (e.tank.isPlayer && (!e.tank.spec.gun.autoloader || e.tank.clipPhase !== 'intra'))
+        SF.Audio.play('reload', null, { gain: 1.5 });
+    });
     SF.Bus.on('shellFrom', (d) => SF.HUD.shotFrom(d, true));   // 近弹: 屏幕箭头 + 标记
     let missLast = -9;   // 未命中提示节流(基于模拟时间)
     SF.Bus.on('playerMiss', () => {
@@ -801,8 +844,9 @@ SF.Main = (() => {
     garagePV.turret = parts.turret;
     garagePV.gun = parts.gun;
     const v = SF.CFG.vehicles[type];
+    const al = v.gun.autoloader;
     document.getElementById('garageStats').innerHTML =
-      `<b>${v.name}</b><span>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · 装填 ${v.gun.reload}s · 极速 ${Math.round(v.maxSpeed * 3.6)} km/h</span>`;
+      `<b>${v.name}</b><span>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · ${al ? `弹夹 ${al.clip} 发(间隔 ${al.intra}s/整夹 ${al.long}s)` : `装填 ${v.gun.reload}s`}${v.gun.splash ? ` · 溅射 ${v.gun.splash}m` : ''} · 极速 ${Math.round(v.maxSpeed * 3.6)} km/h</span>`;
     garagePV.renderer.render(garagePV.scene, garagePV.cam);
   }
 

@@ -392,6 +392,75 @@ SF.CFG = {
       sample: { l: 3.6, w: 1.7 },
       dispersion: { base: 0.44, aimTime: 2.6, max: 2.5, move: 1.6, hullTurn: 1.2, turretTurn: 0.6, fire: 1.8 }
     },
+    /* ---------- 弹夹(连发)车: 夹内短装填连打, 打完整夹长装填 ---------- */
+    amx13: {
+      name: 'AMX 13 75 轻型坦克', nation: 'FRA', cls: 'LT', tier: 'VI', hp: 750,
+      maxSpeed: 16.7, reverseRatio: 0.5, accel: 5.6, brake: 10.5, coastDrag: 5.8,
+      hullTraverse: 46 * Math.PI / 180, turretTraverse: 42 * Math.PI / 180,
+      gunDepression: -5 * Math.PI / 180, gunElevation: 14 * Math.PI / 180,
+      gun: { pen: 106, dmg: 110, reload: 2.3, speed: 800, autoloader: { clip: 6, intra: 2.3, long: 20 } },
+      sample: { l: 2.6, w: 1.25 },
+      dispersion: { base: 0.40, aimTime: 2.2, max: 2.2, move: 1.6, hullTurn: 1.2, turretTurn: 0.6, fire: 1.2 }
+    },
+    amx50100: {
+      name: 'AMX 50 100 重型坦克', nation: 'FRA', cls: 'HT', tier: 'VIII', hp: 1500,
+      maxSpeed: 15.0, reverseRatio: 0.45, accel: 3.8, brake: 9, coastDrag: 5.2,
+      hullTraverse: 32 * Math.PI / 180, turretTraverse: 32 * Math.PI / 180,
+      gunDepression: -6 * Math.PI / 180, gunElevation: 13 * Math.PI / 180,
+      gun: { pen: 170, dmg: 320, reload: 2.7, speed: 850, autoloader: { clip: 6, intra: 2.7, long: 27 } },
+      sample: { l: 3.3, w: 1.55 },
+      dispersion: { base: 0.44, aimTime: 2.6, max: 2.5, move: 1.7, hullTurn: 1.2, turretTurn: 0.65, fire: 1.1 }
+    },
+    lorr40t: {
+      name: '洛林 40t 中型坦克', nation: 'FRA', cls: 'MT', tier: 'VIII', hp: 1150,
+      maxSpeed: 18.0, reverseRatio: 0.5, accel: 5.0, brake: 10, coastDrag: 5.5,
+      hullTraverse: 40 * Math.PI / 180, turretTraverse: 38 * Math.PI / 180,
+      gunDepression: -6 * Math.PI / 180, gunElevation: 12 * Math.PI / 180,
+      gun: { pen: 165, dmg: 300, reload: 2.6, speed: 830, autoloader: { clip: 4, intra: 2.6, long: 24 } },
+      sample: { l: 3.1, w: 1.5 },
+      dispersion: { base: 0.40, aimTime: 2.4, max: 2.3, move: 1.6, hullTurn: 1.15, turretTurn: 0.6, fire: 1.15 }
+    },
+    /* ---------- 自行火炮(SPG): 高抛弹道 + 溅射伤害, Shift 鹰眼俯视瞄准 ---------- */
+    wespe: {
+      name: '黄蜂 自行火炮', nation: 'GER', cls: 'SPG', tier: 'IV', hp: 460,
+      maxSpeed: 11.1, reverseRatio: 0.4, accel: 3.6, brake: 8, coastDrag: 5.0,
+      hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
+      gunDepression: -6 * Math.PI / 180, gunElevation: 46 * Math.PI / 180,
+      gun: { pen: 45, dmg: 340, reload: 13.5, speed: 150, grav: 22, splash: 4.4, life: 9 },
+      gunArc: 6 * Math.PI / 180,
+      sample: { l: 2.4, w: 1.2 },
+      dispersion: { base: 1.15, aimTime: 4.6, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
+    },
+    hummel: {
+      name: '野蜂 自行火炮', nation: 'GER', cls: 'SPG', tier: 'VI', hp: 540,
+      maxSpeed: 12.5, reverseRatio: 0.4, accel: 3.8, brake: 8.5, coastDrag: 5.0,
+      hullTraverse: 28 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
+      gunDepression: -6 * Math.PI / 180, gunElevation: 46 * Math.PI / 180,
+      gun: { pen: 62, dmg: 520, reload: 17, speed: 160, grav: 24, splash: 5.4, life: 9 },
+      gunArc: 6 * Math.PI / 180,
+      sample: { l: 2.8, w: 1.4 },
+      dispersion: { base: 1.3, aimTime: 5.0, max: 2.8, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
+    },
+    m7priest: {
+      name: 'M7 牧师 自行火炮', nation: 'USA', cls: 'SPG', tier: 'V', hp: 500,
+      maxSpeed: 12.2, reverseRatio: 0.42, accel: 3.8, brake: 8.5, coastDrag: 5.2,
+      hullTraverse: 32 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
+      gunDepression: -6 * Math.PI / 180, gunElevation: 44 * Math.PI / 180,
+      gun: { pen: 52, dmg: 430, reload: 15, speed: 155, grav: 22, splash: 4.8, life: 9 },
+      gunArc: 6 * Math.PI / 180,
+      sample: { l: 2.9, w: 1.4 },
+      dispersion: { base: 1.2, aimTime: 4.8, max: 2.7, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
+    },
+    su26: {
+      name: 'SU-26 自行火炮', nation: 'USSR', cls: 'SPG', tier: 'IV', hp: 480,
+      maxSpeed: 10.3, reverseRatio: 0.4, accel: 3.4, brake: 8, coastDrag: 5.0,
+      hullTraverse: 30 * Math.PI / 180, turretTraverse: 16 * Math.PI / 180,
+      gunDepression: -6 * Math.PI / 180, gunElevation: 44 * Math.PI / 180,
+      gun: { pen: 50, dmg: 330, reload: 12, speed: 140, grav: 20, splash: 4.0, life: 9 },
+      gunArc: 6 * Math.PI / 180,
+      sample: { l: 2.4, w: 1.25 },
+      dispersion: { base: 1.1, aimTime: 4.4, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
+    },
     medium: {
       name: '敌方中型坦克', hp: 550,
       maxSpeed: 12.5, reverseRatio: 0.45, accel: 3.8, brake: 9, coastDrag: 5.2,
@@ -476,11 +545,12 @@ SF.CFG = {
     'bt7', 't34', 't3485', 'kv1', 'kv2', 'is2', 'su85', 'su100', 'isu152', 'm3lee', 'm10', 'm36',
     'matilda', 'cromwell', 'firefly', 'churchill7', 'b1bis', 'somua', 'chiha', 'chinu',
     'tiger2', 'ferdinand', 'is3', 't44', 'm26', 't26e4', 't29', 'centurion', 'chiri',
-    'type62', 'type59', 'wz111'];
+    'type62', 'type59', 'wz111', 'amx13', 'amx50100', 'lorr40t', 'wespe', 'hummel', 'm7priest', 'su26'];
   const FLAG = { USA: '🇺🇸', GER: '🇩🇪', USSR: '🇷🇺', UK: '🇬🇧', FRA: '🇫🇷', JPN: '🇯🇵', CHN: '🇨🇳' };
+  const CLS_CN = { LT: '轻坦', MT: '中坦', HT: '重坦', TD: '反坦克', SPG: '火炮' };
   SF.CFG.garage = sel.filter(t => SF.CFG.vehicles[t]).map(t => {
     const v = SF.CFG.vehicles[t];
-    return { type: t, tag: (v.nation ? FLAG[v.nation] + ' ' : '') + (v.tier || '') + '级' + (v.cls || ''), desc: v.name };
+    return { type: t, tag: (v.nation ? FLAG[v.nation] + ' ' : '') + (v.tier || '') + '级' + (CLS_CN[v.cls] || v.cls || ''), desc: v.name };
   });
 })();
 

@@ -177,7 +177,9 @@ SF.Shells = class {
     const shell = {
       active: true, owner, team: owner.team,
       pos: pos.clone(), vel: d.clone().multiplyScalar(spec.speed),
-      pen: spec.pen, dmg: spec.dmg, life: 4, tracer: null
+      pen: spec.pen, dmg: spec.dmg, life: spec.life || 4, tracer: null,
+      grav: spec.grav || SF.CFG.sim.shellGravity,    // 火炮 HE 用大重力打高抛弧线
+      splash: spec.splash || 0
     };
     this.list.push(shell);
     this.fx.acquireTrail(shell);
@@ -191,7 +193,7 @@ SF.Shells = class {
       if (sh.life <= 0) { this._kill(sh); continue; }
 
       const next = sh.pos.clone().addScaledVector(sh.vel, dt);
-      sh.vel.y -= SF.CFG.sim.shellGravity * dt;
+      sh.vel.y -= sh.grav * dt;
       const seg = next.clone().sub(sh.pos), segLen = seg.length();
       const segDir = seg.clone().normalize();
 
@@ -230,7 +232,7 @@ SF.Shells = class {
       // --- 处理命中 ---
       if (hitType) {
         const p = sh.pos.clone().addScaledVector(segDir, hitT * segLen - 0.05);
-        if (hitType === 'tank') {
+        if (hitType === 'tank' && !sh.splash) {
           const { tank, hit } = hitData;
           const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
           tank.takeHit(sh.owner, { pen: sh.pen, dmg: sh.dmg }, {
@@ -239,8 +241,9 @@ SF.Shells = class {
           });
         } else {
           this.fx.impact(hitType === 'ground' ? 'ground' : 'cover', p);
-          if (sh.owner.isPlayer) SF.Bus.emit('playerMiss', { point: p });   // 打飞了也要有反馈
+          if (sh.owner.isPlayer && !sh.splash) SF.Bus.emit('playerMiss', { point: p });   // 打飞了也要有反馈
         }
+        if (sh.splash) this._explodeHE(sh, p, world, hitType === 'tank' ? hitData.tank : null);
         this._kill(sh);
         continue;
       }
@@ -259,6 +262,19 @@ SF.Shells = class {
   _kill(sh) {
     sh.active = false;
     if (sh.trailLine) { sh.trailLine.visible = false; sh.trailLine = null; }
+  }
+
+  /* --- 火炮 HE 溅射: 爆炸特效 + 范围伤害(直接命中者全额, 周围按距离衰减) --- */
+  _explodeHE(sh, p, world, directTank) {
+    this.fx.explosion(p);
+    SF.Audio.play('explosion', p, { gain: directTank ? 1.3 : 1.0 });
+    for (const tk of world.tanks) {
+      if (!tk.alive || tk.team === sh.team) continue;
+      const d = Math.hypot(tk.x - p.x, (tk.y + 1.2) - p.y, tk.z - p.z);
+      if (d > sh.splash) continue;
+      if (tk === directTank) { tk.takeSplash(sh.owner, sh.dmg, p); continue; }   // 直接命中: 全额
+      tk.takeSplash(sh.owner, sh.dmg * (1 - 0.65 * d / sh.splash), p);
+    }
   }
 };
 

@@ -27,6 +27,10 @@ SF.Tank = class {
     this.velX = 0; this.velZ = 0;   // 供 AI 预判提前量
     this.trackOffset = 0;           // 履带纹理滚动相位
     this.reloadT = 0.5;
+    this.reloadTotal = 0.5;                              // 当前装填阶段总时长(读条分母)
+    const _al = this.spec.gun.autoloader;
+    this.clipLeft = _al ? _al.clip : 0;                  // 弹夹余弹(0=非弹夹炮)
+    this.clipPhase = _al ? 'intra' : 'single';           // intra=夹内短装填 long=整夹长装填
     this.disp = this.spec.dispersion.max;   // 起始满圈
     this.modules = { track: 0, engine: 0, gun: 0 };
     this.lastYawRate = 0; this.lastTurretRate = 0;
@@ -190,7 +194,8 @@ SF.Tank = class {
     this.x = keep.x; this.z = keep.z; this.yaw = keep.yaw; this.netId = keep.netId; this.isPlayer = keep.isPlayer; this.team = keep.team;
     this.speed = 0; this.turretYaw = this.yaw; this.gunPitch = 0;
     this.pitch = 0; this.roll = 0; this.y = 0; this._yInit = false;
-    this.hp = this.spec.hp; this.alive = true; this.reloadT = 1;
+    this.hp = this.spec.hp; this.alive = true; this.reloadT = 1; this.reloadTotal = 1;
+    if (this.spec.gun.autoloader) { this.clipLeft = this.spec.gun.autoloader.clip; this.clipPhase = 'intra'; }
     this.disp = this.spec.dispersion.max;
     this.modules = { track: 0, engine: 0, gun: 0 };
     this._wreck = null; this._deadTinted = false;
@@ -215,7 +220,12 @@ SF.Tank = class {
   fire(world) {
     if (!this.alive || this.reloadT > 0) return false;
     const S = this.spec;
-    this.reloadT = S.gun.reload;
+    const al = S.gun.autoloader;
+    if (al) {
+      if (this.clipLeft > 1) { this.clipLeft--; this.reloadT = al.intra; this.clipPhase = 'intra'; }
+      else { this.clipLeft = al.clip; this.reloadT = al.long; this.clipPhase = 'long'; }   // 打完最后一发 → 整夹长装填
+    } else this.reloadT = S.gun.reload;
+    this.reloadTotal = this.reloadT;
     this.stats.shots++;
     let disp = this.disp;
     if (this.modules.gun > 0) disp *= SF.CFG.armor.modules.gun.dispPenalty;
@@ -261,6 +271,18 @@ SF.Tank = class {
     }
     SF.Bus.emit('hit', result);
     return result;
+  }
+
+  /* --- 溅射承伤(自行火炮 HE): 无穿深判定, 按距离衰减的固定伤害 --- */
+  takeSplash(shooter, dmg, point) {
+    if (!this.alive) return;
+    dmg = Math.max(1, Math.round(dmg));
+    this.hp -= dmg;
+    if (this.hp <= 0 && this.alive) {
+      this.hp = 0; this.alive = false;
+      SF.Bus.emit('destroyed', { tank: this, shooter });
+    }
+    SF.Bus.emit('hit', { target: this, shooter, point, zone: 'splash', dmg, kind: 'splash', module: null });
   }
 
   // 被击毁 → 残骸形态: 沉降侧倾(悬挂塌) + 炮塔歪斜卡死 + 炮管下垂 + 烧漆斑驳 + 烟与余烬

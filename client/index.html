@@ -135,6 +135,10 @@
   #reloadBar { height: 6px; background: #23261d; border-radius: 3px; overflow: hidden; margin-top: 6px; }
   #reloadFill { height: 100%; width: 100%; background: #c8b26a; }
   #reloadFill.loading { background: repeating-linear-gradient(45deg, #6f6230 0 8px, #8a7a3e 8px 16px); }
+  #clipInfo { position: absolute; right: 16px; top: 14px; display: flex; gap: 4px; align-items: center; }
+  #clipInfo i { width: 9px; height: 9px; border-radius: 50%; background: rgba(200,178,106,.15); border: 1px solid rgba(200,178,106,.55); }
+  #clipInfo i.full { background: #c8b26a; box-shadow: 0 0 4px rgba(200,178,106,.6); }
+  #clipInfo em { font-style: normal; color: #c8b26a; font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
   #speedText { position: absolute; right: 18px; bottom: 16px; min-width: 96px; padding: 8px 14px; color: #d8dbcc; font-size: 16px; text-align: center; font-variant-numeric: tabular-nums; }
   #moduleTags { position: absolute; left: 14px; top: -26px; }
   .mod { background: rgba(160,50,40,.8); color: #ffd9d0; font-size: 12px; padding: 2px 8px; border-radius: 3px; margin-right: 6px; }
@@ -183,6 +187,7 @@
     <div id="hpBar"><div id="hpFill"></div></div>
     <div id="hpText">900 / 900</div>
     <div id="reloadBar"><div id="reloadFill"></div></div>
+    <div id="clipInfo"></div>
     <div id="moduleTags"></div>
   </div>
   <div id="speedText" class="panel">0 km/h</div>

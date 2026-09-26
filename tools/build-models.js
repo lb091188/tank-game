@@ -570,6 +570,15 @@ function buildRosterTank(T) {
       cupola(tRoof, TR.r * 0.3, TR.th + 0.08, -0.1, C, 0.85);
       turretKit(tRoof, tSide, { hw: TR.r * 0.58, hl: TR.r * 0.62, roofY: TR.th + 0.08, boxK: false }, C);
       tRoof.parts.push(part(box(0.6, 0.3, 0.4), M4x(-TR.r * 0.3, TR.th + 0.06, 0.2), C));   // 双开舱门
+    } else if (TR.kind === 'osc') {
+      // 摇摆炮塔(AMX-13/AMX-50 家族): 低矮托架 + 大倾角楔形上塔体
+      const tw = TR.w, tl = TR.l;
+      tSide.parts.push(part(box(tw * 0.86, TR.th * 0.32, tl * 0.92), M4x(0, TR.th * 0.16, 0), C));            // 下托架
+      tFront.parts.push(part(box(tw, TR.th * 0.8, 0.2), M4x(0, TR.th * 0.52, tl * 0.36, -0.95, 0, 0), C));    // 大倾角塔面
+      tSide.parts.push(part(box(0.14, TR.th * 0.55, tl * 0.88), M4x(-tw / 2, TR.th * 0.58, 0, 0, 0, 0.14), C));
+      tSide.parts.push(part(box(0.14, TR.th * 0.55, tl * 0.88), M4x(tw / 2, TR.th * 0.58, 0, 0, 0, -0.14), C));
+      tRear.parts.push(part(box(tw * 0.92, TR.th * 0.55, 0.18), M4x(0, TR.th * 0.68, -tl / 2 + 0.06, 0.3, 0, 0), C));
+      tRoof.parts.push(part(box(tw * 0.78, 0.08, tl * 0.6), M4x(0, TR.th * 0.86, -tl * 0.08), C));
     } else if (TR.kind === 'cyl' || TR.kind === 'open') {
       tFront.parts.push(part(cyl(TR.r * 0.94, TR.r, TR.th, 16), M4x(0, ty, 0), C));
       if (TR.bustle) tFront.parts.push(part(box(TR.r * 1.3, TR.th * 0.7, 0.8), M4x(0, ty, -TR.r - 0.35), C));
@@ -593,6 +602,9 @@ function buildRosterTank(T) {
     else if (TR.kind === 'cyl') {
       cupola(tRoof, TR.r * 0.45, TR.th + 0.11, -0.2, C);
       turretKit(tRoof, tSide, { hw: TR.r * 0.55, hl: TR.r * 0.9, roofY: TR.th + 0.11, boxK: false }, C);
+    } else if (TR.kind === 'osc') {
+      cupola(tRoof, TR.w * 0.25, TR.th * 0.9 - 0.02, -0.2, C, 0.85);
+      turretKit(tRoof, tSide, { hw: TR.w * 0.4, hl: TR.l * 0.45, roofY: TR.th * 0.9 + 0.02, boxK: false }, C);
     } else {
       cupola(tRoof, TR.w * 0.25, TR.th + 0.1, -0.2, C);
       turretKit(tRoof, tSide, { hw: TR.w / 2, hl: TR.l / 2, roofY: TR.th + 0.1, th: TR.th, boxK: true }, C);
@@ -608,7 +620,7 @@ function buildRosterTank(T) {
       mantlet.parts.push(part(box(mw, mh, 0.3), M4x(0, ty + 0.02, (TR.l || TR.r * 2) / 2 + 0.08), C));
     }
     turret.children.push(tFront, tSide, tRear, tRoof, mantlet);
-    turret.children.push(buildGun([0, ty, (TR.kind === 'box' || TR.kind === 'hex') ? (TR.l || TR.r * 1.5) / 2 + 0.5 : TR.r + 0.5], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
+    turret.children.push(buildGun([0, ty, (TR.kind === 'box' || TR.kind === 'hex' || TR.kind === 'osc') ? (TR.l || TR.r * 1.5) / 2 + 0.5 : TR.r + 0.5], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
     root.children.push(turret);
   }
   return root;
@@ -768,7 +780,37 @@ const ROSTER = [
   { type: 'chiri', nation: 'JPN', hw: 1.15, wheels: 6, wr: 0.38, tl: 6.7, th: 0.84,
     hull: { l: 6.3, w: 2.3, h: 1.1, y: 1.3 }, gl: 1.5, ga: 0.35, gl2: 3.3, gr: 0.07,
     armor: { glacis: 50, lower: 45, side: 25, rear: 20, top: 12, turretFront: 75, turretSide: 35, turretRear: 35, mantlet: 90 },
-    turret: { kind: 'cyl', r: 0.95, th: 0.65 } }
+    turret: { kind: 'cyl', r: 0.95, th: 0.65 } },
+  // 法国弹夹车(摇摆炮塔 / 连发)
+  { type: 'amx13', nation: 'FRA', hw: 1.02, wheels: 5, wr: 0.36, tl: 4.6, th: 0.78,
+    hull: { l: 4.5, w: 2.3, h: 0.9, y: 1.08 }, gl: 1.4, ga: 0.85, gl2: 2.7, gr: 0.068, brake: false,
+    armor: { glacis: 60, lower: 40, side: 25, rear: 15, top: 10, turretFront: 40, turretSide: 30, turretRear: 25, mantlet: 40 },
+    turret: { kind: 'osc', w: 1.7, l: 2.0, th: 0.64, z: 0.35 } },
+  { type: 'amx50100', nation: 'FRA', hw: 1.4, wheels: 7, wr: 0.42, tl: 6.4, th: 0.86,
+    hull: { l: 6.4, w: 3.0, h: 1.1, y: 1.3 }, gl: 1.8, ga: 0.85, gl2: 4.2, gr: 0.085,
+    armor: { glacis: 90, lower: 60, side: 40, rear: 30, top: 20, turretFront: 100, turretSide: 60, turretRear: 50, mantlet: 100 },
+    turret: { kind: 'osc', w: 2.0, l: 2.6, th: 0.82, z: 0.3 } },
+  { type: 'lorr40t', nation: 'FRA', hw: 1.34, wheels: 6, wr: 0.42, tl: 6.0, th: 0.84,
+    hull: { l: 6.0, w: 2.9, h: 1.0, y: 1.25 }, gl: 1.7, ga: 0.95, gl2: 4.0, gr: 0.08,
+    armor: { glacis: 80, lower: 55, side: 35, rear: 25, top: 16, turretFront: 85, turretSide: 50, turretRear: 40, mantlet: 85 },
+    turret: { kind: 'dome', r: 1.05, th: 0.66, bustle: true } },
+  // 自行火炮(无塔战斗室 + 短粗榴弹炮)
+  { type: 'wespe', nation: 'GER', hw: 1.08, wheels: 5, wr: 0.34, tl: 4.4, th: 0.78,
+    hull: { l: 4.4, w: 2.25, h: 0.9, y: 1.05 }, gl: 1.1, ga: 0.55, gl2: 2.2, gr: 0.095, brake: false,
+    turret: 'casemate', casH: 0.72, casA: 0.55, casL: 1.8, casZ: 0.35,
+    armor: { glacis: 30, lower: 30, side: 20, rear: 16, top: 10, turretSide: 20, mantlet: 40 } },
+  { type: 'hummel', nation: 'GER', hw: 1.36, wheels: 6, wr: 0.42, tl: 5.2, th: 0.86,
+    hull: { l: 5.2, w: 2.8, h: 1.05, y: 1.25 }, gl: 1.5, ga: 0.7, gl2: 2.7, gr: 0.105, brake: false,
+    turret: 'casemate', casH: 0.9, casA: 0.6, casL: 2.1, casZ: 0.5,
+    armor: { glacis: 30, lower: 30, side: 20, rear: 16, top: 10, turretSide: 20, mantlet: 40 } },
+  { type: 'm7priest', nation: 'USA', hw: 1.28, wheels: 6, wr: 0.42, tl: 5.4, th: 0.84,
+    hull: { l: 5.4, w: 2.65, h: 1.0, y: 1.25 }, gl: 1.3, ga: 0.6, gl2: 2.5, gr: 0.1, brake: false,
+    turret: 'casemate', casH: 0.78, casA: 0.5, casL: 1.9, casZ: 0.55,
+    armor: { glacis: 50, lower: 40, side: 30, rear: 25, top: 12, turretSide: 25, mantlet: 45 } },
+  { type: 'su26', nation: 'USSR', hw: 1.1, wheels: 5, wr: 0.38, tl: 4.5, th: 0.8,
+    hull: { l: 4.5, w: 2.4, h: 1.0, y: 1.12 }, gl: 1.0, ga: 0.6, gl2: 2.1, gr: 0.1, brake: false,
+    turret: 'casemate', casH: 0.7, casA: 0.55, casL: 1.7, casZ: 0.4,
+    armor: { glacis: 25, lower: 25, side: 15, rear: 15, top: 10, turretSide: 15, mantlet: 35 } }
 ];
 
 /* ============ 坦克清单(V2) ============ */
@@ -1071,7 +1113,7 @@ for (const t of TANKS) {
     (n.children || []).forEach(walk);
   })(root);
   let need = ['tracks','glacis','lowerPlate','hullSide','hullRear','hullTop','turretFront','turretSide','turretRear','turretRoof','mantlet','gun'];
-  const casemates = ['enemy-td', 'stug3', 'jagdpanther', 'su85', 'su100', 'isu152', 'ferdinand'];
+  const casemates = ['enemy-td', 'stug3', 'jagdpanther', 'su85', 'su100', 'isu152', 'ferdinand', 'wespe', 'hummel', 'm7priest', 'su26'];
   if (casemates.includes(t.file.replace('.glb', ''))) need = need.filter(z => z !== 'turretFront' && z !== 'turretRear');  // 固定战斗室: 无 turretFront/turretRear
   const missing = need.filter(z => !(z in zones));
   if (missing.length) throw new Error(`${t.file} 缺分区: ${missing}`);

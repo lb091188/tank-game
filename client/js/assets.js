@@ -82,7 +82,9 @@ SF.Assets = (() => {
       matilda: 'matilda', cromwell: 'cromwell', firefly: 'firefly', churchill7: 'churchill7',
       b1bis: 'b1bis', somua: 'somua', chiha: 'chiha', chinu: 'chinu',
       tiger2: 'tiger2', ferdinand: 'ferdinand', is3: 'is3', t44: 't44', m26: 'm26', t26e4: 't26e4', t29: 't29', centurion: 'centurion', chiri: 'chiri',
-      type62: 'type62', type59: 'type59', wz111: 'wz111' };
+      type62: 'type62', type59: 'type59', wz111: 'wz111',
+      amx13: 'amx13', amx50100: 'amx50100', lorr40t: 'lorr40t',
+      wespe: 'wespe', hummel: 'hummel', m7priest: 'm7priest', su26: 'su26' };
     for (const file in MODEL_FILES)
       track(loadGLB(`assets/models/${file}.glb`).then(g => { A.models[MODEL_FILES[file]] = g.scene; }));
 

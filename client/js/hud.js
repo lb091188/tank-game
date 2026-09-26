@@ -132,9 +132,15 @@ SF.HUD = (() => {
     // 状态条
     $('hpFill').style.width = (player.hp / player.spec.hp * 100) + '%';
     $('hpText').textContent = `${player.spec.name}　${Math.ceil(player.hp)} / ${player.spec.hp}`;
-    const rl = player.reloadT > 0 ? player.reloadT / player.spec.gun.reload : 0;
+    const rlTotal = player.reloadTotal || player.spec.gun.reload;
+    const rl = player.reloadT > 0 ? player.reloadT / rlTotal : 0;
     $('reloadFill').style.width = ((1 - rl) * 100) + '%';
     $('reloadFill').classList.toggle('loading', rl > 0);
+    // 弹夹余弹(连发炮): 底部状态条显示 ◉● 圆点
+    const _al = player.spec.gun.autoloader;
+    $('clipInfo').innerHTML = _al
+      ? Array.from({ length: _al.clip }, (_, i) => `<i class="${i < player.clipLeft ? 'full' : ''}"></i>`).join('') + `<em>${player.clipLeft}/${_al.clip}</em>`
+      : '';
     $('speedText').textContent = Math.abs(Math.round(player.speed * 3.6)) + ' km/h';
     $('moduleTags').innerHTML = ['track', 'engine', 'gun']
       .filter(k => player.modules[k] > 0)
@@ -165,7 +171,7 @@ SF.HUD = (() => {
 
     // 装填环形读条(跟随准心) + 倒计时秒数
     const ring = $('reloadRing'), rctx = ring.getContext('2d');
-    const rl2 = player.reloadT > 0 ? player.reloadT / player.spec.gun.reload : 0;
+    const rl2 = player.reloadT > 0 ? player.reloadT / rlTotal : 0;
     rctx.clearRect(0, 0, 76, 76);
     const rt = $('reloadText');
     if (rl2 > 0) {
@@ -177,9 +183,12 @@ SF.HUD = (() => {
       rctx.beginPath(); rctx.arc(38, 38, 33, -Math.PI / 2, -Math.PI / 2 + (1 - rl2) * Math.PI * 2); rctx.stroke();
       rt.textContent = player.reloadT.toFixed(1);
     } else { ring.style.display = rt.style.display = 'none'; }
-    // 炮口至瞄准点距离(WoT 式准星距离读数)
+    // 炮口至瞄准点距离(WoT 式准星距离读数); 火炮显示 炮→落点 射程(抛物线射击时炮口射线无意义)
     const dEl = $('distText');
-    dEl.textContent = uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '';
+    if (player.spec.cls === 'SPG' && uiState.aimPoint)
+      dEl.textContent = Math.round(Math.hypot(uiState.aimPoint.pos.x - player.x, uiState.aimPoint.pos.z - player.z)) + ' m';
+    else
+      dEl.textContent = uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '';
     // 装甲等效指示(WoT 看甲): 瞄准敌人部位时显示 等效厚度/可否击穿/跳弹警告
     const ai = $('armorInfo');
     const ap = uiState.gunAim;   // 用炮口指向(实际弹道将命中的部位)
