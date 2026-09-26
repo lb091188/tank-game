@@ -27,8 +27,11 @@ SF.HUD = (() => {
   }
 
   function project(pos) {
-    const v = pos.clone().project(SF.Game.camera);
-    if (v.z > 1) return null;
+    const cam = SF.Game.camera;
+    // 相机身后的点投影会镜像翻转(准星圈/名牌瞬移到屏幕对侧, 自由视角转动时满屏乱跳) → 判不可见
+    const v = pos.clone().applyMatrix4(cam.matrixWorldInverse);   // 视空间: 相机看向 -Z
+    if (v.z > -0.3) return null;
+    v.applyMatrix4(cam.projectionMatrix);                         // → NDC(applyMatrix4 自带透视除法)
     return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
   }
 
