@@ -1050,8 +1050,7 @@ SF.Main = (() => {
       const dt = Math.min(0.05, (performance.now() - garagePV.lastT) / 1000 || 0.033);
       garagePV.lastT = performance.now();
       if (garagePV.tankGroup) {
-        garagePV.tankGroup.rotation.y += dt * 0.2;
-        if (garagePV.turret) garagePV.turret.rotation.y += dt * 0.13;
+        garagePV.tankGroup.rotation.y += dt * 0.2;   // 整车一体旋转(炮塔锁定车体, 不再独立慢转)
         if (garagePV.gun) garagePV.gun.rotation.x = -0.05;
       }
       renderer.render(scene, cam);
