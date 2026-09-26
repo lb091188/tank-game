@@ -35,16 +35,20 @@ SF.HUD = (() => {
   // 双准星(WoT 式): 中心点=鼠标/相机瞄准; 散布圈=炮管实际指向(炮塔回转时滞后追赶) + 最小像素保证不开镜也可见
   function updateAimCircle(player, uiState) {
     const circle = $('aimCircle');
-    if (!player.alive || !uiState.gunAim) { circle.style.display = 'none'; return; }
-    const center = project(uiState.gunAim.pos);
+    // 火炮(抛物线射击): 炮口射线指向天空, 扩圈画在瞄准点(弹着点)上, 散布按炮→落点射程
+    const spg = player.spec.cls === 'SPG';
+    const aim = spg ? uiState.aimPoint : uiState.gunAim;
+    if (!player.alive || !aim) { circle.style.display = 'none'; return; }
+    const center = project(aim.pos);
     if (!center) { circle.style.display = 'none'; return; }
     circle.style.display = 'block';
     // 散布半径(米)@炮管指向距离 → 屏幕像素
     const cam = SF.Game.camera;
-    const toAim = uiState.gunAim.pos.clone().sub(cam.position).normalize();
+    const toAim = aim.pos.clone().sub(cam.position).normalize();
     const right = new THREE.Vector3().crossVectors(toAim, cam.up).normalize();
-    const radiusM = Math.max(0.4, player.disp / 100 * uiState.gunAim.dist);
-    const b = project(uiState.gunAim.pos.clone().addScaledVector(right, radiusM));
+    const aimDist = spg ? Math.hypot(aim.pos.x - player.x, aim.pos.z - player.z) : aim.dist;
+    const radiusM = Math.max(0.4, player.disp / 100 * aimDist);
+    const b = project(aim.pos.clone().addScaledVector(right, radiusM));
     let rPx = b ? Math.hypot(b.x - center.x, b.y - center.y) : 30;
     rPx = Math.max(24, rPx);                      // 最小可见半径
     circle.style.width = circle.style.height = (rPx * 2) + 'px';
