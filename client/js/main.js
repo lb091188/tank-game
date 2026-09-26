@@ -787,7 +787,7 @@ SF.Main = (() => {
     if (!garagePV) return;
     garagePV.active = false; clearInterval(garagePV.timer);
     if (garagePV.onResize) removeEventListener('resize', garagePV.onResize);
-    garagePV.renderer.dispose();
+    try { garagePV.renderer.dispose(); if (garagePV.renderer.forceContextLoss) garagePV.renderer.forceContextLoss(); } catch (e) { }
     document.getElementById('garageView').innerHTML = '';
     garagePV = null;
   }
@@ -959,7 +959,15 @@ SF.Main = (() => {
   }
   function leaveBattle() {
     running = false;                              // 停主循环(看门狗检测 running 也会停)
+    if (timerId) { clearInterval(timerId); timerId = null; }   // 降级定时器一并停, 否则退出后仍在空跑旧战场
     try { if (document.exitPointerLock) document.exitPointerLock(); } catch (e) { }
+    // 释放上一场战斗的画布与 GL 上下文: 残留 canvas 会把新画布顶出屏幕(重开后画面像冻结), 上下文累积也会耗尽 WebGL 配额
+    if (renderer) {
+      try { renderer.dispose(); if (renderer.forceContextLoss) renderer.forceContextLoss(); } catch (e) { }
+      renderer.domElement.remove();
+      renderer = null;
+    }
+    scene = null; world = null; fx = null; shells = null;
     if (MP.mode !== 'sp') { SF.Net.stopInputLoop(); SF.Net.close(); MP.mode = 'sp'; MP.tanks.clear(); }
     SF.Audio.stopBattle();
     document.getElementById('hud').style.display = 'none';

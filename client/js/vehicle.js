@@ -125,6 +125,8 @@ SF.Tank = class {
       // 固定战斗室(WoT 式): 火炮在 ±gunArc 射界内横向伺服; 超界由引擎/玩家自动转车体对准
       const arc = (S.gunArc !== undefined) ? S.gunArc : 10 * Math.PI / 180;
       const layYaw = U.clamp(localYaw, -arc, arc);
+      // 当前炮向先钳回车体±射界: 车体快速回转时伺服滞后, 炮管会被甩到车体后方(开炮也朝后打)
+      this.turretYaw = this.yaw + U.clamp(U.angDiff(this.yaw, this.turretYaw), -arc, arc);
       const before = this.turretYaw;
       this.turretYaw = U.angMoveToward(this.turretYaw, this.yaw + layYaw, Math.max(S.turretTraverse, 0.4) * dt);
       this.lastTurretRate = U.angDiff(before, this.turretYaw) / dt;

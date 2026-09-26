@@ -96,11 +96,11 @@ SF.CFG = {
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     jagdpanther: {
-      name: '猎豹歼击车', nation: 'GER', cls: 'TD', tier: 'VII', hp: 1150,
+      name: '猎豹歼击车', nation: 'GER', cls: 'TD', tier: 'VII', hp: 1250,
       maxSpeed: 12.78, reverseRatio: 0.42, accel: 3.8, brake: 9, coastDrag: 5.2,
-      hullTraverse: 36.0 * Math.PI / 180, turretTraverse: 0.42 * Math.PI / 180, gunArc: 11 * Math.PI / 180,   // 固定战斗室: ±11° 射界内横向伺服, 超界自动转车体
+      hullTraverse: 41.0 * Math.PI / 180, turretTraverse: 26.0 * Math.PI / 180, gunArc: 11 * Math.PI / 180,   // 固定战斗室: ±11° 射界内横向伺服, 超界自动转车体
       gunDepression: -9 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
-      gun: { pen: 175, dmg: 260, reload: 7.0, speed: 1000 },
+      gun: { pen: 175, dmg: 260, reload: 6.4, speed: 1000 },
       sample: { l: 3.5, w: 1.7 },
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
