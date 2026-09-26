@@ -172,7 +172,17 @@ SF.Tank = class {
       this.lastTurretRate = U.angDiff(before, this.turretYaw) / dt;
     } else {
       const before = this.turretYaw;
-      this.turretYaw = U.angMoveToward(this.turretYaw, this.yaw + localYaw, S.turretTraverse * dt);
+      // 车体转向时炮塔随车体同转(相对角一致, 整车形态稳定), 转向后用剩余伺服余力缓收敛回瞄准方向;
+      // 鼠标正在甩动瞄准(aimSlew)时不接管 —— 转向+瞄准同时进行仍由瞄准驱动
+      // (绕圈狗斗时瞄准方位随车体同速旋转, 炮塔随车体走反而正咬住目标)
+      const hullCarry = Math.abs(input.steer) > 0.3 && Math.abs(this.lastYawRate) > 0.05 && !input.aimSlew;
+      if (hullCarry) {
+        this.turretYaw += this.yaw - yaw0;
+        const spare = Math.max(0, S.turretTraverse - Math.abs(this.lastYawRate)) * dt;
+        this.turretYaw = U.angMoveToward(this.turretYaw, this.yaw + localYaw, spare);
+      } else {
+        this.turretYaw = U.angMoveToward(this.turretYaw, this.yaw + localYaw, S.turretTraverse * dt);
+      }
       this.lastTurretRate = U.angDiff(before, this.turretYaw) / dt;
     }
     if (!input.holdTurret)
