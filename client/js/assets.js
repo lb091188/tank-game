@@ -96,11 +96,15 @@ SF.Assets = (() => {
       track(loadSound(audioCtx, `assets/audio/${s}`).then(b => { A.sounds[key] = b; })
         .catch(() => console.warn(`音效缺失(跳过): ${s}`)));
     }
-    // 中文战斗语音: 打包的 edge-tts 生成文件(优先); 缺失时引擎自动退回系统 TTS
-    for (const v of ['v_pen', 'v_nopen', 'v_bounce', 'v_miss', 'v_kill', 'v_hitpen', 'v_track', 'v_ammo', 'v_engine', 'v_gun', 'v_reload']) {
-      track(loadSound(audioCtx, `assets/audio/voice/${v}.mp3`).then(b => { A.sounds[v] = b; })
-        .catch(() => console.warn(`语音文件缺失, 将退回系统TTS: ${v}`)));
-    }
+    // 中文战斗语音: 每事件多条变体(游戏内随机播), 优先播放打包克隆文件; 缺失退回系统 TTS
+    const VOICE_VARIANTS = { v_pen: 3, v_nopen: 3, v_bounce: 3, v_absorb: 3, v_gunout: 2, v_ram: 2, v_kill: 3, v_wipe: 2,
+      v_hitpen: 3, v_track: 3, v_ammo: 3, v_engine: 2, v_gun: 2, v_rammed: 2, v_splash: 2, v_reload: 3 };
+    for (const ev in VOICE_VARIANTS)
+      for (let i = 1; i <= VOICE_VARIANTS[ev]; i++) {
+        const v = `${ev}${i}`;
+        track(loadSound(audioCtx, `assets/audio/voice/${v}.mp3`).then(b => { A.sounds[v] = b; })
+          .catch(() => console.warn(`语音文件缺失, 将退回系统TTS: ${v}`)));
+      }
 
     let done = 0;
     const total = jobs.length;

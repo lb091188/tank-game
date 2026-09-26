@@ -635,21 +635,21 @@ SF.Main = (() => {
       // 音量: 自己挨打最响; 自己打中的反馈音用慢衰减(atten 大)保证清晰
       if (r.kind !== 'splash')   // HE 溅射的爆炸声已在弹着点播过
         SF.Audio.play(snd, target.isPlayer ? null : r.point, { gain: target.isPlayer ? 1.7 : 1.0, atten: 140 });
-      // 归属分明的提示: 我打出去的 → 准星下方; 我挨打的 → 顶部红色警报 (文字+语音)
+      // 归属分明的提示: 我打出去的 → 准星下方; 我挨打的 → 顶部红色警报 (文字+语音, 语音多变体随机)
       if (shooter && shooter.isPlayer) {
         SF.HUD.hitFeedback(HIT_TEXT[r.kind] + (r.module && r.kind !== 'absorb' ? MODULE_TAG[r.module] : ''), HIT_COLOR[r.kind]);
         if (r.module) SF.HUD.log(`敌方${MODULE_TAG[r.module] || ''}损伤`, '#a8d0a8');
-        SF.Audio.playVoice({ pen: 'v_pen', bounce: 'v_bounce', nopen: 'v_nopen', gun: 'v_nopen', absorb: 'v_track' }[r.kind]);
+        SF.Audio.playVoice({ pen: 'v_pen', bounce: 'v_bounce', nopen: 'v_nopen', gun: 'v_gunout', absorb: 'v_absorb', ram: 'v_ram' }[r.kind]);
       } else if (target.isPlayer) {
         if (r.kind === 'pen') {
           SF.HUD.alarm(`被击穿 -${r.dmg}` + (r.module ? ` · ${SF.CFG.armor.modules[r.module].text}` : ''));
           SF.Audio.playVoice('v_hitpen', true);
           if (r.module) SF.Audio.playVoice({ track: 'v_track', engine: 'v_engine', ammo: 'v_ammo', gun: 'v_gun' }[r.module], true);
         }
-        else if (r.kind === 'absorb') SF.HUD.alarm('履带被打断 · 伤害被吸收');
-        else if (r.kind === 'ram') SF.HUD.alarm(`被撞击 -${r.dmg}`);
+        else if (r.kind === 'absorb') { SF.HUD.alarm('履带被打断 · 伤害被吸收'); SF.Audio.playVoice('v_track', true); }
+        else if (r.kind === 'ram') { SF.HUD.alarm(`被撞击 -${r.dmg}`); SF.Audio.playVoice('v_rammed', true); }
         else if (r.kind === 'bounce') SF.HUD.hitFeedback('跳弹', '#9fd0ff');
-        else if (r.kind === 'splash') SF.HUD.alarm(r.dmg > 0 ? `被炮击 -${r.dmg}` : '炮击被装甲吸收');
+        else if (r.kind === 'splash') { SF.HUD.alarm(r.dmg > 0 ? `被炮击 -${r.dmg}` : '炮击被装甲吸收'); SF.Audio.playVoice('v_splash', true); }
       }
       // 受击方向: 指弹着点方位(来弹方向), 而非敌人当前站位(移速快的会偏)
       if (target.isPlayer && shooter) SF.HUD.hitFrom(r.point || shooter);
@@ -657,9 +657,11 @@ SF.Main = (() => {
       if (r.module === 'track') SF.Audio.play('track', target.isPlayer ? null : r.point, { gain: 1.2 });
     });
     SF.Bus.on('reloaded', (e) => {
-      // 弹夹炮夹内短装填不播"装填完成"(连发会刷屏), 只在整夹装填/普通炮播
-      if (e.tank.isPlayer && (!e.tank.spec.gun.autoloader || e.tank.clipPhase !== 'intra'))
-        SF.Audio.play('reload', null, { gain: 1.5 });
+      // 弹夹炮夹内短装填不播"装填完成"(连发会刷屏); 慢炮(≥6s)用语音播报, 快炮只有音效
+      if (e.tank.isPlayer && (!e.tank.spec.gun.autoloader || e.tank.clipPhase !== 'intra')) {
+        if (e.tank.reloadTotal >= 6) SF.Audio.playVoice('v_reload');
+        else SF.Audio.play('reload', null, { gain: 1.5 });
+      }
     });
     SF.Bus.on('shellFrom', (d) => SF.HUD.shotFrom(d, true));   // 近弹: 屏幕箭头 + 标记
     // 未命中不再弹提示(打偏自己看弹着点就知道, 反复"未命中"很烦)
@@ -678,8 +680,10 @@ SF.Main = (() => {
       if (t.isPlayer) { loseT = 2.5; SF.HUD.showMsg('坦克被击毁…', 3); }
       else {
         stats.kills++;
+        // 最后一波的最后一辆 → 全歼播报(按实际情况换词)
+        const isWipe = !world.enemies.some(e => e.alive) && world.map.waves && waveIdx >= world.map.waves.length - 1;
         SF.HUD.hitFeedback('击毁', '#8fd98f');
-        SF.Audio.playVoice('v_kill', true);
+        SF.Audio.playVoice(isWipe ? 'v_wipe' : 'v_kill', true);
         SF.HUD.log(`击毁：${t.spec.name}`, '#8fd98f');
       }
     });

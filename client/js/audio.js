@@ -91,12 +91,27 @@ SF.Audio = (() => {
   function setListener(x, z, yaw) { listener = { x, z, yaw }; }
   function state() { return engineGain ? { rate: +engineRate.toFixed(2), gain: +engineGain.gain.value.toFixed(3), lp: Math.round(engineLP.frequency.value) } : null; }
 
-  // 中文战斗语音: 浏览器系统 TTS 实时合成(零下载/零版权, 用玩家自己系统的中文语音)
-  // 说明: speechSynthesis 输出无法被页面静默录制(安全模型), 即时合成本身无延迟, 无需缓存
+  // 中文战斗语音: 打包克隆文件优先(所有设备听感一致), 缺失时退回系统 TTS
+  // 每事件多条变体随机播(战场播报不重样); 文案与 tools/make-voices.py LINES 同步维护
+  const VOICE_VARIANTS = { v_pen: 3, v_nopen: 3, v_bounce: 3, v_absorb: 3, v_gunout: 2, v_ram: 2, v_kill: 3, v_wipe: 2,
+    v_hitpen: 3, v_track: 3, v_ammo: 3, v_engine: 2, v_gun: 2, v_rammed: 2, v_splash: 2, v_reload: 3 };
   const VOICE_TEXT = {
-    v_pen: '击穿！', v_nopen: '未能击穿！', v_bounce: '跳弹！', v_miss: '未命中！',
-    v_kill: '目标击毁！', v_hitpen: '警告！装甲被击穿！',
-    v_track: '履带断裂！', v_ammo: '弹药架受损！', v_engine: '发动机受损！', v_gun: '火炮受损！', v_reload: '装填完毕！'
+    v_pen: ['击穿！', '打穿了！', '吃我一炮！'],
+    v_nopen: ['未能击穿！', '没打穿！', '装甲太硬！'],
+    v_bounce: ['跳弹！', '弹开了！', '角度太刁！'],
+    v_absorb: ['履带打断！', '断他履带！', '跑不掉了！'],
+    v_gunout: ['火炮损毁！', '打哑他了！'],
+    v_ram: ['撞击命中！', '撞上去了！'],
+    v_kill: ['目标击毁！', '干掉一辆！', '送他上路！'],
+    v_wipe: ['敌军全歼！', '一个不留！'],
+    v_hitpen: ['警告！被击穿！', '装甲被击穿！', '遭到贯穿！'],
+    v_track: ['履带断裂！', '断带了！', '履带被打断！'],
+    v_ammo: ['弹药架受损！', '弹药架被击中！', '小心弹药架！'],
+    v_engine: ['发动机受损！', '发动机中弹！'],
+    v_gun: ['火炮受损！', '炮管打坏了！'],
+    v_rammed: ['遭到撞击！', '车体被撞！'],
+    v_splash: ['遭到炮击！', '炮击！落点很近！'],
+    v_reload: ['装填完毕！', '弹药就绪！', '装填完成！']
   };
   let zhVoice = null, voicesReady = false;
   function pickVoice() {
@@ -115,22 +130,27 @@ SF.Audio = (() => {
   let voiceLast = -9;   // 语音文件播放节流
   function playVoice(name, important = false) {
     if (!SF.CFG.audio || SF.CFG.audio.voice === false) return;
+    const n = VOICE_VARIANTS[name] || 1;
+    const i = 1 + (Math.random() * n | 0);   // 同一随机序号选文件与兜底文案
     // 优先: 打包的语音文件(所有设备听感一致)
-    const buf = SF.Assets.sounds[name];
+    const buf = SF.Assets.sounds[`${name}${i}`];
     if (buf && ctx) {
-      if (!important && ctx.currentTime - voiceLast < 0.65) return;
+      if (!important && ctx.currentTime - voiceLast < 0.5) return;
       voiceLast = ctx.currentTime;
       const src = ctx.createBufferSource();
       src.buffer = buf;
+      src.playbackRate.value = 1.06;   // 打包文件已 atempo 提速, 播放端再快一拍
       const g = ctx.createGain();
       g.gain.value = 1.15;
       src.connect(g); g.connect(master);
+      voices++; src.onended = () => voices--;
       src.start();
       return;
     }
     // 兜底: 系统 TTS 实时合成(语音文件缺失时)
-    const text = VOICE_TEXT[name];
-    if (!text) return;
+    const texts = VOICE_TEXT[name];
+    if (!texts) return;
+    const text = texts[(i - 1) % texts.length];
     try {
       if (!voicesReady) pickVoice();
       if (voicesReady && !zhVoice) return;         // 系统无中文语音 → 静默跳过(文字提示仍在)
@@ -139,7 +159,7 @@ SF.Audio = (() => {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'zh-CN';
       if (zhVoice) u.voice = zhVoice;
-      u.rate = 1.08; u.pitch = 0.92;
+      u.rate = 1.3; u.pitch = 0.92;   // 战场播报要快
       speechSynthesis.speak(u);
     } catch (e) { }
   }
