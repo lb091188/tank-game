@@ -505,7 +505,9 @@ SF.CFG = {
   // AI 感知与性格(难度旋钮: aimPatience 越低越急着开炮 → 越不准)
   ai: {
     viewRange: 400, reactionTime: 0.35, hearingRange: 90, memoryTime: 7,
-    radio: { range: 220, cooldown: 6 },   // 无线电呼叫支援: 发现玩家通知范围内友军
+    shotHearing: 380,   // 玩家开炮被听见的距离(坦克炮声远传, 狙击位开火也会暴露大致方位)
+    searchTime: 26,     // 丢失目标后围绕最后已知位置的搜剿时长(秒), 无果才回巡逻
+    radio: { range: 220, cooldown: 6 },   // 无线电: 发现/听见=全队广播(range 仅兜底), cooldown=呼叫间隔
     perceptionInterval: 0.13,
     personalities: {
       flanker: { band: [55, 115], flankChance: 0.55, aimPatience: 0.78, leadSkill: 0.78, retreatHp: 0.2, holdGround: false },

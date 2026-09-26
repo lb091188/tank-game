@@ -113,7 +113,10 @@ SF.Main = (() => {
     const player = new SF.Tank(selTank, { x: sx, z: sz, yaw: syaw, isPlayer: true });
     scene.add(player.group);
 
-    world = { terrain, covers, player, enemies: [], tanks: [player], time: 0, map };
+    // intel = 全敌共享的玩家情报: {x,z 最后已知位置, t 时刻, level 0无/1听见炮声/2目视确认}
+    // 任何敌人目视 → 坐标全队广播; 玩家开炮被听见 → 方位上报(带误差)
+    world = { terrain, covers, player, enemies: [], tanks: [player], time: 0, map,
+              intel: { x: sx, z: sz, t: -99, level: 0 } };
     fx = new SF.FX(scene);
     shells = new SF.Shells(scene, fx);
     world.shells = shells;
@@ -149,9 +152,10 @@ SF.Main = (() => {
     if (MP.mode !== 'sp')
       for (const pl of MP.players) pt = Math.max(pt, TIER_NUM[(SF.CFG.vehicles[pl.tank] || {}).tier] || 5);
     const waveBand = i === 0 ? [pt - 1, pt] : [pt, pt + 1];
-    waveEnemies = wave.enemies.map(def => {
-      // 出生点随机化: 范围内随机平移(守位单位 ±12m, 机动单位 ±30m), 巡逻点随之平移, 避开掩体
-      const jr = def.hold ? 12 : 30;
+    const n = wave.enemies.length;
+    waveEnemies = wave.enemies.map((def, wi) => {
+      // 出生随机化(每局布局不同): 守位单位 ±18m, 机动单位 ±65m, 巡逻点独立再随机 ±25m
+      const jr = def.hold ? 18 : 65;
       const dx = (Math.random() - 0.5) * 2 * jr, dz = (Math.random() - 0.5) * 2 * jr;
       let ex = U.clamp(def.pos[0] + dx, -430, 430), ez = U.clamp(def.pos[1] + dz, -430, 430);
       [ex, ez] = world.covers.collide(ex, ez, 2.6);
@@ -159,8 +163,12 @@ SF.Main = (() => {
       const cls = CLS_OF_LEGACY[def.type] || (SF.CFG.vehicles[def.type] || {}).cls || 'MT';
       const type = pickTierTank(cls, waveBand);
       const t = new SF.Tank(type, { x: ex, z: ez, yaw: (def.yaw !== undefined ? def.yaw : Math.PI) + (Math.random() - 0.5) * 0.4 });
-      const def2 = { ...def, patrol: (def.patrol || []).map(w => [w[0] + (ex - def.pos[0]), w[1] + (ez - def.pos[1])]) };
+      const def2 = { ...def, patrol: (def.patrol || []).map(w => [
+        U.clamp(w[0] + (ex - def.pos[0]) + (Math.random() - 0.5) * 50, -430, 430),
+        U.clamp(w[1] + (ez - def.pos[1]) + (Math.random() - 0.5) * 50, -430, 430)]) };
       t.ai = new SF.AI(t, def2);
+      // 合围扇区: 全波均匀分布(+抖动), 围攻时各车从自己的方向接近, 形成合围而非排队送
+      t.ai.flankSlot = wi / n * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
       scene.add(t.group);
       world.tanks.push(t);
       if (MP.mode !== 'sp') { t.netId = MP.aiId++; t.team = 1; t._isAI = true; MP.tanks.set(t.netId, t); aiSpawned.push({ id: t.netId, type }); }
@@ -576,6 +584,17 @@ SF.Main = (() => {
       e.tank.lastFireT = world.time;
       if (e.tank.isPlayer) stats.shots++;
       if (e.tank.team !== world.player.team) SF.HUD.shotFrom(e.pos, false);   // 敌方炮口小地图标记
+      // 玩家(或友军)开炮: 炮声可被远处敌人听见 → 上报全队情报(玩家有炮口来向提示, 敌人同理)
+      if (e.tank.isPlayer || e.tank.team === world.player.team) {
+        let heard = false;
+        for (const en of world.enemies)
+          if (en.alive && SF.Util.dist2d(en.x, en.z, e.tank.x, e.tank.z) < SF.CFG.ai.shotHearing) { heard = true; break; }
+        if (heard) {
+          const old = world.intel;
+          world.intel = { x: e.tank.x + (Math.random() - .5) * 30, z: e.tank.z + (Math.random() - .5) * 30,
+            t: world.time, level: (old.level === 2 && world.time - old.t < SF.CFG.ai.memoryTime) ? 2 : 1 };
+        }
+      }
       fx.flash(e.pos, e.tank.isPlayer ? 2.6 : 2.0);
       SF.Audio.play('cannon', e.pos, { gain: e.tank.isPlayer ? 1.8 : 1.2 });
       if (e.tank.isPlayer) shakeT = 1;
@@ -793,6 +812,8 @@ SF.Main = (() => {
     '松油门坦克很快站住——急停对炮是基本功',
     '倒车只有前进四成速度，倒车伸缩要掐好距离',
     '被点亮后附近敌人会无线电呼叫支援，转移要快',
+    '开炮声会暴露你的大致方位，敌群会合围过来——狙击位打一枪换一个地方',
+    '敌人丢了你也会收到全队搜剿：绕到他们侧后打措手不及',
     '联机对战：房主 npm start 后把控制台 WS 地址填进联机设置'
   ];
   function showTip(elId) {

@@ -35,12 +35,13 @@ SF.AI = class {
     this.wp = 0;
     this._lastRadio = -99;
     this._alertT = 0;
+    this._searchT = 0; this._searchPt = null;
+    this.flankSlot = Math.random() * Math.PI * 2;   // 合围扇区(spawnWave 会按波次均匀重排)
 
-    // 无线电: 友军发现玩家 → 范围内友军收到坐标前去支援(守位单位原地警戒转向)
+    // 无线电: 友军发现/听见玩家 → 全队广播坐标(不限距离), 收到即前往支援
     SF.Bus.on('aiRadio', (e) => {
       if (!this.tank.alive || e.from === this.tank || this.state === 'combat') return;
-      if (SF.Util.dist2d(this.tank.x, this.tank.z, e.from.x, e.from.z) > SF.CFG.ai.radio.range) return;
-      this.heard = { x: e.x + (Math.random() - 0.5) * 24, z: e.z + (Math.random() - 0.5) * 24 };
+      this.heard = { x: e.x + (Math.random() - 0.5) * 24, z: e.z + (Math.random() - 0.5) * 24, t: world2time() };
       if (this.state !== 'alert') { this.state = 'alert'; this._alertT = world2time(); }
     });
     function world2time() { return SF.Game && SF.Game.world ? SF.Game.world.time : 0; }
@@ -53,12 +54,12 @@ SF.AI = class {
     this.retreatT = 0; this.unstuckT = 0; this.stuckT = 0;
     this.navYawJitter = 0;
 
-    // 听觉: 玩家在附近开炮 → 大致方位
+    // 听觉: 玩家开炮 → 炮声远传(shotHearing), 记下大致方位(带误差)
     SF.Bus.on('fire', (e) => {
       if (this.tank.alive && (e.tank.isPlayer || e.tank.team === 0)) {   // 合作: 任何玩家开炮都会被听见
         const d = SF.Util.dist2d(this.tank.x, this.tank.z, e.tank.x, e.tank.z);
-        if (d < SF.CFG.ai.hearingRange)
-          this.heard = { x: e.tank.x + (Math.random() - 0.5) * 24, z: e.tank.z + (Math.random() - 0.5) * 24 };
+        if (d < SF.CFG.ai.shotHearing)
+          this.heard = { x: e.tank.x + (Math.random() - 0.5) * 30, z: e.tank.z + (Math.random() - 0.5) * 30, t: world2time() };
       }
     });
   }
@@ -74,6 +75,8 @@ SF.AI = class {
         this.seen = true;
         this.lastSeen = { x: player.x, z: player.z, vx: player.velX || 0, vz: player.velZ || 0, t: world.time };
         this.lastTargetId = player.netId || 0;
+        // 目视确认 → 上报全队情报(任何一辆看见, 全队都知道玩家在哪)
+        world.intel = { x: player.x, z: player.z, t: world.time, level: 2 };
         if (!wasSeen && this.state !== 'combat')
           this.reactT = SF.CFG.ai.reactionTime * (1 + (1 - this.p.aimPatience));  // 反应延迟
         // 无线电呼叫支援(冷却)
@@ -131,8 +134,10 @@ SF.AI = class {
     if (this.perceptT <= 0) { this.perceptT = SF.CFG.ai.perceptionInterval; this.perceive(world); }
     if (this.reactT > 0) this.reactT -= dt;
 
-    const distP = player && player.alive ? SF.Util.dist2d(t.x, t.z, player.x, player.z) : 1e9;
-    const toPlayerYaw = player ? Math.atan2(player.x - t.x, player.z - t.z) : t.yaw;
+    // 导航参考点: 看得见用真实位置, 看不见用最后已知位置(不偷读玩家坐标)
+    const ref = (this.seenNow && player && player.alive) ? player : (this.lastSeen || player);
+    const distP = ref ? SF.Util.dist2d(t.x, t.z, ref.x, ref.z) : 1e9;
+    const toPlayerYaw = ref ? Math.atan2(ref.x - t.x, ref.z - t.z) : t.yaw;
 
     /* --- 状态转移 --- */
     if (this.seenNow && this.state !== 'retreat') {
@@ -161,37 +166,60 @@ SF.AI = class {
     }
     else if (this.state === 'alert') {
       if (!this._alertT) this._alertT = world.time;
-      const target = this.heard || this.lastSeen || this.home;
-      if (this.hold) {
-        // 守位单位(歼击车/重坦): 原地警戒, 炮口指向情报方向
-        this.input.throttle = 0; this.input.steer = this.parts_noTurret ? 0 : 0;
-        this.input.aimYaw = Math.atan2(target.x - t.x, target.z - t.z);
+      // 情报源: 取最新更新的(目视 lastSeen / 听见 heard / 全队 intel)
+      const cands = [this.lastSeen, this.heard, world.intel.level > 0 ? world.intel : null].filter(Boolean);
+      cands.sort((a, b) => b.t - a.t);
+      const tgt = cands[0] || this.home;
+      const intel = world.intel;
+      const intelFresh = intel.level > 0 && world.time - intel.t < SF.CFG.ai.searchTime;
+      // 守位单位(蹲点歼击/守线重坦): 敌情未确认只原地警戒炮口指向;
+      // 全队已目视确认(等级2)且警戒 10 秒无果 → 离位加入围剿
+      const holdHold = this.hold && !(intel.level === 2 && world.time - this._alertT > 10);
+      if (holdHold) {
+        this.input.throttle = 0; this.input.steer = 0;
+        this.input.aimYaw = Math.atan2(tgt.x - t.x, tgt.z - t.z);
         this.input.aimPitch = 0.02;
       } else {
-        this.navigate(target.x, target.z, dt, world);
+        // 有方法的围攻: 各车从自己的合围扇区接近, 在情报点外 ringR 处先形成包围圈
+        const ringR = (P.band[0] + P.band[1]) * 0.5;
+        const bx = tgt.x + Math.sin(this.flankSlot) * ringR, bz = tgt.z + Math.cos(this.flankSlot) * ringR;
+        if (SF.Util.dist2d(t.x, t.z, bx, bz) > 12) {
+          this.navigate(bx, bz, dt, world);
+        } else {
+          // 包围圈就位仍未接触: 围绕情报点游走搜索
+          this._searchT -= dt;
+          if (this._searchT <= 0 || !this._searchPt) {
+            this._searchT = 3.5 + Math.random() * 3.5;
+            this._searchPt = { x: U.clamp(tgt.x + (Math.random() - .5) * ringR, -430, 430),
+                               z: U.clamp(tgt.z + (Math.random() - .5) * ringR, -430, 430) };
+          }
+          this.navigate(this._searchPt.x, this._searchPt.z, dt, world);
+        }
         this.input.aimYaw = t.yaw; this.input.aimPitch = 0.02;
       }
-      if (!this.seenNow && world.time - this._alertT > 7) {   // 支援无果 → 回归巡逻
-        this._alertT = 0; this.heard = null; this.state = 'patrol';
+      // 搜剿超时仍无果 → 回归巡逻(玩家一直开炮则情报持续刷新, 搜剿不结束)
+      if (!this.seenNow && !intelFresh && world.time - this._alertT > SF.CFG.ai.searchTime) {
+        this._alertT = 0; this._searchT = 0; this._searchPt = null; this.heard = null; this.state = 'patrol';
       }
     }
     else if (this.state === 'combat') {
-      aimAt = this.lastSeen || { x: player.x, z: player.z, vx: 0, vz: 0 };
+      aimAt = this.lastSeen || { x: ref.x, z: ref.z, vx: 0, vz: 0 };
       const [lo, hi] = P.band;
       this.repositionT -= dt;
 
       let navX = t.x, navZ = t.z;
-      if (distP > hi && !this.hold) {                       // 太远: 前压
+      if (distP > hi && !this.hold) {                       // 太远: 前压(失去视野时压向最后已知位置)
         const k = (distP - hi * 0.85) / distP;
-        navX = t.x + (player.x - t.x) * k; navZ = t.z + (player.z - t.z) * k;
+        navX = t.x + (ref.x - t.x) * k; navZ = t.z + (ref.z - t.z) * k;
       } else if (distP < lo) {                              // 太近: 拉开
         const k = (lo * 1.15 - distP) / Math.max(distP, 1);
-        navX = t.x - (player.x - t.x) * k; navZ = t.z - (player.z - t.z) * k;
+        navX = t.x - (ref.x - t.x) * k; navZ = t.z - (ref.z - t.z) * k;
       } else if (this.repositionT <= 0) {                   // 距离合适: 时不时换位/绕侧
         this.repositionT = 5 + Math.random() * 6;
         if (Math.random() < P.flankChance) {
-          const side = Math.random() < 0.5 ? 1 : -1;
-          const px = -(player.z - t.z), pz = (player.x - t.x), pl = Math.hypot(px, pz);
+          // 绕侧方向按合围扇区定: 一半顺时针一半逆时针, 多车围攻时形成对转包夹
+          const side = this.flankSlot > Math.PI ? 1 : -1;
+          const px = -(ref.z - t.z), pz = (ref.x - t.x), pl = Math.hypot(px, pz);
           navX = t.x + px / pl * 35 * side; navZ = t.z + pz / pl * 35 * side;
         } else {
           navX = t.x + (Math.random() - 0.5) * 24; navZ = t.z + (Math.random() - 0.5) * 24;
