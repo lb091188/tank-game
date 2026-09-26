@@ -4,9 +4,32 @@ window.SF = window.SF || {};
 SF.Main = (() => {
   const U = SF.Util;
   let renderer, scene, camera, sunLight;
+  let canvas;                                 // 当前战斗画布(=renderer.domElement, 重开战斗会换新)
   let world, fx, shells;
   let camYaw = Math.PI, camPitch = 0.30, camDist = SF.CFG.camera.dist;
   let sniper = false, mouseDown = false, shakeT = 0, freeLook = false;   // 右键按住: 自由视角(炮塔锁定)
+  // 鹰眼模式虚拟光标: 指针锁定时浏览器光标被隐藏, 累积 movementX/Y 自绘;
+  // 未锁定时跟随系统光标(供边缘平移), 见 mousemove / updateCamera
+  let vcx = innerWidth / 2, vcy = innerHeight / 2;
+  function eagle() { return sniper && world && world.player && world.player.spec.cls === 'SPG'; }
+  // HUD 交互区命中测试(鹰眼虚拟光标用): 小地图/大地图/退出按钮
+  function uiHitTest(x, y) {
+    for (const id of ['minimap', 'bigMap', 'btnExit']) {
+      const el = document.getElementById(id);
+      if (!el || el.style.display === 'none') continue;
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return { id, el };
+    }
+    return null;
+  }
+  // 鹰眼模式: 视野中心跳转到地图上某点(小地图/大地图共用)
+  function jumpViewTo(cx, cy, el) {
+    if (!eagle()) return;
+    const r = el.getBoundingClientRect();
+    const T = world.terrain;
+    artyX = U.clamp((cx - r.left) / r.width * T.size - T.half, -470, 470);
+    artyZ = U.clamp((cy - r.top) / r.height * T.size - T.half, -470, 470);
+  }
   let artyX = 0, artyZ = 0;   // 火炮鹰眼: 俯视视野中心(世界坐标)
   const ARTY_H = [40, 70, 110, 160, 220];   // 鹰眼高度档位(视场范围)
   let artyH = ARTY_H[2], artyHIdx = 2;
@@ -42,6 +65,13 @@ SF.Main = (() => {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game').appendChild(renderer.domElement);
+    canvas = renderer.domElement;
+    canvas.tabIndex = -1;
+    canvas.addEventListener('click', () => {   // 点画面补锁(每场新画布各挂一份, 旧画布随战斗销毁)
+      canvas.focus();
+      if (!gameOver) canvas.requestPointerLock();
+      SF.Audio.resume();
+    });
 
     scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(new THREE.Color(...L.fogColor), L.fogDensity);
@@ -170,11 +200,21 @@ SF.Main = (() => {
   /* ---------- 相机与瞄准 ---------- */
   function updateCamera(dt) {
     const p = world.player;
+    let vcHit = null;
     if (sniper && p.spec.cls === 'SPG') {
       // 火炮鹰眼: 高空俯视炮击视野, 准星即炮弹落点
       p.group.visible = true;
       camera.fov = U.lerp(camera.fov, 32, 1 - Math.exp(-12 * dt));
       artyX = U.clamp(artyX, -470, 470); artyZ = U.clamp(artyZ, -470, 470);
+      // 屏幕边缘平移(RTS 式): 虚拟光标压边即按深度比例平移; 悬停 HUD 交互区时暂停
+      vcHit = uiHitTest(vcx, vcy);
+      if (!vcHit) {
+        const EW = 52, SPD = 95;
+        const ox = vcx < EW ? (vcx - EW) / EW : (vcx > innerWidth - EW ? (vcx - (innerWidth - EW)) / EW : 0);
+        const oz = vcy < EW ? (vcy - EW) / EW : (vcy > innerHeight - EW ? (vcy - (innerHeight - EW)) / EW : 0);
+        artyX = U.clamp(artyX + ox * SPD * dt, -470, 470);
+        artyZ = U.clamp(artyZ + oz * SPD * dt, -470, 470);
+      }
       const gy = world.terrain.heightAt(artyX, artyZ);
       camera.position.set(artyX, gy + 130, artyZ + 10);
       camera.lookAt(artyX, gy, artyZ);
@@ -198,6 +238,13 @@ SF.Main = (() => {
       camera.lookAt(pivot.clone().add(new THREE.Vector3(
         Math.sin(camYaw) * 8, Math.sin(-camPitch) * 8, Math.cos(camYaw) * 8)));
     }
+    // 鹰眼虚拟光标: 指针锁定时显示(未锁定用系统光标), 悬停 HUD 交互区变金色
+    const vc = document.getElementById('vcursor');
+    if (eagle()) {
+      vc.style.transform = `translate(${vcx.toFixed(1)}px,${vcy.toFixed(1)}px)`;
+      vc.classList.toggle('act', !!vcHit);
+    }
+    vc.style.display = (eagle() && document.pointerLockElement === canvas) ? 'block' : 'none';
     if (shakeT > 0) {
       shakeT = Math.max(0, shakeT - dt * 2.2);
       const s = shakeT * 0.35;
@@ -318,30 +365,43 @@ SF.Main = (() => {
   }
 
   function bindInput() {
-    const canvas = renderer.domElement;
-    canvas.tabIndex = -1;
-    canvas.addEventListener('click', () => {
-      canvas.focus();
-      if (!gameOver) canvas.requestPointerLock();
-      SF.Audio.resume();
-    });
     document.addEventListener('pointerlockchange', () => { });
     document.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== canvas) return;
-      // 指针锁定偶发的大跳变(>300px)丢弃, 防画面猛甩
-      if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
-      // 火炮鹰眼: 鼠标平移俯视视野(屏幕上=-Z / 右=+X)
-      if (sniper && world && world.player && world.player.spec.cls === 'SPG') {
-        artyX += e.movementX * 0.22;
-        artyZ += e.movementY * 0.22;
+      const locked = document.pointerLockElement === canvas;
+      // 火炮鹰眼: 鼠标驱动虚拟光标(锁定=累积位移 / 未锁定=跟随系统光标);
+      // 视野平移改由光标压屏幕边缘触发(RTS 式, 见 updateCamera), 不再按位移量直接拖动
+      if (eagle()) {
+        if (locked) {
+          if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;   // 锁定偶发大跳变丢弃
+          vcx = U.clamp(vcx + e.movementX, 0, innerWidth); vcy = U.clamp(vcy + e.movementY, 0, innerHeight);
+        } else { vcx = U.clamp(e.clientX, 0, innerWidth); vcy = U.clamp(e.clientY, 0, innerHeight); }
         return;
       }
+      if (!locked) return;
+      // 指针锁定偶发的大跳变(>300px)丢弃, 防画面猛甩
+      if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
       // 灵敏度随镜内倍率缩放(放大越多越细腻; 26→8 连续变化)
       const s = SF.CFG.camera.sens * (sniper ? SF.CFG.camera.sniperSens * (sniperFov / 15) : 1);
       camYaw -= e.movementX * s;
       camPitch = U.clamp(camPitch + e.movementY * s, -0.12, 1.1);
     });
-    document.addEventListener('mousedown', (e) => { if (e.button === 0) mouseDown = true; if (e.button === 2) freeLook = true; });
+    // HUD 交互区命中测试见模块层 uiHitTest()
+    document.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        // 鹰眼+指针锁定: 虚拟光标落在 HUD 交互区 → 消费为地图跳转/退出, 不当作开炮
+        // (未锁定时浏览器光标直接点这些元素, 各自的 DOM 监听处理)
+        if (eagle() && document.pointerLockElement === canvas) {
+          const h = uiHitTest(vcx, vcy);
+          if (h) {
+            if (h.id === 'btnExit') exitToTitle();
+            else jumpViewTo(vcx, vcy, h.el);
+            return;
+          }
+        }
+        mouseDown = true;
+      }
+      if (e.button === 2) freeLook = true;
+    });
     document.addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; if (e.button === 2) freeLook = false; });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     // 滚轮(WoT 式连续变焦): 第三人称上滚拉近相机, 最近后开镜(从最广镜开始);
@@ -368,17 +428,9 @@ SF.Main = (() => {
         camDist = U.clamp(camDist + 2.4, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
       }
     });
-    // 鹰眼模式: 点击小地图/大地图 → 视野中心跳转到该点(阻止冒泡以免触发开炮)
-    const mapJump = (e) => {
-      e.stopPropagation();
-      if (!sniper || !world || !world.player || world.player.spec.cls !== 'SPG') return;
-      const r = e.currentTarget.getBoundingClientRect();
-      const T = world.terrain;
-      artyX = U.clamp((e.clientX - r.left) / r.width * T.size - T.half, -470, 470);
-      artyZ = U.clamp((e.clientY - r.top) / r.height * T.size - T.half, -470, 470);
-    };
-    document.getElementById('minimap').addEventListener('mousedown', mapJump);
-    document.getElementById('bigMap').addEventListener('mousedown', mapJump);
+    // 视野跳转见模块层 jumpViewTo(); 未锁定时由各地图元素的 DOM 监听调用
+    document.getElementById('minimap').addEventListener('mousedown', (e) => { e.stopPropagation(); jumpViewTo(e.clientX, e.clientY, e.currentTarget); });
+    document.getElementById('bigMap').addEventListener('mousedown', (e) => { e.stopPropagation(); jumpViewTo(e.clientX, e.clientY, e.currentTarget); });
     // 键盘: window 捕获阶段监听(最先收到, 不被其他处理器截断)
     window.addEventListener('keydown', (e) => {
       const k = keyOf(e);
@@ -969,6 +1021,7 @@ SF.Main = (() => {
   function resetBattleVars() {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairDone = false; spottedTimer = 0;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
+    vcx = innerWidth / 2; vcy = innerHeight / 2;
     stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   }
   function leaveBattle() {

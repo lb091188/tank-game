@@ -146,6 +146,11 @@
 
   /* 小地图 */
   #minimapBox { position: absolute; right: 16px; top: 16px; pointer-events: auto; cursor: crosshair; }
+  /* 鹰眼模式虚拟光标(指针锁定时浏览器光标被隐藏, 自绘替代) */
+  #vcursor { position: fixed; left: 0; top: 0; z-index: 90; pointer-events: none; display: none; will-change: transform; }
+  #vcursor svg { display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,.75)); }
+  #vcursor path { fill: #f2eede; stroke: #1d211a; stroke-width: 1.4; stroke-linejoin: round; transition: fill .1s; }
+  #vcursor.act path { fill: #ffd97a; }
   #btnExit { position: absolute; top: 16px; right: 226px; padding: 8px 14px; color: #b9c4a4; font-size: 13px; letter-spacing: 2px; cursor: pointer; pointer-events: auto; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.3); border-radius: 5px; }
   #btnExit:hover { color: #e8dcae; background: rgba(40,44,32,.75); }
   #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }
@@ -185,6 +190,7 @@
   <div id="alarm"></div>
   <div id="hitDir"></div>
   <div id="shotDir"></div>
+  <div id="vcursor"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 2 L4 19 L9 14.6 L12.4 21.4 L15.3 19.9 L12 13.4 L19 13 Z"/></svg></div>
   <div id="bottomBar" class="panel">
     <div id="hpBar"><div id="hpFill"></div></div>
     <div id="hpText">900 / 900</div>
@@ -194,7 +200,7 @@
   </div>
   <div id="speedText" class="panel">0 km/h</div>
   <div id="minimapBox" class="panel"><canvas id="minimap" width="180" height="180"></canvas><div class="cap">战场态势</div></div>
-  <button id="btnExit" title="Esc 释放鼠标后可点击">⏻ 退出</button>
+  <button id="btnExit" title="鹰眼模式: 虚拟光标点击; 其他模式: Esc 释放鼠标后点击">⏻ 退出</button>
   <div id="missionBar" class="panel"></div>
   <div id="missionDetail" class="panel"></div>
   <div id="mpBar" class="panel"></div>
