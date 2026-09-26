@@ -87,6 +87,7 @@ SF.Main = (() => {
     fx = new SF.FX(scene);
     shells = new SF.Shells(scene, fx);
     world.shells = shells;
+    buildTrajLine();
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
       aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected, deathMark, autoTarget, cruise,
@@ -257,7 +258,48 @@ SF.Main = (() => {
       const mz = p.muzzleWorld(), gd = p.gunDir();
       const hit = findRayHit(mz, gd);
       gunAim = hit || { pos: mz.clone().addScaledVector(gd, 400), dist: 400 };   // 打天时取炮向 400m 虚拟点, 保证圈始终存在
-    } else gunAim = null;
+      updateTraj();
+    } else { gunAim = null; if (trajLine) trajLine.visible = false; }
+  }
+
+  /* ---------- 鹰眼弹道预览线: 从炮口按真实弹道积分, 被地形/建筑遮挡则截断变红 ---------- */
+  let trajLine = null;
+  const TRAJ_N = 72, TRAJ_DT = 0.06;
+  function buildTrajLine() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAJ_N * 3), 3));
+    geo.setDrawRange(0, 0);
+    trajLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffd97a, transparent: true, opacity: 0.95, depthTest: false }));
+    trajLine.frustumCulled = false;
+    trajLine.renderOrder = 5;
+    scene.add(trajLine);
+  }
+  function updateTraj() {
+    const p = world.player;
+    const show = sniper && p.alive && p.spec.cls === 'SPG' && !gameOver;
+    if (!trajLine) return;
+    trajLine.visible = show;
+    if (!show) return;
+    const pos = p.muzzleWorld();
+    const vel = p.gunDir().multiplyScalar(p.spec.gun.speed);
+    const g = p.spec.gun.grav || SF.CFG.sim.shellGravity;
+    const T = world.terrain;
+    const arr = trajLine.geometry.attributes.position.array;
+    let n = 0, endType = 'air';   // ground=正常落点 / cover=被掩体遮挡 / air=超时
+    for (let i = 0; i < TRAJ_N; i++) {
+      arr[n * 3] = pos.x; arr[n * 3 + 1] = pos.y; arr[n * 3 + 2] = pos.z; n++;
+      const nx = pos.x + vel.x * TRAJ_DT, ny = pos.y + vel.y * TRAJ_DT, nz = pos.z + vel.z * TRAJ_DT;
+      const seg = Math.hypot(nx - pos.x, ny - pos.y, nz - pos.z) || 0.001;
+      const bt = world.covers.blocked(pos.x, pos.z, pos.y, (nx - pos.x) / seg, (nz - pos.z) / seg, seg, (ny - pos.y) / seg);
+      if (bt >= 0) { endType = 'cover'; break; }                                // 撞掩体: 被遮挡
+      pos.x = nx; pos.y = ny; pos.z = nz; vel.y -= g * TRAJ_DT;
+      if (pos.y <= T.heightAt(pos.x, pos.z)) { endType = 'ground'; break; }     // 触地
+    }
+    trajLine.geometry.setDrawRange(0, n);
+    trajLine.geometry.attributes.position.needsUpdate = true;
+    // 着色: 落点距瞄准点太远(中途撞山)或撞掩体 → 红色警告; 正常落地 → 金色
+    const endErr = aimPoint ? Math.hypot(pos.x - aimPoint.pos.x, pos.z - aimPoint.pos.z) : 0;
+    trajLine.material.color.setHex((endType === 'cover' || (endType === 'ground' && endErr > 20)) ? 0xe06c5a : 0xffd97a);
   }
 
   /* ---------- 输入 ---------- */
