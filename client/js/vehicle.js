@@ -56,7 +56,8 @@ SF.Tank = class {
     const trackBroken = this.modules.track > 0;
     const maxF = this.effectiveMaxSpeed(), maxR = maxF * S.reverseRatio;
     const slope = T.slopeAhead(this.x, this.z, this.yaw, 4);
-    const slopeK = U.clamp(1 - Math.abs(slope) * 1.4, 0, 1);        // 坡度阻力
+    // slopeAhead 是弧度角: 用 sin 换算重力分量做动力惩罚(角度比混用曾导致 17° 坡就损失 42% 动力)
+    const slopeK = U.clamp(1 - Math.sin(Math.abs(slope)) * 0.85, 0.35, 1);
     const uphill = (input.throttle > 0 && this.speed >= 0) || (input.throttle < 0 && this.speed <= 0);
 
     if (trackBroken) {

@@ -259,7 +259,7 @@ SF.Main = (() => {
 
   /* ---------- 输入 ---------- */
   // 键名归一: 优先 e.code, 缺失时回退 e.key(部分内嵌浏览器/输入法环境 code 为空)
-  const KEY_ALIAS = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', arrowup: 'ArrowUp', arrowleft: 'ArrowLeft', arrowdown: 'ArrowDown', arrowright: 'ArrowRight', shift: 'Shift', tab: 'Tab' };
+  const KEY_ALIAS = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', r: 'KeyR', e: 'KeyE', f: 'KeyF', m: 'KeyM', arrowup: 'ArrowUp', arrowleft: 'ArrowLeft', arrowdown: 'ArrowDown', arrowright: 'ArrowRight', shift: 'Shift', tab: 'Tab' };
   function keyOf(e) {
     if (e.code) {
       if (/^Key[WASD]$/.test(e.code) || /^Arrow(Up|Down|Left|Right)$/.test(e.code)) return e.code;
