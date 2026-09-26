@@ -51,15 +51,34 @@ SF.HUD = (() => {
     circle.style.display = 'block';
     // 散布半径(米)@炮管指向距离 → 屏幕像素
     const cam = SF.Game.camera;
-    const toAim = pos.clone().sub(cam.position).normalize();
-    const right = new THREE.Vector3().crossVectors(toAim, cam.up).normalize();
     const radiusM = Math.max(0.4, player.disp / 100 * aimDist);
-    const b = project(pos.clone().addScaledVector(right, radiusM));
-    let rPx = b ? Math.hypot(b.x - center.x, b.y - center.y) : 30;
-    rPx = Math.max(24, rPx);                      // 最小可见半径
-    circle.style.width = circle.style.height = (rPx * 2) + 'px';
-    circle.style.left = (center.x - rPx) + 'px';
-    circle.style.top = (center.y - rPx) + 'px';
+    const gd = player.gunDir();
+    const gh = Math.atan2(gd.x, gd.z);
+    const fU = { x: Math.sin(gh), z: Math.cos(gh) }, rU = { x: Math.cos(gh), z: -Math.sin(gh) };
+    const prj = (ux, uz, m) => project(new THREE.Vector3(pos.x + ux * m, pos.y + 0.05, pos.z + uz * m));
+    if (spg) {
+      // 抛物线弹道: 落点散布为沿射击方向拉长的椭圆(纵向 ≈ 横向 × 2.6)
+      const pLong = prj(fU.x, fU.z, radiusM * 2.6), pShort = prj(rU.x, rU.z, radiusM);
+      if (!pLong || !pShort) { circle.style.display = 'none'; return; }
+      const lv = { x: pLong.x - center.x, y: pLong.y - center.y };
+      const sv = { x: pShort.x - center.x, y: pShort.y - center.y };
+      const hl = Math.max(20, Math.hypot(lv.x, lv.y)), hs = Math.max(10, Math.hypot(sv.x, sv.y));
+      circle.style.width = (hl * 2) + 'px';
+      circle.style.height = (hs * 2) + 'px';
+      circle.style.left = (center.x - hl) + 'px';
+      circle.style.top = (center.y - hs) + 'px';
+      circle.style.transform = `rotate(${Math.atan2(lv.y, lv.x)}rad)`;
+    } else {
+      const toAim = pos.clone().sub(cam.position).normalize();
+      const right = new THREE.Vector3().crossVectors(toAim, cam.up).normalize();
+      const b = prj(right.x, right.z, radiusM);
+      let rPx = b ? Math.hypot(b.x - center.x, b.y - center.y) : 30;
+      rPx = Math.max(24, rPx);                      // 最小可见半径
+      circle.style.width = circle.style.height = (rPx * 2) + 'px';
+      circle.style.left = (center.x - rPx) + 'px';
+      circle.style.top = (center.y - rPx) + 'px';
+      circle.style.transform = '';
+    }
     circle.classList.toggle('aimed', player.disp < player.spec.dispersion.base * 1.35);
   }
 
