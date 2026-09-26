@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>钢铁前沿 · 第一关 遭遇战</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1d17; font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+  #game { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* 加载屏 */
+  #loading { position: fixed; inset: 0; background: #14160f; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+  #loading h1 { color: #c8b26a; letter-spacing: 8px; font-size: 34px; margin-bottom: 26px; }
+  #loadBarBox { width: 320px; height: 8px; background: #2a2d22; border-radius: 4px; overflow: hidden; }
+  #loadBar { height: 100%; width: 0; background: linear-gradient(90deg, #8a7a3e, #c8b26a); transition: width .2s; }
+  #loadTip { color: #7d8070; margin-top: 14px; font-size: 13px; }
+  #tipOnLoad { color: #a8ad97; margin-top: 10px; font-size: 12px; max-width: 460px; text-align: center; padding: 0 20px; }
+  #tipOnTitle { color: #cdd3b4; font-size: 13px; margin: 4px auto 18px; max-width: 480px; min-height: 18px; text-align: center; padding: 6px 16px; background: rgba(12, 14, 9, .62); border: 1px solid rgba(200, 178, 106, .22); border-radius: 6px; text-shadow: 0 1px 2px rgba(0, 0, 0, .65); box-sizing: border-box; }
+
+  /* 标题屏: 全屏车库(3D 场景铺满视口, 坦克压在屏幕底部) */
+  #titleScreen { position: fixed; inset: 0; background: #14160f; display: none; z-index: 90; overflow: hidden; }
+  #garageView { position: absolute; inset: 0; }
+  #garageView canvas { position: absolute; inset: 0; display: block; }
+  #garageUI { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+  #garageUI #titleTop, #garageUI #bottomDock { pointer-events: auto; }
+  #titleTop { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 30px 0; gap: 20px; }
+  #titleBrand h1 { color: #d8c887; font-size: 34px; letter-spacing: 10px; margin-bottom: 2px; text-shadow: 0 2px 10px #000; }
+  #titleBrand h2 { color: #9aa08a; font-weight: normal; letter-spacing: 3px; font-size: 14px; text-shadow: 0 1px 6px #000; }
+  #garageStats { padding: 8px 14px; text-align: left; width: max-content; max-width: 42vw; }
+  #garageStats b { display: block; color: #e8dcae; font-size: 17px; letter-spacing: 1px; }
+  #garageStats span { color: #a8ad99; font-size: 12px; }
+  #mapPick { text-align: right; max-width: 50vw; }
+  #mapPick .pickLabel { margin: 0 0 8px; }
+  #bottomDock { padding: 0 26px; }
+  #dockRow { display: flex; align-items: flex-end; gap: 18px; padding-bottom: 8px; }
+  #dockRow #tipOnTitle { flex: 1; margin: 0; align-self: center; }
+  #bottomDock > .pickLabel { margin: 0 0 6px; text-shadow: 0 1px 4px #000; }
+  .pickLabel { color: #8b9080; font-size: 13px; letter-spacing: 3px; margin: 12px 0 8px; }
+  .cards { display: flex; gap: 10px; }
+  .hscroll { overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; scrollbar-width: thin; scrollbar-color: #6f6230 rgba(14,16,11,.55); }
+  .hscroll::-webkit-scrollbar { height: 8px; }
+  .hscroll::-webkit-scrollbar-track { background: rgba(14,16,11,.55); border-radius: 4px; }
+  .hscroll::-webkit-scrollbar-thumb { background: #6f6230; border-radius: 4px; }
+  .hscroll::-webkit-scrollbar-thumb:hover { background: #c8b26a; }
+  #garageRow { padding: 8px 12px; background: rgba(10,12,8,.4); border: 1px solid rgba(200,178,106,.14); border-bottom: none; border-radius: 8px 8px 0 0; }
+  #garageRow .card { flex: 0 0 auto; width: 150px; padding: 8px 10px; }
+  #mapRow { justify-content: flex-end; padding: 4px; }
+  #mapRow .card { flex: 0 0 auto; width: 200px; padding: 8px 12px; background: rgba(10,12,8,.5); }
+  #btnRow { display: flex; gap: 14px; justify-content: flex-end; margin: 0; }
+  #btnStart { font-size: 19px; padding: 12px 58px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
+  #verStamp { color: #6a6f5e; font-size: 11px; letter-spacing: 1px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  #titleBrand #btnMp { display: none; margin: 14px 0 0; font-size: 14px; padding: 8px 24px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 3px; cursor: pointer; }
+  #titleBrand #btnMp:hover { background: #2e3325; }
+  #titleBrand #btnMp.on { display: inline-block; }
+  .card { width: 170px; padding: 12px 14px; background: rgba(255,255,255,.045); border: 1px solid rgba(200,178,106,.25); border-radius: 6px; cursor: pointer; text-align: left; transition: all .12s; }
+  .card:hover { background: rgba(255,255,255,.08); }
+  .card.sel { border-color: #c8b26a; background: rgba(200,178,106,.14); box-shadow: 0 0 12px rgba(200,178,106,.25); }
+  .card b { display: block; color: #e6ddba; font-size: 15px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card i { display: inline-block; font-style: normal; font-size: 11px; color: #14160f; background: #c8b26a; border-radius: 3px; padding: 1px 7px; margin-bottom: 6px; }
+  .card span { display: block; color: #b3b8a5; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card em { display: block; font-style: normal; color: #7f8574; font-size: 11px; margin-top: 5px; }
+  #controls { color: #b8bda9; font-size: 15px; line-height: 2; background: rgba(255,255,255,.04); padding: 18px 34px; border-radius: 8px; margin-bottom: 36px; }
+  #controls b { color: #e0d6a8; display: inline-block; min-width: 130px; }
+  #btnStart:hover { filter: brightness(1.15); }
+  #lobbyScreen { display: none; position: fixed; inset: 0; background: rgba(14,16,11,.92); z-index: 95; align-items: center; justify-content: center; }
+  #lobbyBox { width: 460px; padding: 26px 30px; }
+  #lobbyBox h3 { color: #d8c887; letter-spacing: 6px; margin-bottom: 18px; text-align: center; }
+  #lobbyBox .row { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
+  #lobbyBox label { color: #8b9080; font-size: 13px; min-width: 52px; }
+  #lobbyBox input, #lobbyBox select { flex: 1; background: #14160f; border: 1px solid #3a3e2c; color: #d8dbcc; padding: 8px 10px; border-radius: 4px; font-size: 14px; }
+  .mbtn { background: #2c2f22; color: #d8c887; border: 1px solid #8a7a3e; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; letter-spacing: 1px; }
+  .mbtn:hover { background: #3a3e2c; }
+  .mbtn.gold { background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; }
+  #lobbyTip { color: #7d8070; font-size: 12px; margin: 8px 0; }
+  #srvTip { color: #6a6f5e; font-size: 11px; margin-bottom: 4px; }
+  #roomCodeShow { color: #e8dcae; font-size: 20px; text-align: center; letter-spacing: 4px; margin: 10px 0; }
+  #playerList { margin: 10px 0; min-height: 60px; }
+  #playerList .pl { color: #b9bfa8; font-size: 14px; line-height: 2; border-bottom: 1px dashed #2a2d22; }
+  #playerList .pl.me { color: #e8dcae; }
+  #playerList .ok { color: #8fd98f; margin-left: 8px; }
+  #playerList .no { color: #9c8f6a; margin-left: 8px; }
+  #hostPanel { display: none; margin-top: 10px; }
+  #mpBar { display: none; position: absolute; top: 16px; left: 50%; transform: translateX(-50%); padding: 7px 18px; color: #d8dbcc; font-size: 14px; letter-spacing: 1px; }
+
+  /* HUD */
+  #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+  .panel { background: rgba(14, 16, 11, 0.55); border: 1px solid rgba(200,178,106,.25); border-radius: 5px; }
+
+  #msg { position: absolute; top: 14%; width: 100%; text-align: center; color: #e8dcae; font-size: 24px; letter-spacing: 4px; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .4s; }
+  #keypad { position: absolute; left: 18px; bottom: 16px; display: flex; gap: 6px; }
+  #keypad span { width: 26px; height: 26px; line-height: 26px; text-align: center; font-size: 13px; color: #6a6f5e; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.25); border-radius: 5px; }
+  #keypad span.on { color: #14160f; background: #c8b26a; border-color: #c8b26a; }
+  #log { position: absolute; left: 18px; bottom: 120px; font-size: 14px; text-shadow: 0 1px 3px #000; }
+  #dmgLayer, #markers { position: absolute; inset: 0; }
+  .dmg { position: absolute; font-size: 17px; font-weight: bold; text-shadow: 0 1px 3px #000, 0 0 6px #000; transform: translate(-50%, -50%); white-space: nowrap; }
+  .emark { position: absolute; width: 64px; transform: translate(-50%, -50%); text-align: center; }
+  .emark b { display: block; font-size: 11px; font-weight: normal; color: #f0e9d0; text-shadow: 0 1px 3px #000, 0 0 4px #000; white-space: nowrap; margin-bottom: 2px; }
+  .emark b { color: #ff6a58; }
+  .emark i { display: block; height: 5px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.4); }
+  .emark u { display: block; font-size: 10px; line-height: 1.2; color: #ffd0c8; text-decoration: none; text-shadow: 0 1px 3px #000, 0 0 4px #000; margin-top: 1px; }
+  .emark i em { display: block; height: 100%; background: #e04a3a; font-style: normal; }
+  #missionBar { position: absolute; left: 16px; top: 16px; padding: 8px 14px; color: #d8dbcc; font-size: 14px; letter-spacing: 1px; }
+  #missionBar .sym { margin-right: 8px; }
+  #missionDetail { position: absolute; left: 16px; top: 58px; width: 230px; padding: 12px 16px; display: none; color: #c9cdbb; font-size: 13px; line-height: 2; }
+  #missionDetail h4 { color: #e8dcae; letter-spacing: 2px; margin-bottom: 6px; font-size: 14px; }
+  #missionDetail .row { display: flex; justify-content: space-between; }
+  #missionDetail .k { color: #8b9080; margin-top: 6px; font-size: 12px; }
+
+  /* 准星 */
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: #f2ecd8; border-radius: 50%; box-shadow: 0 0 3px #000; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(242,236,216,.75); }
+  #crosshair::before { left: -14px; right: -14px; top: 1px; height: 1px; background: transparent; border-top: 1px dashed rgba(242,236,216,.35); }
+  #hitFeedback { position: absolute; left: 50%; top: 57%; transform: translateX(-50%); font-size: 26px; font-weight: bold; letter-spacing: 3px; text-shadow: 0 1px 4px #000, 0 0 10px rgba(0,0,0,.8); opacity: 0; }
+  #alarm { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #ff6b5a; text-shadow: 0 1px 4px #000, 0 0 12px rgba(200,40,20,.6); opacity: 0; transition: opacity .15s; }
+  #reloadRing { position: absolute; left: 50%; top: 50%; margin: -38px; display: none; }
+  #reloadText { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-size: 15px; color: #c8b26a; text-shadow: 0 1px 3px #000; display: none; font-variant-numeric: tabular-nums; }
+  #distText { position: absolute; left: 50%; top: calc(50% + 66px); transform: translateX(-50%); font-size: 13px; color: #9aa0a6; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; }
+  #armorInfo { position: absolute; left: 50%; top: calc(50% + 84px); transform: translateX(-50%); font-size: 14px; font-weight: bold; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+  #bigMap { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 2px solid rgba(200,178,106,.5); border-radius: 6px; box-shadow: 0 6px 40px rgba(0,0,0,.7); pointer-events: auto; cursor: crosshair; }
+  #aimCircle { position: absolute; border: 1.5px solid rgba(255,255,255,.8); border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,.6), inset 0 0 4px rgba(0,0,0,.4); }
+  #aimCircle.aimed { border-color: rgba(150,230,140,.9); }
+
+  /* 受击方向 */
+  #detectLamp { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); font-size: 32px; opacity: 0; transition: opacity .25s; filter: drop-shadow(0 0 10px rgba(255,220,90,.9)); animation: lampPulse 1s infinite; }
+  @keyframes lampPulse { 0%,100% { filter: drop-shadow(0 0 6px rgba(255,220,90,.6)); } 50% { filter: drop-shadow(0 0 14px rgba(255,220,90,1)); } }
+  #hitDir { position: absolute; left: 50%; top: 50%; width: 240px; height: 240px; margin: -120px; opacity: 0; }
+  #shotDir { position: absolute; left: 50%; top: 50%; width: 190px; height: 190px; margin: -95px; opacity: 0; }
+  #shotDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -26px; border-left: 26px solid transparent; border-right: 26px solid transparent; border-top: 15px solid rgba(255,170,80,.9); }
+  #hitDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -34px; border-left: 34px solid transparent; border-right: 34px solid transparent; border-top: 20px solid rgba(226,58,42,.85); border-radius: 8px; }
+
+  /* 底部状态 */
+  #bottomBar { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); width: 480px; padding: 10px 16px; }
+  #hpBar { height: 16px; background: #23261d; border-radius: 3px; overflow: hidden; border: 1px solid rgba(255,255,255,.15); }
+  #hpFill { height: 100%; width: 100%; background: linear-gradient(90deg, #5d9e4e, #7fc468); transition: width .2s; }
+  #hpText { color: #cfd3c0; font-size: 12px; text-align: center; margin-top: 3px; }
+  #reloadBar { height: 6px; background: #23261d; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  #reloadFill { height: 100%; width: 100%; background: #c8b26a; }
+  #reloadFill.loading { background: repeating-linear-gradient(45deg, #6f6230 0 8px, #8a7a3e 8px 16px); }
+  #clipInfo { position: absolute; right: 16px; top: 14px; display: flex; gap: 4px; align-items: center; }
+  #clipInfo i { width: 9px; height: 9px; border-radius: 50%; background: rgba(200,178,106,.15); border: 1px solid rgba(200,178,106,.55); }
+  #clipInfo i.full { background: #c8b26a; box-shadow: 0 0 4px rgba(200,178,106,.6); }
+  #clipInfo em { font-style: normal; color: #c8b26a; font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  #speedText { position: absolute; right: 18px; bottom: 16px; min-width: 96px; padding: 8px 14px; color: #d8dbcc; font-size: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+  #moduleTags { position: absolute; left: 14px; top: -26px; }
+  .mod { background: rgba(160,50,40,.8); color: #ffd9d0; font-size: 12px; padding: 2px 8px; border-radius: 3px; margin-right: 6px; }
+
+  /* 小地图 */
+  #minimapBox { position: absolute; right: 16px; top: 16px; pointer-events: auto; cursor: crosshair; }
+  /* 鹰眼模式虚拟光标(指针锁定时浏览器光标被隐藏, 自绘替代) */
+  #vcursor { position: fixed; left: 0; top: 0; z-index: 90; pointer-events: none; display: none; will-change: transform; }
+  #vcursor svg { display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,.75)); }
+  #vcursor path { fill: #f2eede; stroke: #1d211a; stroke-width: 1.4; stroke-linejoin: round; transition: fill .1s; }
+  #vcursor.act path { fill: #ffd97a; }
+  #btnExit { position: absolute; top: 16px; right: 226px; padding: 8px 14px; color: #b9c4a4; font-size: 13px; letter-spacing: 2px; cursor: pointer; pointer-events: auto; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.3); border-radius: 5px; }
+  #btnExit:hover { color: #e8dcae; background: rgba(40,44,32,.75); }
+  #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }
+  #minimap { display: block; border-radius: 4px; }
+  #minimapBox .cap { color: #8b9080; font-size: 11px; text-align: center; margin-top: 3px; letter-spacing: 2px; }
+
+  /* 狙击镜 */
+  #sniperOverlay { display: none; position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 55%, rgba(0,0,0,.4) 88%); }
+  #sniperOverlay::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(20,20,20,.8); }
+  #sniperOverlay::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(20,20,20,.8); }
+
+  /* 结算 */
+  #overlay { display: none; position: fixed; inset: 0; background: rgba(8, 10, 6, .78); z-index: 80; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: opacity .4s ease; }
+  #overlay.on { opacity: 1; }
+  /* 结算入场: 背景渐暗 + 标题/按钮/战报依次上浮 */
+  #overlay.on #endTitle { animation: endIn .5s .06s cubic-bezier(.2, .8, .3, 1) both; }
+  #overlay.on #endBtns { animation: endIn .5s .2s cubic-bezier(.2, .8, .3, 1) both; }
+  #overlay.on #endStats { animation: endIn .5s .34s cubic-bezier(.2, .8, .3, 1) both; }
+  @keyframes endIn { from { opacity: 0; transform: translateY(26px); } }
+  /* 兜底: 内嵌浏览器/节流环境下动画可能不推进, both 填充会让内容永久卡在
+     from(全透明) → 1 秒后 JS 挂 .settled 强制落定可见(见 hud.showOverlay) */
+  #overlay.settled #endTitle, #overlay.settled #endBtns, #overlay.settled #endStats { animation: none; opacity: 1; transform: none; }
+  #endTitle { font-size: 46px; letter-spacing: 10px; margin-bottom: 22px; }
+  #endStats { color: #b9bfa8; font-size: 16px; line-height: 2; text-align: center; }
+  #endStats b { color: #e0d6a8; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud">
+  <div id="msg"></div>
+  <div id="log"></div>
+  <div id="keypad"><span data-k="KeyW">W</span><span data-k="KeyA">A</span><span data-k="KeyS">S</span><span data-k="KeyD">D</span></div>
+  <div id="dmgLayer"></div>
+  <div id="markers"></div>
+  <div id="aimCircle"></div>
+  <canvas id="reloadRing" width="76" height="76"></canvas>
+  <div id="distText"></div>
+  <div id="armorInfo"></div>
+  <canvas id="bigMap" width="430" height="430"></canvas>
+  <div id="reloadText"></div>
+  <div id="crosshair"></div>
+  <div id="detectLamp">💡</div>
+  <div id="hitFeedback"></div>
+  <div id="alarm"></div>
+  <div id="hitDir"></div>
+  <div id="shotDir"></div>
+  <div id="vcursor"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 2 L4 19 L9 14.6 L12.4 21.4 L15.3 19.9 L12 13.4 L19 13 Z"/></svg></div>
+  <div id="bottomBar" class="panel">
+    <div id="hpBar"><div id="hpFill"></div></div>
+    <div id="hpText">900 / 900</div>
+    <div id="reloadBar"><div id="reloadFill"></div></div>
+    <div id="clipInfo"></div>
+    <div id="moduleTags"></div>
+  </div>
+  <div id="speedText" class="panel">0 km/h</div>
+  <div id="minimapBox" class="panel"><canvas id="minimap" width="180" height="180"></canvas><div class="cap">战场态势</div></div>
+  <button id="btnExit" title="鹰眼模式: 虚拟光标点击; 其他模式: Esc 释放鼠标后点击">⏻ 退出</button>
+  <div id="missionBar" class="panel"></div>
+  <div id="missionDetail" class="panel"></div>
+  <div id="mpBar" class="panel"></div>
+  <div id="sniperOverlay"></div>
+</div>
+
+<div id="lobbyScreen">
+  <div id="lobbyBox" class="panel">
+    <h3>联 机 对 战</h3>
+    <div id="srvTip">房主运行 server 后控制台会打印 WS 地址，填到下面即可（任意来源打开的客户端均可加入）</div>
+    <div class="row"><label>服务器</label><input id="srvInput" placeholder="例如 192.168.1.5:8342"></div>
+    <div class="row"><label>昵称</label><input id="mpName" maxlength="12" placeholder="车长名"></div>
+    <div id="lobbyTip">填好地址后创建或加入房间 · 出击界面选的坦克即联机用车</div>
+    <div class="row" id="joinBox">
+      <button id="btnCreate" class="mbtn gold">创建房间（成为主机）</button>
+      <input id="roomInput" placeholder="房间号" maxlength="4" style="max-width:90px">
+      <button id="btnJoin" class="mbtn">加入房间</button>
+    </div>
+    <div id="roomCodeShow"></div>
+    <div id="playerList"></div>
+    <div id="hostPanel">
+      <div class="row"><label>模式</label><select id="mpMode"><option value="dm">死斗 · 互殴 3分钟</option><option value="coop">合作 · 组队闯关</option></select></div>
+      <div class="row"><label>地图</label><select id="mpMap"></select></div>
+      <div class="row" style="justify-content:center"><button id="btnMpStart" class="mbtn gold">开 始 对 战</button></div>
+    </div>
+    <div class="row" style="justify-content:center;margin-top:14px">
+      <button id="btnReady" class="mbtn">准备</button>
+      <button id="btnMpBack" class="mbtn">返回</button>
+    </div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="endTitle"></div>
+  <div id="endBtns">
+    <button id="btnRetry" class="mbtn gold">再 战 一 局</button>
+    <button id="btnToGarage" class="mbtn">返 回 车 库</button>
+  </div>
+  <div id="endStats"></div>
+</div>
+
+<div id="loading">
+  <h1>钢 铁 前 沿</h1>
+  <div id="loadBarBox"><div id="loadBar"></div></div>
+  <div id="loadTip">准备加载…</div>
+  <div id="tipOnLoad"></div>
+</div>
+
+<div id="titleScreen">
+  <div id="garageView"></div>
+  <div id="garageUI">
+    <div id="titleTop">
+      <div id="titleBrand">
+        <h1>钢 铁 前 沿</h1>
+        <h2>单机战役 · 选择你的坦克与战场</h2>
+        <div id="verStamp"></div>
+        <button id="btnMp">⚔ 联机对战</button>
+      </div>
+      <div id="mapPick">
+        <div class="pickLabel">战 场</div>
+        <div id="mapRow" class="cards hscroll"></div>
+      </div>
+    </div>
+    <div id="bottomDock">
+      <div id="dockRow">
+        <div id="garageStats" class="panel"></div>
+        <div id="tipOnTitle"></div>
+        <div id="btnRow">
+          <button id="btnStart">出 击</button>
+        </div>
+      </div>
+      <div class="pickLabel">坦 克</div>
+      <div id="garageRow" class="cards hscroll"></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/vendor/three.min.js?v=${V//:/_}"></script>
+<script src="js/vendor/GLTFLoader.js?v=${V//:/_}"></script>
+<script src="js/config.js?v=${V//:/_}"></script>
+<script src="js/assets.js?v=${V//:/_}"></script>
+<script src="js/terrain.js?v=${V//:/_}"></script>
+<script src="js/models.js?v=${V//:/_}"></script>
+<script src="js/vehicle.js?v=${V//:/_}"></script>
+<script src="js/combat.js?v=${V//:/_}"></script>
+<script src="js/ai.js?v=${V//:/_}"></script>
+<script src="js/hud.js?v=${V//:/_}"></script>
+<script src="js/net.js?v=${V//:/_}"></script>
+<script src="js/lobby.js?v=${V//:/_}"></script>
+<script src="js/audio.js?v=${V//:/_}"></script>
+<script src="js/main.js?v=${V//:/_}"></script>
+<script>
+if (SF.CFG.multiplayer) { document.getElementById('btnMp').classList.add('on'); SF.Lobby.bind(); }
+</script>
+</body>
+</html>
