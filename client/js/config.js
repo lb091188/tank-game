@@ -464,7 +464,7 @@ SF.CFG = {
       dispersion: { base: 1.1, aimTime: 4.4, max: 2.6, move: 2.2, hullTurn: 1.6, turretTurn: 1.2, fire: 1.4 }
     },
     medium: {
-      name: '敌方中坦', hp: 550,
+      name: '敌方中坦', cls: 'MT', hp: 550,
       maxSpeed: 12.5, reverseRatio: 0.45, accel: 3.8, brake: 9, coastDrag: 5.2,
       hullTraverse: 42 * Math.PI / 180, turretTraverse: 40 * Math.PI / 180,
       gunDepression: -10 * Math.PI / 180, gunElevation: 16 * Math.PI / 180,
@@ -473,7 +473,7 @@ SF.CFG = {
       dispersion: { base: 0.42, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
     td: {
-      name: '敌方歼击车', hp: 650,
+      name: '敌方歼击车', cls: 'TD', hp: 650,
       maxSpeed: 9.7, reverseRatio: 0.4, accel: 3.0, brake: 8, coastDrag: 4.6,
       hullTraverse: 20 * Math.PI / 180, turretTraverse: 0.45 * Math.PI / 180, gunArc: 10 * Math.PI / 180,   // 固定战斗室: ±10° 射界内横向伺服, 超界自动转车体
       gunDepression: -8 * Math.PI / 180, gunElevation: 12 * Math.PI / 180,
@@ -482,7 +482,7 @@ SF.CFG = {
       dispersion: { base: 0.30, aimTime: 2.6, max: 2.0, move: 2.0, hullTurn: 1.4, turretTurn: 0.5, fire: 1.8 }
     },
     heavy: {
-      name: '敌方重坦', hp: 1000,
+      name: '敌方重坦', cls: 'HT', hp: 1000,
       maxSpeed: 7.8, reverseRatio: 0.38, accel: 2.6, brake: 7.5, coastDrag: 4.2,
       hullTraverse: 24 * Math.PI / 180, turretTraverse: 28 * Math.PI / 180,
       gunDepression: -8 * Math.PI / 180, gunElevation: 14 * Math.PI / 180,
@@ -545,24 +545,31 @@ SF.CFG = {
   }
 };
 
-// 车类图标(WoT 式, 全游戏统一): 完整菱形=轻坦, 一道竖缝=中坦, 两道竖缝=重坦, ▽歼击 □火炮
-// 中/重坦是"一整个菱形被竖缝切开"(两瓣/三瓣), 不是多个小菱形并排 —— innerHTML 场景用
+// 车类图标(WoT 式, 全游戏统一): 轻坦=整颗菱形; 中坦=菱形被 1 道斜缝切 2 条带; 重坦=2 道斜缝 3 条带;
+// 歼击车=倒三角 ▼; 火炮=方块 ■ (对照官方坦克类型图例) —— innerHTML 场景用
 SF.ClsIcon = function (cls, opts = {}) {
-  const h = opts.size || 9, w = Math.round(h * 1.35 * 10) / 10, gap = Math.max(1.4, h * 0.17);
+  const h = opts.size || 9, w = Math.round(h * 1.35 * 10) / 10;
   const col = opts.color || 'currentColor';
+  const f = (v) => Math.round(v * 100) / 100;
   if (cls === 'TD')
     return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="vertical-align:-1px"><polygon fill="${col}" points="0,0 ${w},0 ${w / 2},${h}"/></svg>`;
   if (cls === 'SPG')
     return `<svg width="${h}" height="${h}" viewBox="0 0 ${h} ${h}" style="vertical-align:-1px"><rect fill="${col}" x="0.5" y="0.5" width="${h - 1}" height="${h - 1}"/></svg>`;
   const n = cls === 'LT' ? 1 : cls === 'MT' ? 2 : cls === 'HT' ? 3 : 0;
   if (!n) return '';
-  const yTop = (x) => x <= w / 2 ? h / 2 - (h / w) * x : (h / w) * (x - w / 2);
-  const sw = (w - gap * (n - 1)) / n;
-  const f = (v) => Math.round(v * 10) / 10;
+  // 条带几何(中心坐标系): 缝平行于菱形左上边, 每条带 = 缝线与左下边/右上边交点构成的四边形
+  // (端头自然落在菱形顶点上, 整体轮廓=完整菱形; 纯多边形无 clip, 无需唯一 id)
+  const ext = w * h;                                              // c=h·x+w·y 轴总跨度
+  const hyp = Math.sqrt(h * h + w * w);
+  const gap = Math.max(1.2, h * 0.16) * hyp;                      // 视觉缝宽(px) → c 轴单位
+  const bw = (ext - (n - 1) * gap) / n;
+  const P1 = (c) => [(c - ext / 2) / (2 * h), (h / w) * ((c - ext / 2) / (2 * h)) + h / 2];   // 与左下边交点
+  const P2 = (c) => [(c + ext / 2) / (2 * h), (h / w) * ((c + ext / 2) / (2 * h)) - h / 2];   // 与右上边交点
   let body = '';
-  for (let i = 0; i < n; i++) {
-    const a = i * (sw + gap), b = a + sw;
-    body += `<polygon fill="${col}" points="${f(a)},${f(yTop(a))} ${f(b)},${f(yTop(b))} ${f(b)},${f(h - yTop(b))} ${f(a)},${f(h - yTop(a))}"/>`;
+  for (let k = 0; k < n; k++) {
+    const c0 = -ext / 2 + k * (bw + gap), c1 = c0 + bw;
+    const q = [P1(c0), P2(c0), P2(c1), P1(c1)].map(p => `${f(p[0] + w / 2)},${f(p[1] + h / 2)}`).join(' ');
+    body += `<polygon fill="${col}" points="${q}"/>`;
   }
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="vertical-align:-1px">${body}</svg>`;
 };
