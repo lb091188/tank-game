@@ -48,7 +48,9 @@ SF.Models = (() => {
     const g = new THREE.Group();
     g.position.set(c.x, y, c.z);
     g.rotation.y = c.yaw || 0;
-    let col = { blocksMove: true, blocksShells: true, x: c.x, z: c.z, r: 2, h: 3 };
+    let col = { blocksMove: true, blocksShells: true, x: c.x, z: c.z, r: 2, h: 3, shape: 'circle', yaw: c.yaw || 0 };
+    // 方形掩体用 OBB 一比一碰撞(hx 半宽·局部x / hz 半长·局部z), r 退化为包围圆(快速剔除用)
+    const OBB = (hx, hz) => ({ shape: 'box', hx, hz, yaw: c.yaw || 0, r: Math.hypot(hx, hz) });
 
     if (c.type === 'house') {
       const s = (c.scale || 1);
@@ -58,13 +60,13 @@ SF.Models = (() => {
       roof1.position.set(0, 4.0, 1.45 * s); roof1.rotation.x = 0.62;
       const roof2 = roof1.clone(); roof2.position.z = -1.45 * s; roof2.rotation.x = -0.62;
       g.add(body, roof1, roof2);
-      col = { ...col, r: 4.8 * s, h: 5 };
+      col = { ...col, ...OBB(3.5 * s, 2.75 * s), h: 5 };
     } else if (c.type === 'hedge') {
       const s = (c.scale || 1);
       const m = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 2.4, 2.2), lambert([0.15, 0.30, 0.13]));
       m.position.y = 1.2;
       g.add(m);
-      col = { ...col, r: 3.0 * s, h: 2.6 };
+      col = { ...col, ...OBB(3.0 * s, 1.1 * s), h: 2.6 };
     } else if (c.type === 'rock') {
       const s = (c.scale || 1);
       const geo = geoCache.rock || (geoCache.rock = new THREE.IcosahedronGeometry(1, 0));
@@ -100,7 +102,7 @@ SF.Models = (() => {
       roof1.position.set(0, 6.0, 1.9 * s); roof1.rotation.x = 0.6;
       const roof2 = roof1.clone(); roof2.position.z = -1.9 * s; roof2.rotation.x = -0.6;
       g.add(body, roof1, roof2);
-      col = { ...col, r: 6.6 * s, h: 7 };
+      col = { ...col, ...OBB(5.5 * s, 3.75 * s), h: 7 };
     } else if (c.type === 'ruin') {
       const s = (c.scale || 1);
       const brick = lambert([0.55, 0.44, 0.38]), dark = lambert([0.42, 0.34, 0.3]);
@@ -109,7 +111,7 @@ SF.Models = (() => {
       const w3 = new THREE.Mesh(new THREE.BoxGeometry(2.2 * s, 1.3, 0.45), dark); w3.position.set(1.8 * s, 0.65, -0.8);
       const rub = new THREE.Mesh(new THREE.BoxGeometry(4.5 * s, 0.5, 2.6), dark); rub.position.set(0.6, 0.25, 0.6);
       g.add(w1, w2, w3, rub);
-      col = { ...col, r: 3.8 * s, h: 3.4 };
+      col = { ...col, ...OBB(3.2 * s, 2.4 * s), h: 3.4 };
     } else if (c.type === 'wall') {
       const s = (c.scale || 1);
       const m = new THREE.Mesh(new THREE.BoxGeometry(7 * s, 1.7, 0.7), lambert([0.46, 0.44, 0.4]));
@@ -117,7 +119,7 @@ SF.Models = (() => {
       const cap = new THREE.Mesh(new THREE.BoxGeometry(7.2 * s, 0.16, 0.9), lambert([0.38, 0.37, 0.34]));
       cap.position.y = 1.75;
       g.add(m, cap);
-      col = { ...col, r: 3.0 * s, h: 1.9 };   // 石墙加高到 1.7m: 藏得住车体, 卖头打
+      col = { ...col, ...OBB(3.5 * s, 0.35 * s), h: 1.9 };   // 石墙: 7m 长 0.7m 厚, 一比一碰撞
     } else if (c.type === 'haystack') {
       const s = (c.scale || 1);
       const m = new THREE.Mesh(new THREE.CylinderGeometry(1.7 * s, 2.0 * s, 2.7 * s, 10), lambert([0.62, 0.5, 0.27]));
@@ -139,7 +141,7 @@ SF.Models = (() => {
       const track2 = track1.clone(); track2.position.x = 1.55;
       g.add(body, tur, gunB, track1, track2);
       g.rotation.z = 0.03;
-      col = { ...col, r: 3.0, h: 2.4 };
+      col = { ...col, ...OBB(1.75, 3.1), h: 2.4 };
     } else if (c.type === 'bush') {
       const s = (c.scale || 1);
       const m = new THREE.Mesh(new THREE.SphereGeometry(1.15 * s, 7, 5), lambert([0.16, 0.3, 0.14]));
@@ -163,21 +165,75 @@ SF.Models = (() => {
       }
       scene.add(this.group);
     }
-    // 车体碰撞: 推出圆形
+    // 车体碰撞(圆形请求方): 圆 vs 圆/OBB 推出 —— 出生点避让等粗判用
     collide(x, z, radius) {
       let nx = x, nz = z;
       for (const c of this.list) {
         if (!c.blocksMove) continue;
-        const dx = nx - c.x, dz = nz - c.z, d = Math.hypot(dx, dz), min = c.r + radius;
-        if (d < min && d > 0.001) { nx = c.x + dx / d * min; nz = c.z + dz / d * min; }
+        if (c.shape === 'box') {
+          const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+          const px = nx - c.x, pz = nz - c.z;
+          let lx = cs * px - sn * pz, lz = sn * px + cs * pz;
+          const qx = Math.max(-c.hx, Math.min(c.hx, lx)), qz = Math.max(-c.hz, Math.min(c.hz, lz));
+          let ddx = lx - qx, ddz = lz - qz;
+          const d2 = ddx * ddx + ddz * ddz;
+          if (d2 > radius * radius) continue;
+          if (d2 < 1e-6) {   // 圆心陷入框内: 沿最浅面推出
+            if (c.hx - Math.abs(lx) < c.hz - Math.abs(lz)) lx = (lx >= 0 ? c.hx + radius : -c.hx - radius);
+            else lz = (lz >= 0 ? c.hz + radius : -c.hz - radius);
+          } else {
+            const d = Math.sqrt(d2);
+            lx = qx + ddx / d * radius; lz = qz + ddz / d * radius;
+          }
+          nx = c.x + cs * lx + sn * lz; nz = c.z - sn * lx + cs * lz;
+        } else {
+          const dx = nx - c.x, dz = nz - c.z, d = Math.hypot(dx, dz), min = c.r + radius;
+          if (d < min && d > 0.001) { nx = c.x + dx / d * min; nz = c.z + dz / d * min; }
+        }
       }
       return [nx, nz];
     }
-    // 弹道/视线遮挡: 2D 段-圆 + 高度比较
+    // 车体碰撞(坦克): 车体 OBB(真实长宽+朝向) vs 掩体 —— 一比一, 无幽灵墙
+    collideTank(t) {
+      let nx = t.x, nz = t.z;
+      const S = t.spec, hw = S.sample.w, hl = S.sample.l;
+      const circ = Math.hypot(hw, hl);                     // 车体外接半径(快速剔除必须用真值, 否则会漏检)
+      const cs = Math.cos(t.yaw), sn = Math.sin(t.yaw);
+      for (const c of this.list) {
+        if (!c.blocksMove) continue;
+        const dx0 = nx - c.x, dz0 = nz - c.z, rr = c.r + circ;
+        if (dx0 * dx0 + dz0 * dz0 > rr * rr) continue;
+        if (c.shape === 'box') {
+          const push = SF.Util.obbPushOut({ x: nx, z: nz, yaw: t.yaw, hx: hw, hz: hl }, c);
+          if (push) { nx += push[0]; nz += push[1]; }
+        } else {
+          // 圆掩体 vs 车体 OBB: 掩体圆心变换到车体局部系求最近点, 按穿透深度推出
+          const rx = c.x - nx, rz = c.z - nz;               // 车体→掩体圆心(世界系)
+          let lx = cs * rx - sn * rz, lz = sn * rx + cs * rz;   // 掩体圆心在车体局部系
+          const qx = Math.max(-hw, Math.min(hw, lx)), qz = Math.max(-hl, Math.min(hl, lz));
+          let ddx = lx - qx, ddz = lz - qz;                 // 最近点→圆心(车体局部系)
+          let d = Math.hypot(ddx, ddz);
+          if (d < 1e-6) {   // 圆心陷入车体(几乎不发生): 沿圆心→车心方向退出一个半径
+            const bx = nx - c.x, bz = nz - c.z, bl = Math.hypot(bx, bz) || 1;
+            nx += bx / bl * (c.r + hl); nz += bz / bl * (c.r + hl);
+            continue;
+          }
+          if (d < c.r) {
+            const k = (c.r - d) / d;
+            const px2 = -ddx * k, pz2 = -ddz * k;           // 车体沿"圆心→最近点"反方向推出
+            nx += cs * px2 + sn * pz2; nz += -sn * px2 + cs * pz2;
+          }
+        }
+      }
+      return [nx, nz];
+    }
+    // 弹道/视线遮挡: 包围圆粗剔除 + 方形 rayObb / 圆形 rayCircle, 高度比较
     blocked(ox, oz, oy, dx, dz, len, dy) {
       for (const c of this.list) {
         if (!c.blocksShells) continue;
-        const t = SF.Util.rayCircle(ox, oz, dx, dz, len, c.x, c.z, c.r);
+        const t0 = SF.Util.rayCircle(ox, oz, dx, dz, len, c.x, c.z, c.r);
+        if (t0 < 0) continue;
+        const t = c.shape === 'box' ? SF.Util.rayObb(ox, oz, dx, dz, len, c) : t0;
         if (t >= 0) {
           const h = oy + dy * t;
           if (h < SF.Game.world.terrain.heightAt(ox + dx * t, oz + dz * t) + c.h) return t;  // 命中掩体高度内

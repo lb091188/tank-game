@@ -565,6 +565,51 @@ SF.Util = {
   moveToward(cur, target, maxStep) { const d = target - cur; return Math.abs(d) <= maxStep ? target : cur + Math.sign(d) * maxStep; },
   angMoveToward(cur, target, maxStep) { const d = SF.Util.angDiff(cur, target); return Math.abs(d) <= maxStep ? target : cur + Math.sign(d) * maxStep; },
   dist2d(ax, az, bx, bz) { return Math.hypot(bx - ax, bz - az); },
+  /* ---------- 有向矩形(OBB)碰撞: 一比一匹配模型形状 ----------
+     约定与车体一致: yaw 朝向的前进方向 = (sin yaw, cos yaw), 左舷 = (cos yaw, -sin yaw);
+     obb = { x, z, yaw, hx(半宽·左舷), hz(半长·前进) } */
+  // 2D 射线 vs OBB(slab 法): 返回 t(0..len) 或 -1
+  rayObb(ox, oz, dx, dz, len, c) {
+    const cs = Math.cos(c.yaw || 0), sn = Math.sin(c.yaw || 0);
+    const px = ox - c.x, pz = oz - c.z;
+    let lo = -1e9, hi = 1e9;
+    // 左舷轴 slab
+    let ld = cs * dx - sn * dz, lp = cs * px - sn * pz;
+    if (Math.abs(ld) < 1e-9) { if (Math.abs(lp) > c.hx) return -1; }
+    else {
+      let t1 = (-c.hx - lp) / ld, t2 = (c.hx - lp) / ld;
+      if (t1 > t2) { const q = t1; t1 = t2; t2 = q; }
+      lo = Math.max(lo, t1); hi = Math.min(hi, t2);
+      if (lo > hi) return -1;
+    }
+    // 前进轴 slab
+    ld = sn * dx + cs * dz; lp = sn * px + cs * pz;
+    if (Math.abs(ld) < 1e-9) { if (Math.abs(lp) > c.hz) return -1; }
+    else {
+      let t1 = (-c.hz - lp) / ld, t2 = (c.hz - lp) / ld;
+      if (t1 > t2) { const q = t1; t1 = t2; t2 = q; }
+      lo = Math.max(lo, t1); hi = Math.min(hi, t2);
+      if (lo > hi) return -1;
+    }
+    if (hi < 0 || lo > len) return -1;
+    return Math.max(lo, 0);
+  },
+  // 两 OBB 的 SAT 最小平移推出: 相交时返回把 a 推离 b 的向量 [mx, mz], 不相交返回 null
+  obbPushOut(a, b) {
+    const aX = [Math.cos(a.yaw), -Math.sin(a.yaw)], aZ = [Math.sin(a.yaw), Math.cos(a.yaw)];
+    const bX = [Math.cos(b.yaw), -Math.sin(b.yaw)], bZ = [Math.sin(b.yaw), Math.cos(b.yaw)];
+    const dx = a.x - b.x, dz = a.z - b.z;
+    let best = 1e9, mx = 0, mz = 0;
+    for (const ax of [aX, aZ, bX, bZ]) {
+      const ra = a.hx * Math.abs(ax[0] * aX[0] + ax[1] * aX[1]) + a.hz * Math.abs(ax[0] * aZ[0] + ax[1] * aZ[1]);
+      const rb = b.hx * Math.abs(ax[0] * bX[0] + ax[1] * bX[1]) + b.hz * Math.abs(ax[0] * bZ[0] + ax[1] * bZ[1]);
+      const dist = ax[0] * dx + ax[1] * dz;
+      const ov = ra + rb - Math.abs(dist);
+      if (ov <= 0) return null;
+      if (ov < best) { best = ov; const s = dist >= 0 ? 1 : -1; mx = ax[0] * s * best; mz = ax[1] * s * best; }
+    }
+    return [mx, mz];
+  },
   // 2D 射线-圆相交: 返回 t(0..len) 或 -1
   rayCircle(ox, oz, dx, dz, len, cx, cz, r) {
     const fx = ox - cx, fz = oz - cz;

@@ -92,24 +92,31 @@ SF.Tank = class {
     this.z += Math.cos(this.yaw) * this.speed * dt;
     this.x = U.clamp(this.x, -T.half + 16, T.half - 16);
     this.z = U.clamp(this.z, -T.half + 16, T.half - 16);
-    // 掩体碰撞: 按车体外接圆推离; 顶着障碍硬闯 → 掉速(斜擦滑行不受罚)
+    // 掩体碰撞: 车体 OBB(真实长宽) vs 掩体 SAT 推出; 顶着障碍硬闯 → 掉速(斜擦滑行不受罚)
     const cx0 = this.x, cz0 = this.z;
-    [this.x, this.z] = world.covers.collide(this.x, this.z, this.cr);
+    [this.x, this.z] = world.covers.collideTank(this);
     if (this.x !== cx0 || this.z !== cz0) {
       const px2 = this.x - cx0, pz2 = this.z - cz0, pl = Math.hypot(px2, pz2) || 1;
       const vdotn = (Math.sin(this.yaw) * this.speed * px2 + Math.cos(this.yaw) * this.speed * pz2) / pl;
       if (vdotn < -0.4) this.speed *= 0.25;
     }
-    // 车车碰撞: 含残骸(击毁的车也是实体); 外接圆互推, 顶撞掉速
+    // 车车碰撞: 含残骸(击毁的车也是实体); 车体 OBB 互推, 顶撞掉速
+    // 快速剔除用真外接半径(hypot(半宽,半长)), 用小了会漏检头尾相触
+    const me = { x: this.x, z: this.z, yaw: this.yaw, hx: S.sample.w, hz: S.sample.l };
+    const myCirc = Math.hypot(S.sample.w, S.sample.l);
     for (const o of world.tanks) {
       if (o === this) continue;
-      const dx = this.x - o.x, dz = this.z - o.z, d = Math.hypot(dx, dz), minD = this.cr + o.cr;
-      if (d < minD && d > 0.01) {
-        this.x = o.x + dx / d * minD; this.z = o.z + dz / d * minD;
-        const vdotn = (Math.sin(this.yaw) * this.speed * dx + Math.cos(this.yaw) * this.speed * dz) / d;
+      const dx0 = this.x - o.x, dz0 = this.z - o.z;
+      const rr = myCirc + Math.hypot(o.spec.sample.w, o.spec.sample.l);
+      if (dx0 * dx0 + dz0 * dz0 > rr * rr) continue;
+      const push = SF.Util.obbPushOut(me, { x: o.x, z: o.z, yaw: o.yaw, hx: o.spec.sample.w, hz: o.spec.sample.l });
+      if (push) {
+        me.x += push[0]; me.z += push[1];
+        const vdotn = (Math.sin(this.yaw) * this.speed * push[0] + Math.cos(this.yaw) * this.speed * push[1]) / (Math.hypot(push[0], push[1]) || 1);
         if (vdotn < -0.4) this.speed *= 0.4;
       }
     }
+    this.x = me.x; this.z = me.z;
 
     /* --- 地形贴合(履带四角采样 → 俯仰/侧倾/高度; 全部平滑防颠簸) ---
        车体局部系: 前进+Z, 左舷+X(经 yaw 旋转后: 左舷方向 = (cos yaw, -sin yaw)) */
