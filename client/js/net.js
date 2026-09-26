@@ -84,5 +84,10 @@ SF.Net = (() => {
 
   function resetSnaps() { snaps.length = 0; }
 
-  return { connect, normalizeAddr, createRoom, joinRoom, setReady, startMatch, startInputLoop, stopInputLoop, interpolate, resetSnaps, on, send, get socket() { return ws; }, get address() { return curAddr; } };
+  // 断开连接(退出战斗时调用); 置空 ws 使 send/状态查询安全失效
+  function close() {
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { } ws = null; }
+  }
+
+  return { connect, normalizeAddr, createRoom, joinRoom, setReady, startMatch, startInputLoop, stopInputLoop, interpolate, resetSnaps, on, send, close, get socket() { return ws; }, get address() { return curAddr; } };
 })();

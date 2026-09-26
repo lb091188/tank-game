@@ -145,6 +145,9 @@
 
   /* 小地图 */
   #minimapBox { position: absolute; right: 16px; top: 16px; }
+  #btnExit { position: absolute; top: 16px; right: 226px; padding: 8px 14px; color: #b9c4a4; font-size: 13px; letter-spacing: 2px; cursor: pointer; pointer-events: auto; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.3); border-radius: 5px; }
+  #btnExit:hover { color: #e8dcae; background: rgba(40,44,32,.75); }
+  #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }
   #minimap { display: block; border-radius: 4px; }
   #minimapBox .cap { color: #8b9080; font-size: 11px; text-align: center; margin-top: 3px; letter-spacing: 2px; }
 
@@ -158,8 +161,6 @@
   #endTitle { font-size: 46px; letter-spacing: 10px; margin-bottom: 22px; }
   #endStats { color: #b9bfa8; font-size: 16px; line-height: 2; text-align: center; }
   #endStats b { color: #e0d6a8; }
-  #btnRestart { margin-top: 30px; font-size: 16px; padding: 10px 46px; background: #2c2f22; color: #d8c887; border: 1px solid #8a7a3e; border-radius: 4px; letter-spacing: 4px; cursor: pointer; }
-  #btnRestart:hover { background: #3a3e2c; }
 </style>
 </head>
 <body>
@@ -192,6 +193,7 @@
   </div>
   <div id="speedText" class="panel">0 km/h</div>
   <div id="minimapBox" class="panel"><canvas id="minimap" width="180" height="180"></canvas><div class="cap">战场态势</div></div>
+  <button id="btnExit" title="Esc 释放鼠标后可点击">⏻ 退出</button>
   <div id="missionBar" class="panel"></div>
   <div id="missionDetail" class="panel"></div>
   <div id="mpBar" class="panel"></div>
@@ -226,8 +228,11 @@
 
 <div id="overlay">
   <div id="endTitle"></div>
+  <div id="endBtns">
+    <button id="btnRetry" class="mbtn gold">再 战 一 局</button>
+    <button id="btnToGarage" class="mbtn">返 回 车 库</button>
+  </div>
   <div id="endStats"></div>
-  <button id="btnRestart">再 战</button>
 </div>
 
 <div id="loading">
@@ -280,7 +285,6 @@
 <script src="js/audio.js"></script>
 <script src="js/main.js"></script>
 <script>
-document.getElementById('btnRestart').addEventListener('click', () => location.reload());
 if (SF.CFG.multiplayer) { document.getElementById('btnMp').classList.add('on'); SF.Lobby.bind(); }
 </script>
 </body>

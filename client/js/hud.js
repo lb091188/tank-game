@@ -340,6 +340,8 @@ SF.HUD = (() => {
   function endGame(win, stats) {
     if (document.exitPointerLock) document.exitPointerLock();   // 结算界面需要鼠标操作, 释放锁定
     $('overlay').style.display = 'flex';
+    // 再战一局仅单机可用(联机需回大厅重新匹配)
+    $('btnRetry').style.display = (SF.Game_mp && SF.Game_mp.mode === 'sp') ? '' : 'none';
     $('endTitle').textContent = win ? '✓ 任务完成' : '✗ 任务失败';
     $('endTitle').style.color = win ? '#8fd98f' : '#e06c5a';
     $('endStats').innerHTML =

@@ -687,25 +687,11 @@ SF.Main = (() => {
 
     document.getElementById('btnStart').addEventListener('click', () => {
       disposeGarage();
-      document.getElementById('titleScreen').style.display = 'none';
-      document.getElementById('hud').style.display = 'block';
-      SF.Audio.init();
-      SF.Audio.startEngine();
-      SF.Audio.startAmbient();
-      buildScene();
-      SF.HUD.init(world);
-      bindInput();
-      bindBus();
-      // 出击即锁定鼠标(点击是用户手势); 失败(如浏览器冷却期)不阻断, 点画面可补锁
-      try {
-        const p = renderer.domElement.requestPointerLock();
-        if (p && p.catch) p.catch(() => {});
-      } catch (e) { }
-      const b = world.map.briefing;
-      SF.HUD.showMsg(b, 5);
-      running = true; lastT = performance.now();
-      requestAnimationFrame(loop);
+      startBattle();
     });
+    document.getElementById('btnExit').addEventListener('click', exitToTitle);
+    document.getElementById('btnRetry').addEventListener('click', () => (MP.mode === 'sp' ? startBattle() : exitToTitle()));
+    document.getElementById('btnToGarage').addEventListener('click', exitToTitle);
   }
 
   /* ---------- 车库 3D 预览: 全屏车库场景 + 展台坦克居中 + 随地图切换风格 ---------- */
@@ -877,6 +863,48 @@ SF.Main = (() => {
     setGarageTank(selTank);   // 初始渲染上次选择的坦克
   }
 
+  /* ---------- 战斗生命周期: 开战 / 退出回车库 / 再战 ---------- */
+  let battleBound = false;   // 输入与事件总线只绑一次(重开战斗不重复绑定)
+  function resetBattleVars() {
+    gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairDone = false; spottedTimer = 0;
+    deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
+    stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
+  }
+  function leaveBattle() {
+    running = false;                              // 停主循环(看门狗检测 running 也会停)
+    try { if (document.exitPointerLock) document.exitPointerLock(); } catch (e) { }
+    if (MP.mode !== 'sp') { SF.Net.stopInputLoop(); SF.Net.close(); MP.mode = 'sp'; MP.tanks.clear(); }
+    SF.Audio.stopBattle();
+    document.getElementById('hud').style.display = 'none';
+    document.getElementById('overlay').style.display = 'none';
+  }
+  function exitToTitle() {
+    leaveBattle();
+    document.getElementById('titleScreen').style.display = 'flex';
+    buildGaragePreview();       // 重建车库场景(出击时已销毁)
+    setGarageTank(selTank);
+  }
+  function startBattle() {
+    leaveBattle();
+    resetBattleVars();
+    document.getElementById('titleScreen').style.display = 'none';
+    document.getElementById('hud').style.display = 'block';
+    SF.Audio.init();
+    SF.Audio.startEngine();
+    SF.Audio.startAmbient();
+    buildScene();
+    SF.HUD.init(world);
+    if (!battleBound) { battleBound = true; bindInput(); bindBus(); }
+    // 出击即锁定鼠标(点击是用户手势); 失败(如浏览器冷却期)不阻断, 点画面可补锁
+    try {
+      const pr = renderer.domElement.requestPointerLock();
+      if (pr && pr.catch) pr.catch(() => { });
+    } catch (e) { }
+    SF.HUD.showMsg(world.map.briefing, 5);
+    running = true; lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+
   /* ---------- 联机: 主机快照广播(20Hz) ---------- */
   function hostSnapshot(dt) {
     MP.snapT -= dt;
@@ -998,6 +1026,7 @@ SF.Main = (() => {
       document.getElementById('endTitle').textContent = m.win ? '✓ 任务完成' : '对战结束';
       document.getElementById('endTitle').style.color = m.win ? '#8fd98f' : '#d8c887';
       document.getElementById('endStats').innerHTML = `<div style="font-size:20px;line-height:2.2">${rows}</div>`;
+      document.getElementById('btnRetry').style.display = 'none';   // 联机结算: 只能回车库
       SF.Net.stopInputLoop();
     });
     SF.Net.on('err', (m) => { alert(m.msg || '服务器错误'); location.reload(); });
@@ -1012,6 +1041,7 @@ SF.Main = (() => {
     document.getElementById('endTitle').textContent = '对战结束';
     document.getElementById('endTitle').style.color = '#d8c887';
     document.getElementById('endStats').innerHTML = `<div style="font-size:20px;line-height:2.2">${rows}</div>`;
+    document.getElementById('btnRetry').style.display = 'none';   // 联机结算: 只能回车库
     SF.Net.stopInputLoop();
   }
 

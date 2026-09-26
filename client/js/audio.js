@@ -3,7 +3,7 @@
 window.SF = window.SF || {};
 
 SF.Audio = (() => {
-  let ctx, master, engineSrc, engineGain, engineLP, engineRate = 1;
+  let ctx, master, engineSrc, engineGain, engineLP, engineRate = 1, ambientSrc = null;
   let listener = { x: 0, z: 0, yaw: 0 };
   let voices = 0;
 
@@ -72,6 +72,7 @@ SF.Audio = (() => {
     engineLP.frequency.value += (A.idleLP + drive * (A.topLP - A.idleLP) - engineLP.frequency.value) * 0.05;
   }
   function startAmbient() {
+    if (ambientSrc) return;
     const buf = SF.Assets.sounds['wind'];
     if (!buf) return;
     const src = ctx.createBufferSource();
@@ -79,6 +80,13 @@ SF.Audio = (() => {
     const g = ctx.createGain(); g.gain.value = 0.05;
     src.connect(g); g.connect(master);
     src.start();
+    ambientSrc = src;
+  }
+  // 退出战斗: 停引擎与环境音(下次出击自动重启)
+  function stopBattle() {
+    if (engineSrc) { try { engineSrc.stop(); } catch (e) { } }
+    engineSrc = null; engineGain = null; engineLP = null;
+    if (ambientSrc) { try { ambientSrc.stop(); } catch (e) { } ambientSrc = null; }
   }
   function setListener(x, z, yaw) { listener = { x, z, yaw }; }
   function state() { return engineGain ? { rate: +engineRate.toFixed(2), gain: +engineGain.gain.value.toFixed(3), lp: Math.round(engineLP.frequency.value) } : null; }
@@ -136,5 +144,5 @@ SF.Audio = (() => {
     } catch (e) { }
   }
 
-  return { init, play, playVoice, startEngine, setEngine, startAmbient, setListener, resume, state };
+  return { init, play, playVoice, startEngine, setEngine, startAmbient, stopBattle, setListener, resume, state };
 })();
