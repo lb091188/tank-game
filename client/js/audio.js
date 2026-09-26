@@ -94,9 +94,9 @@ SF.Audio = (() => {
   // 中文战斗语音: 浏览器系统 TTS 实时合成(零下载/零版权, 用玩家自己系统的中文语音)
   // 说明: speechSynthesis 输出无法被页面静默录制(安全模型), 即时合成本身无延迟, 无需缓存
   const VOICE_TEXT = {
-    v_pen: '击穿', v_nopen: '未能击穿', v_bounce: '跳弹', v_miss: '未命中',
-    v_kill: '目标击毁', v_hitpen: '警告，装甲被击穿',
-    v_track: '履带断裂', v_ammo: '弹药架受损', v_engine: '发动机受损', v_gun: '火炮受损', v_reload: '装填完毕'
+    v_pen: '击穿！', v_nopen: '未能击穿！', v_bounce: '跳弹！', v_miss: '未命中！',
+    v_kill: '目标击毁！', v_hitpen: '警告！装甲被击穿！',
+    v_track: '履带断裂！', v_ammo: '弹药架受损！', v_engine: '发动机受损！', v_gun: '火炮受损！', v_reload: '装填完毕！'
   };
   let zhVoice = null, voicesReady = false;
   function pickVoice() {
