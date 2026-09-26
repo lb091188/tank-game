@@ -90,7 +90,7 @@ SF.Main = (() => {
     buildTrajLine();
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
-      aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected, deathMark, autoTarget, cruise,
+      aimPoint, gunAim, sniper, spotted, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT,
       mission: (() => {
         if (!world.map) return null;
         if (SF.Game_mp.mode === 'sp') return { idx: waveIdx, total: world.map.waves.length, name: (world.map.waves[waveIdx] || {}).name || '', kills: stats.kills, totalEnemies: stats.total };
@@ -263,7 +263,7 @@ SF.Main = (() => {
   }
 
   /* ---------- 鹰眼弹道预览线: 从炮口按真实弹道积分, 被地形/建筑遮挡则截断变红 ---------- */
-  let trajLine = null;
+  let trajLine = null, trajFlightT = 0;   // trajFlightT: 炮弹到落点的飞行时间(秒)
   const TRAJ_N = 72, TRAJ_DT = 0.06;
   function buildTrajLine() {
     const geo = new THREE.BufferGeometry();
@@ -297,6 +297,7 @@ SF.Main = (() => {
     }
     trajLine.geometry.setDrawRange(0, n);
     trajLine.geometry.attributes.position.needsUpdate = true;
+    trajFlightT = n * TRAJ_DT;
     // 着色: 落点距瞄准点太远(中途撞山)或撞掩体 → 红色警告; 正常落地 → 金色
     const endErr = aimPoint ? Math.hypot(pos.x - aimPoint.pos.x, pos.z - aimPoint.pos.z) : 0;
     trajLine.material.color.setHex((endType === 'cover' || (endType === 'ground' && endErr > 20)) ? 0xe06c5a : 0xffd97a);

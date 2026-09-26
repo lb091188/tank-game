@@ -212,10 +212,11 @@ SF.HUD = (() => {
       rctx.beginPath(); rctx.arc(38, 38, 33, -Math.PI / 2, -Math.PI / 2 + (1 - rl2) * Math.PI * 2); rctx.stroke();
       rt.textContent = player.reloadT.toFixed(1);
     } else { ring.style.display = rt.style.display = 'none'; }
-    // 炮口至瞄准点距离(WoT 式准星距离读数); 火炮显示 炮→落点 射程(抛物线射击时炮口射线无意义)
+    // 炮口至瞄准点距离(WoT 式准星距离读数); 火炮显示 炮→落点 射程 + 弹道飞行时间
     const dEl = $('distText');
     if (player.spec.cls === 'SPG' && uiState.aimPoint)
-      dEl.textContent = Math.round(Math.hypot(uiState.aimPoint.pos.x - player.x, uiState.aimPoint.pos.z - player.z)) + ' m';
+      dEl.textContent = Math.round(Math.hypot(uiState.aimPoint.pos.x - player.x, uiState.aimPoint.pos.z - player.z)) + ' m'
+        + (uiState.trajT > 0 ? ` · 飞行 ${uiState.trajT.toFixed(1)}s` : '');
     else
       dEl.textContent = uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '';
     // 装甲等效指示(WoT 看甲): 瞄准敌人部位时显示 等效厚度/可否击穿/跳弹警告
