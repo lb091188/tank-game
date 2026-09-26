@@ -8,6 +8,7 @@ SF.Main = (() => {
   let world, fx, shells;
   let camYaw = Math.PI, camPitch = 0.30, camDist = SF.CFG.camera.dist;
   let sniper = false, mouseDown = false, shakeT = 0, freeLook = false;   // 右键按住: 自由视角(炮塔锁定)
+  let altHeld = false;   // 按住 Alt: 显示虚拟光标操作界面(准星冻结, WoT 式)
   // 鹰眼模式虚拟光标: 指针锁定时浏览器光标被隐藏, 累积 movementX/Y 自绘;
   // 未锁定时跟随系统光标(供边缘平移), 见 mousemove / updateCamera
   let vcx = innerWidth / 2, vcy = innerHeight / 2;
@@ -255,13 +256,14 @@ SF.Main = (() => {
       camera.lookAt(pivot.clone().add(new THREE.Vector3(
         Math.sin(camYaw) * 8, Math.sin(-camPitch) * 8, Math.cos(camYaw) * 8)));
     }
-    // 鹰眼虚拟光标: 指针锁定时显示(未锁定用系统光标), 悬停 HUD 交互区变金色
+    // 鹰眼虚拟光标: 按住 Alt 才显示(WoT 式), 悬停 HUD 交互区变金色; 平时指针锁定下无光标
     const vc = document.getElementById('vcursor');
-    if (eagle()) {
+    const vcShow = eagle() && document.pointerLockElement === canvas && altHeld;
+    if (vcShow) {
       vc.style.transform = `translate(${vcx.toFixed(1)}px,${vcy.toFixed(1)}px)`;
       vc.classList.toggle('act', !!vcHit);
     }
-    vc.style.display = (eagle() && document.pointerLockElement === canvas) ? 'block' : 'none';
+    vc.style.display = vcShow ? 'block' : 'none';
     if (shakeT > 0) {
       shakeT = Math.max(0, shakeT - dt * 2.2);
       const s = shakeT * 0.35;
@@ -414,12 +416,11 @@ SF.Main = (() => {
         if (locked) {
           if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;   // 锁定偶发大跳变丢弃
           vcx = U.clamp(vcx + e.movementX, 0, innerWidth); vcy = U.clamp(vcy + e.movementY, 0, innerHeight);
-          // 直接拖动平移(WoT 鹰眼): 位移×每像素世界米数(随视场档位缩放); 悬停 HUD 交互区时暂停
-          if (!uiHitTest(vcx, vcy)) {
-            const wpp = artyH * 0.573 / innerHeight * 4;
-            artyX = U.clamp(artyX + e.movementX * wpp, -470, 470);
-            artyZ = U.clamp(artyZ + e.movementY * wpp, -470, 470);
-          }
+          if (altHeld) return;   // Alt=光标操作界面: 只动光标, 准星冻结(WoT)
+          // 直接拖动平移(WoT 鹰眼): 位移×每像素世界米数(随视场档位缩放)
+          const wpp = artyH * 0.573 / innerHeight * 4;
+          artyX = U.clamp(artyX + e.movementX * wpp, -470, 470);
+          artyZ = U.clamp(artyZ + e.movementY * wpp, -470, 470);
         } else { vcx = U.clamp(e.clientX, 0, innerWidth); vcy = U.clamp(e.clientY, 0, innerHeight); }
         return;
       }
@@ -434,9 +435,9 @@ SF.Main = (() => {
     // HUD 交互区命中测试见模块层 uiHitTest()
     document.addEventListener('mousedown', (e) => {
       if (e.button === 0) {
-        // 鹰眼+指针锁定: 虚拟光标落在 HUD 交互区 → 消费为地图跳转/退出, 不当作开炮
-        // (未锁定时浏览器光标直接点这些元素, 各自的 DOM 监听处理)
-        if (eagle() && document.pointerLockElement === canvas) {
+        // 鹰眼+指针锁定+按住 Alt(光标可见): 虚拟光标落在 HUD 交互区 → 消费为地图跳转/退出, 不当作开炮
+        // (未按 Alt 时左键就是开炮; 未锁定时浏览器光标直接点这些元素)
+        if (eagle() && document.pointerLockElement === canvas && altHeld) {
           const h = uiHitTest(vcx, vcy);
           if (h) {
             if (h.id === 'btnExit') exitToTitle();
@@ -479,6 +480,7 @@ SF.Main = (() => {
     document.getElementById('bigMap').addEventListener('mousedown', (e) => { e.stopPropagation(); jumpViewTo(e.clientX, e.clientY, e.currentTarget); });
     // 键盘: window 捕获阶段监听(最先收到, 不被其他处理器截断)
     window.addEventListener('keydown', (e) => {
+      if (e.code === 'AltLeft' || e.code === 'AltRight') { e.preventDefault(); altHeld = true; return; }
       const k = keyOf(e);
       if (!k) return;
       keySeen = true;
@@ -491,6 +493,7 @@ SF.Main = (() => {
             const apd = aimPoint ? Math.hypot(aimPoint.pos.x - world.player.x, aimPoint.pos.z - world.player.z) : 0;
             if (aimPoint && apd > 60) { artyX = aimPoint.pos.x; artyZ = aimPoint.pos.z; }
             else { artyX = world.player.x + Math.sin(camYaw) * 220; artyZ = world.player.z + Math.cos(camYaw) * 220; }
+            SF.HUD.showMsg('鹰眼 · 鼠标拖动瞄准 · 滚轮变焦 · 按住 Alt 操作地图', 3);
           }
         }
         keys.Shift = true; return;
@@ -519,9 +522,12 @@ SF.Main = (() => {
       keys[k] = true;
       if (/^Arrow/.test(k) || k === 'Space') e.preventDefault();
     }, true);
-    window.addEventListener('keyup', (e) => { const k = keyOf(e); if (k) keys[k] = false; }, true);
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'AltLeft' || e.code === 'AltRight') { e.preventDefault(); altHeld = false; return; }
+      const k = keyOf(e); if (k) keys[k] = false;
+    }, true);
     // 失焦清键, 防卡键
-    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; });
+    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; altHeld = false; });
     window.addEventListener('resize', () => {
       camera.aspect = innerWidth / innerHeight;
       camera.updateProjectionMatrix();
