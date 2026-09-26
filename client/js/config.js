@@ -545,18 +545,26 @@ SF.CFG = {
   }
 };
 
-// 车类图标(WoT 式, 全游戏统一): ◇轻坦 ◇◇中坦 ◇◇◇重坦 ▽歼击 □火炮 —— innerHTML 场景用
+// 车类图标(WoT 式, 全游戏统一): 完整菱形=轻坦, 一道竖缝=中坦, 两道竖缝=重坦, ▽歼击 □火炮
+// 中/重坦是"一整个菱形被竖缝切开"(两瓣/三瓣), 不是多个小菱形并排 —— innerHTML 场景用
 SF.ClsIcon = function (cls, opts = {}) {
-  const s = opts.size || 9, col = opts.color || 'currentColor', gap = 2;
-  const dm = (x) => `<polygon fill="${col}" points="${x + s / 2},0 ${x + s},${s / 2} ${x + s / 2},${s} ${x},${s / 2}"/>`;
-  let w = s, body = '';
-  if (cls === 'LT') body = dm(0);
-  else if (cls === 'MT') { w = s * 2 + gap; body = dm(0) + dm(s + gap); }
-  else if (cls === 'HT') { w = s * 3 + gap * 2; body = dm(0) + dm(s + gap) + dm(s * 2 + gap * 2); }
-  else if (cls === 'TD') body = `<polygon fill="${col}" points="0,0 ${s},0 ${s / 2},${s}"/>`;
-  else if (cls === 'SPG') body = `<rect fill="${col}" x="0.5" y="0.5" width="${s - 1}" height="${s - 1}"/>`;
-  else return '';
-  return `<svg width="${w}" height="${s}" viewBox="0 0 ${w} ${s}" style="vertical-align:-1px">${body}</svg>`;
+  const h = opts.size || 9, w = Math.round(h * 1.35 * 10) / 10, gap = Math.max(1.4, h * 0.17);
+  const col = opts.color || 'currentColor';
+  if (cls === 'TD')
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="vertical-align:-1px"><polygon fill="${col}" points="0,0 ${w},0 ${w / 2},${h}"/></svg>`;
+  if (cls === 'SPG')
+    return `<svg width="${h}" height="${h}" viewBox="0 0 ${h} ${h}" style="vertical-align:-1px"><rect fill="${col}" x="0.5" y="0.5" width="${h - 1}" height="${h - 1}"/></svg>`;
+  const n = cls === 'LT' ? 1 : cls === 'MT' ? 2 : cls === 'HT' ? 3 : 0;
+  if (!n) return '';
+  const yTop = (x) => x <= w / 2 ? h / 2 - (h / w) * x : (h / w) * (x - w / 2);
+  const sw = (w - gap * (n - 1)) / n;
+  const f = (v) => Math.round(v * 10) / 10;
+  let body = '';
+  for (let i = 0; i < n; i++) {
+    const a = i * (sw + gap), b = a + sw;
+    body += `<polygon fill="${col}" points="${f(a)},${f(yTop(a))} ${f(b)},${f(yTop(b))} ${f(b)},${f(h - yTop(b))} ${f(a)},${f(h - yTop(a))}"/>`;
+  }
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="vertical-align:-1px">${body}</svg>`;
 };
 
 // 车库列表(依赖 vehicles 数据, 必须在 CFG 定义后生成)

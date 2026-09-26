@@ -157,17 +157,30 @@ SF.HUD = (() => {
     return [(x + T.half) / T.size * 180, (z + T.half) / T.size * 180];
   }
 
-  // 小地图敌车类标(WoT 式): ◇轻坦 ◇◇中坦 ◇◇◇重坦 ▽歼击 □火炮
+  // 小地图敌车类标(WoT 式): 完整菱形=轻坦, 竖缝一分为二=中坦, 三瓣=重坦, ▽歼击 □火炮
   function clsMark(ctx, cls, x, y) {
-    const r = 2.6;
+    const h = 6.6, w = h * 1.35, gap = 1.3;
     ctx.fillStyle = '#e33';
-    const dm = (cx) => { ctx.beginPath(); ctx.moveTo(cx, y - r); ctx.lineTo(cx + r, y); ctx.lineTo(cx, y + r); ctx.lineTo(cx - r, y); ctx.closePath(); ctx.fill(); };
-    if (cls === 'LT') dm(x);
-    else if (cls === 'MT') { dm(x - r - 1); dm(x + r + 1); }
-    else if (cls === 'HT') { dm(x - 2 * r - 2); dm(x); dm(x + 2 * r + 2); }
-    else if (cls === 'TD') { ctx.beginPath(); ctx.moveTo(x - r * 1.5, y - r * 0.9); ctx.lineTo(x + r * 1.5, y - r * 0.9); ctx.lineTo(x, y + r * 1.2); ctx.closePath(); ctx.fill(); }
-    else if (cls === 'SPG') ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    else { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+    const n = cls === 'LT' ? 1 : cls === 'MT' ? 2 : cls === 'HT' ? 3 : 0;
+    if (n) {
+      const yTop = (xx) => xx <= w / 2 ? h / 2 - (h / w) * xx : (h / w) * (xx - w / 2);
+      const sw = (w - gap * (n - 1)) / n;
+      for (let i = 0; i < n; i++) {
+        const a = i * (sw + gap), b = a + sw;
+        ctx.beginPath();
+        ctx.moveTo(x - w / 2 + a, y - h / 2 + yTop(a));
+        ctx.lineTo(x - w / 2 + b, y - h / 2 + yTop(b));
+        ctx.lineTo(x - w / 2 + b, y + h / 2 - yTop(b));
+        ctx.lineTo(x - w / 2 + a, y + h / 2 - yTop(a));
+        ctx.closePath(); ctx.fill();
+      }
+    } else if (cls === 'TD') {
+      ctx.beginPath(); ctx.moveTo(x - w * 0.62, y - h * 0.45); ctx.lineTo(x + w * 0.62, y - h * 0.45); ctx.lineTo(x, y + h * 0.62); ctx.closePath(); ctx.fill();
+    } else if (cls === 'SPG') {
+      ctx.fillRect(x - h / 2, y - h / 2, h, h);
+    } else {
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill();
+    }
   }
 
   function update(dt, world, uiState) {
