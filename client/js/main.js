@@ -543,9 +543,10 @@ SF.Main = (() => {
         input.aimPitch = Math.atan(u);
       }
     } else { input.aimYaw = camYaw; input.aimPitch = 0; }
-    // WoT 式右键自由视角: 按住右键时炮塔锁定原方向, 相机自由查看四周
+    // WoT 式右键自由视角: 按住右键时炮塔转角/炮管俯仰相对车体锁定(车体转动炮塔跟着走),
+    // 相机自由查看四周; 松开后炮塔伺服重新追赶相机瞄准
     // (鹰眼模式例外: 落点恒为视野中心, 右键不解锁弹道解算)
-    if (freeLook && !(sniper && p.spec.cls === 'SPG')) { input.aimYaw = p.turretYaw; input.aimPitch = p.gunPitch; }
+    if (freeLook && !(sniper && p.spec.cls === 'SPG')) input.holdTurret = true;
     // 自动瞄准: 炮塔持续跟踪锁定目标(优先于自由视角)
     if (autoTarget && autoTarget.alive) {
       const dx = autoTarget.x - p.x, dz = autoTarget.z - p.z;

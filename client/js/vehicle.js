@@ -49,6 +49,7 @@ SF.Tank = class {
   update(input, dt, world) {
     const U = SF.Util, S = this.spec, T = world.terrain;
     if (!this.alive) { this._deathFx(dt); this._syncNode(); return; }
+    const yaw0 = this.yaw;   // 车体本帧转前朝向(右键锁定时炮塔随车体走, 见瞄准段)
 
     for (const k in this.modules) this.modules[k] = Math.max(0, this.modules[k] - dt);
 
@@ -121,7 +122,11 @@ SF.Tank = class {
     AIM_LOCAL.copy(AIM_DIR).applyQuaternion(HULL_Q);
     const localYaw = Math.atan2(AIM_LOCAL.x, AIM_LOCAL.z);
     const localElev = Math.atan2(AIM_LOCAL.y, Math.hypot(AIM_LOCAL.x, AIM_LOCAL.z));
-    if (this.parts.noTurret) {
+    if (input.holdTurret) {
+      // 右键锁定: 炮塔转角相对车体保持不变(车体转动炮塔跟着走, 世界朝向一起变), 俯仰同样锁住
+      this.turretYaw += this.yaw - yaw0;
+      this.lastTurretRate = 0;
+    } else if (this.parts.noTurret) {
       // 固定战斗室(WoT 式): 火炮在 ±gunArc 射界内横向伺服; 超界由引擎/玩家自动转车体对准
       const arc = (S.gunArc !== undefined) ? S.gunArc : 10 * Math.PI / 180;
       const layYaw = U.clamp(localYaw, -arc, arc);
@@ -135,7 +140,8 @@ SF.Tank = class {
       this.turretYaw = U.angMoveToward(this.turretYaw, this.yaw + localYaw, S.turretTraverse * dt);
       this.lastTurretRate = U.angDiff(before, this.turretYaw) / dt;
     }
-    this.gunPitch = U.moveToward(this.gunPitch, U.clamp(localElev, S.gunDepression, S.gunElevation), 1.2 * dt);
+    if (!input.holdTurret)
+      this.gunPitch = U.moveToward(this.gunPitch, U.clamp(localElev, S.gunDepression, S.gunElevation), 1.2 * dt);
 
     /* --- 缩圈/扩圈 --- */
     const D = S.dispersion;
