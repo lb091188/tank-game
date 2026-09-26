@@ -398,7 +398,21 @@ SF.Main = (() => {
         keys.Shift = true; return;
       }
       if (k === 'Tab') { e.preventDefault(); if (!e.repeat) SF.HUD.toggleMissionDetail(); return; }
-      if (k === 'KeyR') { if (!e.repeat) { cruise = 1; SF.HUD.showMsg('巡航 · 前进', 1.2); } return; }
+      if (k === 'KeyR') {
+        if (!e.repeat) {
+          const p = world && world.player;
+          const al = p && p.alive && p.spec.gun.autoloader;
+          if (al) {
+            // 弹夹车: R = 丢弃剩余弹, 立即开始整夹长装填(弹夹已满且就绪时无效)
+            if (p.clipPhase !== 'long' && (p.clipLeft < al.clip || p.reloadT > 0)) {
+              const dump = p.clipLeft;
+              p.reloadT = p.reloadTotal = al.long; p.clipPhase = 'long'; p.clipLeft = al.clip;
+              SF.HUD.showMsg(`重置弹夹 · 丢弃 ${dump} 发 · 长装填 ${al.long.toFixed(1)}s`, 1.8);
+            } else SF.HUD.showMsg(p.reloadT > 0 ? '整夹长装填中…' : '弹夹已满', 1.2);
+          } else { cruise = 1; SF.HUD.showMsg('巡航 · 前进', 1.2); }
+        }
+        return;
+      }
       if (k === 'KeyF') { if (!e.repeat) { cruise = -1; SF.HUD.showMsg('巡航 · 倒车', 1.2); } return; }
       if (k === 'KeyE') { if (!e.repeat) toggleAutoAim(); return; }
       if (k === 'KeyM') { if (!e.repeat) SF.HUD.toggleBigMap(); return; }

@@ -260,7 +260,7 @@ SF.HUD = (() => {
     // 玩家箭头
     const [px, py] = worldToMap(player.x, player.z, T);
     ctx.save();
-    ctx.translate(px, py); ctx.rotate(-player.yaw);   // 画布顺时针为正, 与世界 yaw 相反
+    ctx.translate(px, py); ctx.rotate(Math.PI - player.yaw);   // 箭头形朝上, 而 yaw=0 车头指向世界+z(画布下方): 先翻 180°, 画布顺时针为正与 yaw 相反
     ctx.fillStyle = '#7fd67f';
     ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.2, 5); ctx.lineTo(-4.2, 5); ctx.closePath(); ctx.fill();
     ctx.restore();
