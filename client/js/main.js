@@ -297,10 +297,15 @@ SF.Main = (() => {
     document.addEventListener('mousedown', (e) => { if (e.button === 0) mouseDown = true; if (e.button === 2) freeLook = true; });
     document.addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; if (e.button === 2) freeLook = false; });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
-    // 滚轮: 第三人称下缩放相机距离; 已在狙击镜中则滚轮退出狙击镜(WoT 式切换)
+    // 滚轮(WoT 式): 第三人称上滚逐步拉近相机, 已拉到最近再上滚 → 开狙镜; 狙镜/鹰眼中滚动退出(相机停在最近)
     document.addEventListener('wheel', (e) => {
-      if (sniper) { sniper = false; return; }
-      camDist = U.clamp(camDist + Math.sign(e.deltaY) * 1.6, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
+      if (sniper) { sniper = false; camDist = SF.CFG.camera.minDist; return; }
+      if (e.deltaY < 0) {
+        if (camDist <= SF.CFG.camera.minDist + 0.01) sniper = true;
+        else camDist = U.clamp(camDist - 2.4, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
+      } else {
+        camDist = U.clamp(camDist + 2.4, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
+      }
     });
     // 键盘: window 捕获阶段监听(最先收到, 不被其他处理器截断)
     window.addEventListener('keydown', (e) => {
