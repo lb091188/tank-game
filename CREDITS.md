@@ -14,7 +14,7 @@
 | 装填完成 | `audio/reload.wav` | 同上 | Brian MacIntosh | CC0 |
 | 环境风声 | `audio/wind.wav` | 程序合成（tools/build-audio.js） | 本项目 | 项目自身 |
 | 装填完成音效 | `audio/reload.wav` | 程序合成（炮闩机械声） | 本项目 | 项目自身 |
-| 中文战斗语音 ×11 | `audio/voice/v_*.mp3` | 本地 Qwen3-TTS 零样本克隆合成（参考音源：本机 kokoro-tts(Apache-2.0 模型) 生成的高能量中文男声语句，见 tools/make-voices.py） | 本地模型生成参考 | 参考与合成本地生成，可商用 |
+| 中文战斗语音 ×11 | `audio/voice/v_*.mp3` | 本地 Qwen3-TTS 零样本克隆合成（参考音源：项目作者提供的战斗播报录音片段，经降噪裁剪） | 授权待项目作者确认 | 合成本地生成，可商用 |
 
 - 引擎音经过 playbackRate 变调处理（随车速 0.88–1.62 倍速），属对原素材的使用性修改。
 - 语音走玩家系统 TTS 实时合成，游戏不携带任何语音文件；系统缺少中文语音时自动静默（文字提示不受影响）。
