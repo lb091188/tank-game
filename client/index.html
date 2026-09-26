@@ -116,7 +116,7 @@
   #reloadText { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-size: 15px; color: #c8b26a; text-shadow: 0 1px 3px #000; display: none; font-variant-numeric: tabular-nums; }
   #distText { position: absolute; left: 50%; top: calc(50% + 66px); transform: translateX(-50%); font-size: 13px; color: #9aa0a6; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; }
   #armorInfo { position: absolute; left: 50%; top: calc(50% + 84px); transform: translateX(-50%); font-size: 14px; font-weight: bold; text-shadow: 0 1px 3px #000; white-space: nowrap; }
-  #bigMap { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 2px solid rgba(200,178,106,.5); border-radius: 6px; box-shadow: 0 6px 40px rgba(0,0,0,.7); }
+  #bigMap { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 2px solid rgba(200,178,106,.5); border-radius: 6px; box-shadow: 0 6px 40px rgba(0,0,0,.7); pointer-events: auto; cursor: crosshair; }
   #aimCircle { position: absolute; border: 1.5px solid rgba(255,255,255,.8); border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,.6), inset 0 0 4px rgba(0,0,0,.4); }
   #aimCircle.aimed { border-color: rgba(150,230,140,.9); }
 
@@ -145,7 +145,7 @@
   .mod { background: rgba(160,50,40,.8); color: #ffd9d0; font-size: 12px; padding: 2px 8px; border-radius: 3px; margin-right: 6px; }
 
   /* 小地图 */
-  #minimapBox { position: absolute; right: 16px; top: 16px; }
+  #minimapBox { position: absolute; right: 16px; top: 16px; pointer-events: auto; cursor: crosshair; }
   #btnExit { position: absolute; top: 16px; right: 226px; padding: 8px 14px; color: #b9c4a4; font-size: 13px; letter-spacing: 2px; cursor: pointer; pointer-events: auto; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.3); border-radius: 5px; }
   #btnExit:hover { color: #e8dcae; background: rgba(40,44,32,.75); }
   #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }

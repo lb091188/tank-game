@@ -8,6 +8,8 @@ SF.Main = (() => {
   let camYaw = Math.PI, camPitch = 0.30, camDist = SF.CFG.camera.dist;
   let sniper = false, mouseDown = false, shakeT = 0, freeLook = false;   // 右键按住: 自由视角(炮塔锁定)
   let artyX = 0, artyZ = 0;   // 火炮鹰眼: 俯视视野中心(世界坐标)
+  const ARTY_H = [40, 70, 110, 160, 220];   // 鹰眼高度档位(视场范围)
+  let artyH = ARTY_H[2], artyHIdx = 2;
   let sniperFov = SF.CFG.camera.sniperFovMax;   // 当前狙镜视场(滚轮镜内变焦)
   let cruise = 0;              // 巡航控制: 1 前进 / -1 倒车 / 0 关
   let autoTarget = null;       // 自动瞄准目标(WoT E 键)
@@ -304,6 +306,13 @@ SF.Main = (() => {
     document.addEventListener('wheel', (e) => {
       const down = e.deltaY > 0;
       if (sniper) {
+        // 火炮鹰眼: 滚轮切换视场档位(左键仍是开炮, Shift 退出)
+        if (world && world.player && world.player.spec.cls === 'SPG') {
+          artyHIdx = U.clamp(artyHIdx + (down ? 1 : -1), 0, ARTY_H.length - 1);
+          artyH = ARTY_H[artyHIdx];
+          SF.HUD.showMsg(`鹰眼视场 ≈ ${Math.round(artyH * 0.573)}m`, 1);
+          return;
+        }
         if (!down) sniperFov = Math.max(SF.CFG.camera.sniperFovMin, sniperFov * 0.87);
         else if (sniperFov >= SF.CFG.camera.sniperFovMax - 0.01) { sniper = false; camDist = SF.CFG.camera.minDist; }
         else sniperFov = Math.min(SF.CFG.camera.sniperFovMax, sniperFov * 1.15);
@@ -316,6 +325,17 @@ SF.Main = (() => {
         camDist = U.clamp(camDist + 2.4, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
       }
     });
+    // 鹰眼模式: 点击小地图/大地图 → 视野中心跳转到该点(阻止冒泡以免触发开炮)
+    const mapJump = (e) => {
+      e.stopPropagation();
+      if (!sniper || !world || !world.player || world.player.spec.cls !== 'SPG') return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const T = world.terrain;
+      artyX = U.clamp((e.clientX - r.left) / r.width * T.size - T.half, -470, 470);
+      artyZ = U.clamp((e.clientY - r.top) / r.height * T.size - T.half, -470, 470);
+    };
+    document.getElementById('minimap').addEventListener('mousedown', mapJump);
+    document.getElementById('bigMap').addEventListener('mousedown', mapJump);
     // 键盘: window 捕获阶段监听(最先收到, 不被其他处理器截断)
     window.addEventListener('keydown', (e) => {
       const k = keyOf(e);
