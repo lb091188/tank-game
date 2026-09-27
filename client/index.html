@@ -52,7 +52,8 @@
   .hscroll::-webkit-scrollbar-thumb:hover { background: #c8b26a; }
   #garageRow { padding: 8px 12px; background: rgba(10,12,8,.4); border: 1px solid rgba(200,178,106,.14); border-bottom: none; border-radius: 8px 8px 0 0; }
   #garageRow .card { flex: 0 0 auto; width: 150px; padding: 8px 10px; }
-  #mapRow { justify-content: flex-end; padding: 4px; }
+  #mapRow { justify-content: flex-start; padding: 4px; }   /* 首卡 margin-left:auto 右对齐; 放不下时 auto 归零 → 左起排列, 溢出可横向滚动(flex-end 溢出方向朝左不可滚) */
+  #mapRow .card:first-child { margin-left: auto; }
   #mapRow .card { flex: 0 0 auto; width: 200px; padding: 8px 12px; background: rgba(10,12,8,.5); }
   #btnRow { display: flex; gap: 14px; justify-content: flex-end; margin: 0; }
   #btnStart { font-size: 19px; padding: 12px 58px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
