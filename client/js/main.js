@@ -464,6 +464,31 @@ SF.Main = (() => {
     }, { capture: true, once: true, passive: true });
   }
   if (TOUCH) document.body.classList.add('touch');   // 竖屏旋转遮罩等触屏专属样式钩子
+
+  // 忽略 dip 缩放(等效): 系统显示缩放大的手机横屏 CSS 高度仅 ~360px, 车库/战斗按 device-width 布局放不下;
+  // 改用固定 1280 大视口 → 浏览器整页等比物理缩小, 按桌面比例全放下(触屏按钮物理仍有 ~9mm)
+  // 判据用 screen.height(不随 meta viewport 改变, 避免来回切换死循环); 竖屏仍走旋转遮罩, 桌面不受影响
+  if (NATIVE_TOUCH) {
+    const metaVp = document.getElementById('metaVp');
+    const setVp = () => {
+      const short = Math.min(screen.width, screen.height) < 500;   // 短边<500 = 横屏矮视口手机
+      metaVp.content = short
+        ? 'width=1280, user-scalable=no, viewport-fit=cover'
+        : 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+    };
+    setVp();
+    addEventListener('orientationchange', setVp);
+    addEventListener('resize', setVp);
+  }
+
+  // 全屏切换(首触自动尝试 + 车库/战斗手动按钮兜底; 浏览器全屏退出冷却期会拒绝自动请求, 手动点按钮可重试)
+  function toggleFullscreen() {
+    const el = document.documentElement;
+    if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); return; }
+    (el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : Promise.reject())
+      .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'))
+      .catch(() => alert('此浏览器不支持网页全屏(iPhone Safari 无此 API)。\n可用 Safari 菜单「添加到主屏幕」, 从主屏幕打开即是全屏。'));
+  }
   const touchCtl = { stick: { id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, aimId: null, aimX: 0, aimY: 0,
     pinch: { d0: 0, dist0: 0 }, ui: null };
 
@@ -478,6 +503,7 @@ SF.Main = (() => {
       <div id="tBtns">
         <button id="tScope">🔍</button>
         <button id="tFire">开炮</button>
+        <button id="tFull">⛶</button>
       </div>`;
     document.getElementById('hud').appendChild(root);
     touchCtl.ui = root;
@@ -565,6 +591,7 @@ SF.Main = (() => {
     fireBtn.addEventListener('touchend', fireEnd);
     fireBtn.addEventListener('touchcancel', fireEnd);
     root.querySelector('#tScope').addEventListener('touchstart', e => { e.preventDefault(); toggleSniper(); }, { passive: false });
+    root.querySelector('#tFull').addEventListener('touchstart', e => { e.preventDefault(); toggleFullscreen(); }, { passive: false });
   }
 
   function bindInput() {
@@ -1153,6 +1180,13 @@ SF.Main = (() => {
     buildPicker();
     buildPve();
     bindHScroll();          // 地图/坦克卡行: 滚轮横向滚动
+    // 触屏: 车库全屏按钮(首触自动全屏失败/被冷却拒绝时的手动兜底)
+    if (NATIVE_TOUCH) {
+      const b = document.createElement('button');
+      b.id = 'btnFs'; b.textContent = '⛶ 全屏';
+      document.getElementById('titleBrand').appendChild(b);
+      b.onclick = toggleFullscreen;
+    }
     SF.Assets.prefetch();   // 后台预取其余资源(音效/语音/模型), 不阻塞车库
 
     document.getElementById('btnStart').addEventListener('click', () => {

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" id="metaVp" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>钢铁前沿 · 第一关 遭遇战</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -55,6 +55,7 @@
   #tFire { width: 84px; height: 84px; border-radius: 50%; border: 2px solid rgba(226,58,42,.65); background: rgba(120,26,18,.5); color: #ffd9c9; font-size: 19px; letter-spacing: 2px; font-weight: bold; }
   #tFire.on { background: rgba(190,40,26,.75); }
   #tScope { width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(200,178,106,.5); background: rgba(14,16,11,.5); color: #d8c887; font-size: 22px; }
+  #tFull { width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(200,178,106,.4); background: rgba(14,16,11,.5); color: #d8c887; font-size: 18px; }
   #hud { touch-action: none; }
   #mapPick { text-align: right; max-width: 50vw; }
   #mapPick .pickLabel { margin: 0 0 8px; }
@@ -78,6 +79,8 @@
   #btnStart { font-size: 19px; padding: 12px 58px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
   #verStamp { color: #6a6f5e; font-size: 11px; letter-spacing: 1px; margin-top: 8px; font-variant-numeric: tabular-nums; }
   #titleBrand #btnMp { display: none; margin: 14px 0 0; font-size: 14px; padding: 8px 24px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 3px; cursor: pointer; }
+  #titleBrand #btnFs { display: none; margin: 14px 0 0 10px; font-size: 14px; padding: 8px 18px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 2px; cursor: pointer; }
+  #titleBrand #btnFs:hover { background: #2e3325; color: #e8dcae; }
   #titleBrand #btnMp:hover { background: #2e3325; }
   #titleBrand #btnMp.on { display: inline-block; }
   .card { width: 170px; padding: 12px 14px; background: rgba(255,255,255,.045); border: 1px solid rgba(200,178,106,.25); border-radius: 6px; cursor: pointer; text-align: left; transition: all .12s; }
@@ -189,6 +192,30 @@
   #rotateMask .ic { font-size: 64px; animation: rotHint 2.2s infinite; }
   @keyframes rotHint { 0%, 25% { transform: rotate(0); } 65%, 100% { transform: rotate(90deg); } }
   @media (orientation: portrait) { body.touch #rotateMask { display: flex; } }
+
+  /* 手机横屏(矮视口, 系统显示缩放大时 CSS 高度仅 ~370px): 压缩车库布局, 保证坦克列表完整可见 */
+  @media (orientation: landscape) and (max-height: 500px) {
+    #titleTop { padding: 10px 20px 0; gap: 14px; }
+    #titleBrand h1 { font-size: 26px; letter-spacing: 5px; }
+    #titleBrand h2 { font-size: 12px; }
+    #verStamp { font-size: 11px; }
+    #btnMp { padding: 6px 16px; font-size: 13px; margin-top: 8px; }
+    #garageStats { padding: 5px 10px; max-width: 44vw; }
+    #garageStats b { font-size: 14px; }
+    #garageStats span { font-size: 11px; }
+    #btnStart { font-size: 15px; padding: 9px 36px; letter-spacing: 5px; }
+    #tipOnTitle { display: none; }
+    .pickLabel { margin: 6px 0 4px; font-size: 11px; letter-spacing: 2px; }
+    .card b { font-size: 13px; margin-bottom: 2px; }
+    .card i { margin-bottom: 3px; font-size: 10px; }
+    .card span { font-size: 11px; }
+    .card em { font-size: 11px; }
+    #mapRow .card, #garageRow .card { width: 150px; padding: 5px 9px; }
+    #dockRow { gap: 12px; padding-bottom: 4px; }
+    #pvePanel { padding: 4px 10px; }
+    #pvePanel .pveTitle { font-size: 12px; }
+    #pvePanel .pveSum, #pvePanel .pveTitle span { font-size: 11px; }
+  }
   #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }
   #minimap { display: block; border-radius: 4px; }
   #minimapBox .cap { color: #8b9080; font-size: 11px; text-align: center; margin-top: 3px; letter-spacing: 2px; }
