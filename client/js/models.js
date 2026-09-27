@@ -164,9 +164,9 @@ SF.Models = (() => {
       col = { ...col, blocksShells: false, blocksSpot: true, ...OBB(1.75, 3.1), h: 2.4 };  // 残骸: 挡车挡视线, 不挡弹(WoT 击毁车不吸弹)
     } else if (c.type === 'bush') {
       const s = (c.scale || 1);
-      // 多团簇拥的灌木丛(4-7m 宽植被团): 亮黄绿色与地面深草拉开对比, 一眼认出可隐蔽
+      // 多团簇拥的灌木丛: 茅草照片贴图(密集草束纹理) × 亮绿色调 —— 有叶簇质感且与地面深草拉开对比
       const geo = geoCache.bush || (geoCache.bush = new THREE.SphereGeometry(1, 7, 5));
-      const mats = geoCache.bushMats || (geoCache.bushMats = [[0.38, 0.56, 0.15], [0.30, 0.48, 0.12], [0.48, 0.62, 0.20]].map(g => lambert(g)));
+      const mats = geoCache.bushMats || (geoCache.bushMats = [[0.50, 0.82, 0.34], [0.40, 0.66, 0.26], [0.66, 0.98, 0.50]].map(c => texMat(c, 'thatch', 3.5, 1.8)));
       const blob = (dx, dz, r, yy, gi) => {
         const m = new THREE.Mesh(geo, mats[gi % 3]);
         m.scale.set(r, r * 0.72, r); m.position.set(dx, yy, dz);
