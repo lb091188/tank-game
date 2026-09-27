@@ -16,6 +16,9 @@ SF.Models = (() => {
     }
     return new THREE.MeshLambertMaterial(opts);
   };
+  // 开镜去遮挡(全局): 草丛半透明+不投影, 由 main.toggleSniper 切换, 新建的草丛直接按此状态建
+  let bushSeeThrough = false;
+  const bushMats = () => geoCache.bushMats || [];
 
   /* ---------- 坦克: 克隆 GLB, 提取枢轴与部位网格 ---------- */
   function makeTank(type) {
@@ -170,6 +173,7 @@ SF.Models = (() => {
       const blob = (dx, dz, r, yy, gi) => {
         const m = new THREE.Mesh(geo, mats[gi % 3]);
         m.scale.set(r, r * 0.72, r); m.position.set(dx, yy, dz);
+        m.castShadow = !bushSeeThrough;   // 开镜去遮挡时草丛不投影
         return m;
       };
       g.add(
@@ -292,5 +296,5 @@ SF.Models = (() => {
     }
   }
 
-  return { makeTank, CoverField };
+  return { makeTank, CoverField, bushMats, setBushSeeThrough: (v) => { bushSeeThrough = v; } };
 })();

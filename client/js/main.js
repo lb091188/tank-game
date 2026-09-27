@@ -435,9 +435,23 @@ SF.Main = (() => {
   }
 
   // 开镜/鹰眼切换(键盘 Shift 与移动端开镜按钮共用)
+  // WoT 式狙击镜去遮挡: 开镜时草丛变半透明且不再投影(WoT 移除 foliage); 退镜恢复
+  function setBushSeeThrough(on) {
+    SF.Models.setBushSeeThrough(on);
+    if (!setBushSeeThrough.mats) setBushSeeThrough.mats = [];
+    if (on && !setBushSeeThrough.mats.length) {
+      for (const m of SF.Models.bushMats()) setBushSeeThrough.mats.push({ m });
+    }
+    for (const { m } of setBushSeeThrough.mats) {
+      m.opacity = on ? 0.28 : 1;
+      m.transparent = on;
+      m.depthWrite = !on;          // 半透明堆叠免自遮挡
+    }
+  }
   function toggleSniper() {
     sniper = !sniper;
     if (sniper) sniperFov = SF.CFG.camera.sniperFovMax;   // 开镜从最广视场开始
+    setBushSeeThrough(sniper);
     if (typeof window.updateZoomUI === 'function') window.updateZoomUI();   // 触屏倍率滑杆同步
     // 火炮开鹰眼: 视野中心定位到当前瞄准点(太近则车前方 220m)
     if (sniper && world.player && world.player.spec.cls === 'SPG') {
