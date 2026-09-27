@@ -130,9 +130,10 @@ SF.Main = (() => {
       playerSpec.hp = Math.round(b.hp * M.hpMul);
       playerSpec.maxSpeed = b.maxSpeed * M.mobilityMul;
       playerSpec.accel = b.accel * M.mobilityMul;
-      playerSpec.gun.reload = b.gun.reload * M.reloadMul;
-      if (playerSpec.gun.autoloader) { playerSpec.gun.autoloader.intra *= M.reloadMul; playerSpec.gun.autoloader.long *= M.reloadMul; }
-      playerSpec.dispersion.aimTime = b.dispersion.aimTime * M.aimMul;
+      // 输弹机/炮控为速度倍率: 时间÷倍率(2× = 装填快一倍)
+      playerSpec.gun.reload = b.gun.reload / M.reloadMul;
+      if (playerSpec.gun.autoloader) { playerSpec.gun.autoloader.intra /= M.reloadMul; playerSpec.gun.autoloader.long /= M.reloadMul; }
+      playerSpec.dispersion.aimTime = b.dispersion.aimTime / M.aimMul;
       playerSpec.view = Math.round((b.view || SF.CFG.player.viewRange) * M.viewMul);
     }
     const player = new SF.Tank(selTank, { x: sx, z: sz, yaw: syaw, isPlayer: true, spec: playerSpec });
@@ -1400,13 +1401,14 @@ SF.Main = (() => {
   /* ---------- PVE 修改器面板: 敌军规模 + 配件倍率(仅单机, localStorage 持久化) ---------- */
   function buildPve() {
     const el = document.getElementById('pvePanel');
+    // 语义统一"越高越强": 装填/瞄准为速度倍率(时间÷倍率)
     const DEFS = [
       ['enemyMul', '敌军规模', '敌军', [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9, 10]],
-      ['reloadMul', '输弹机 · 装填', '装填', [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2]],
-      ['aimMul', '炮控 · 缩圈', '缩圈', [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2]],
-      ['mobilityMul', '涡轮 · 机动', '机动', [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]],
-      ['hpMul', '装甲 · 血量', '血量', [0.5, 0.75, 1, 1.5, 2, 3, 5]],
-      ['viewMul', '观瞄 · 视野', '视野', [0.5, 0.75, 1, 1.25, 1.5, 2]],
+      ['reloadMul', '输弹机 · 装填速度', '装填', [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5]],
+      ['aimMul', '炮控 · 瞄准速度', '缩圈', [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5]],
+      ['mobilityMul', '涡轮 · 机动', '机动', [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5]],
+      ['hpMul', '装甲 · 血量', '血量', [0.5, 1, 2, 3, 5, 8, 10]],
+      ['viewMul', '观瞄 · 视野', '视野', [0.5, 1, 1.5, 2, 2.5, 3]],
     ];
     // 折叠态摘要: 非默认项拼进标题(如 "敌军3× · 装填0.7×"), 全默认则不显示
     const sum = () => DEFS.filter(([k]) => PVE[k] != 1).map(t => t[2] + PVE[t[0]] + '×').join(' ');

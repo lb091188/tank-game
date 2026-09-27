@@ -164,19 +164,20 @@ SF.Models = (() => {
       col = { ...col, blocksShells: false, blocksSpot: true, ...OBB(1.75, 3.1), h: 2.4 };  // 残骸: 挡车挡视线, 不挡弹(WoT 击毁车不吸弹)
     } else if (c.type === 'bush') {
       const s = (c.scale || 1);
-      // 多团簇拥的灌木丛(4-7m 宽植被团): 单个小球在地图比例下根本认不出
+      // 多团簇拥的灌木丛(4-7m 宽植被团): 亮黄绿色与地面深草拉开对比, 一眼认出可隐蔽
       const geo = geoCache.bush || (geoCache.bush = new THREE.SphereGeometry(1, 7, 5));
-      const mats = geoCache.bushMats || (geoCache.bushMats = [[0.12, 0.28, 0.11], [0.17, 0.34, 0.13], [0.09, 0.24, 0.10]].map(g => lambert(g)));
+      const mats = geoCache.bushMats || (geoCache.bushMats = [[0.38, 0.56, 0.15], [0.30, 0.48, 0.12], [0.48, 0.62, 0.20]].map(g => lambert(g)));
       const blob = (dx, dz, r, yy, gi) => {
         const m = new THREE.Mesh(geo, mats[gi % 3]);
         m.scale.set(r, r * 0.72, r); m.position.set(dx, yy, dz);
         return m;
       };
       g.add(
-        blob(0, 0, 1.5 * s, 1.3 * s, 0),
-        blob(1.15 * s, 0.5 * s, 1.1 * s, 1.05 * s, 1),
-        blob(-1.0 * s, -0.7 * s, 1.0 * s, 0.95 * s, 2),
-        blob(0.3 * s, -1.1 * s, 0.85 * s, 0.85 * s, 1)
+        blob(0, 0, 1.7 * s, 1.4 * s, 0),
+        blob(1.25 * s, 0.5 * s, 1.2 * s, 1.05 * s, 1),
+        blob(-1.1 * s, -0.75 * s, 1.1 * s, 0.95 * s, 2),
+        blob(0.35 * s, -1.2 * s, 0.95 * s, 0.85 * s, 1),
+        blob(-0.4 * s, 1.1 * s, 0.9 * s, 1.0 * s, 2)
       );
       col = { ...col, blocksMove: false, blocksShells: false, blocksSpot: true, r: 1.6 * s, h: 1.9 };  // 草丛: 不挡车不挡弹, 只挡点亮视线(蹲入隐蔽)
     }
