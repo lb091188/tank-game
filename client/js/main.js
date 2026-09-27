@@ -465,16 +465,17 @@ SF.Main = (() => {
   }
   if (TOUCH) document.body.classList.add('touch');   // 竖屏旋转遮罩等触屏专属样式钩子
 
-  // 忽略 dip 缩放(等效): 系统显示缩放大的手机横屏 CSS 高度仅 ~360px, 车库/战斗按 device-width 布局放不下;
-  // 改用固定 1280 大视口 → 浏览器整页等比物理缩小, 按桌面比例全放下(触屏按钮物理仍有 ~9mm)
-  // 判据用 screen.height(不随 meta viewport 改变, 避免来回切换死循环); 竖屏仍走旋转遮罩, 桌面不受影响
+  // 忽略系统 dip 缩放(等效 DPR=2): 系统显示缩放大的手机横屏 CSS 高度仅 ~360px, 车库/战斗按 device-width 布局放不下;
+  // 视口宽固定为 物理宽÷2 → 等比缩放零变形、与屏幕纵横比一致、各机型物理字号统一, 触屏按钮物理仍有 ~9mm
+  // 判据用 screen 尺寸×DPR(不随 meta viewport 改变, 避免来回切换死循环); 竖屏仍走旋转遮罩, 桌面不受影响
   if (NATIVE_TOUCH) {
     const metaVp = document.getElementById('metaVp');
     const setVp = () => {
-      const short = Math.min(screen.width, screen.height) < 500;   // 短边<500 = 横屏矮视口手机
-      metaVp.content = short
-        ? 'width=1280, user-scalable=no, viewport-fit=cover'
-        : 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+      const longCSS = Math.max(screen.width, screen.height), shortCSS = Math.min(screen.width, screen.height);
+      const physLong = longCSS * devicePixelRatio, physShort = shortCSS * devicePixelRatio;
+      metaVp.content = (physShort / 2 < 480)   // 等效 DPR=2 后 CSS 短边仍 <480(极小屏) → 退回系统行为
+        ? 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+        : 'width=' + Math.round(physLong / 2) + ', user-scalable=no, viewport-fit=cover';
     };
     setVp();
     addEventListener('orientationchange', setVp);
