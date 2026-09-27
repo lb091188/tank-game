@@ -1,9 +1,9 @@
-// assets.js — 资源加载器: GLB 坦克 / 地图(PNG+JSON) / WAV 音效
-// 全部来自 client/assets/, 缺文件给出明确报错
+// assets.js — 资源加载器: GLB 坦克 / 地图(PNG+JSON) / WAV 音效 / JPG 贴图
+// 全部来自 client/assets/, 缺文件给出明确报错(贴图缺失仅退回纯色)
 window.SF = window.SF || {};
 
 SF.Assets = (() => {
-  const A = { models: {}, maps: {}, sounds: {} };
+  const A = { models: {}, maps: {}, sounds: {}, textures: {} };
 
   // 缓存戳: 沿用本页 main.js 引用上的 ?v=(CI 发布时盖版本戳), 本地无参则原样
   const V = (() => {
@@ -67,6 +67,16 @@ SF.Assets = (() => {
     return await ctx.decodeAudioData(buf);
   }
 
+  // 地面/掩体贴图(ambientCG CC0, 见 CREDITS.md); 缺失仅警告, 材质自动退回纯色
+  const TEXTURES = ['grass', 'rock', 'asphalt', 'brick', 'wood', 'thatch', 'concrete', 'rust'];
+  function loadTexture(name) {
+    return new Promise(resolve => {
+      new THREE.TextureLoader().load(`assets/textures/${name}.jpg` + V,
+        tex => { tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 8; A.textures[name] = tex; resolve(tex); },
+        undefined, () => { console.warn(`贴图缺失(退回纯色): ${name}`); resolve(null); });
+    });
+  }
+
   // onProgress(done, total)
   async function load(onProgress) {
     const jobs = [];
@@ -96,6 +106,9 @@ SF.Assets = (() => {
       wespe: 'wespe', hummel: 'hummel', m7priest: 'm7priest', su26: 'su26' };
     for (const file in MODEL_FILES)
       track(loadGLB(`assets/models/${file}.glb`).then(g => { A.models[MODEL_FILES[file]] = g.scene; }));
+
+    // 贴图
+    for (const t of TEXTURES) track(loadTexture(t));
 
     // 音效(开源音源, 见 CREDITS.md; cannon 是 ogg, 其余 wav; 缺失仅警告不阻断)
     // 音效(开源音源, 见 CREDITS.md; cannon 是 ogg, 其余 wav; 缺失仅警告不阻断)

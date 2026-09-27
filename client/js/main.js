@@ -129,7 +129,7 @@ SF.Main = (() => {
     buildTrajLine();
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
-      aimPoint, gunAim, sniper, spotted, lastKnown, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT,
+      aimPoint, gunAim, sniper, spotted, lastKnown, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT, bush: bushUi,
       // 鹰眼俯视视野足迹(小地图绿框): 中心=artyX/Z, w/h=当前 fov 与高度下的地面可视范围
       arty: (() => {
         if (!(sniper && world && world.player && world.player.spec.cls === 'SPG')) return null;
@@ -792,7 +792,7 @@ SF.Main = (() => {
       };
       const lit = (e) => {
         const d = U.dist2d(p.x, p.z, e.x, e.z);
-        return d < 50 || (d < vr * (1 - SF.camoOf(e, world)) && SF.losClearAny(world, p.x, p.z, e.x, e.z));
+        return d < 50 || (d < vr * (1 - SF.camoOf(e, world)) && SF.losClearAny(world, p.x, p.z, e.x, e.z, SF.bushState(e, world).concealed));
       };
       for (const e of world.enemies) {
         if (!e.alive) { spottedLast.delete(e); spotStreak.delete(e); spotLinger.delete(e); continue; }
@@ -835,12 +835,15 @@ SF.Main = (() => {
           if (id === MP.myId || !t.alive) continue;
           const d = U.dist2d(p.x, p.z, t.x, t.z);
           const vr = t.spec.view || SF.CFG.player.viewRange;   // 对方的视距 × 我的隐蔽
-          if (d < 50 || (d < vr * (1 - SF.camoOf(p, world)) && SF.losClearAny(world, t.x, t.z, p.x, p.z))) { enemySeesMe = true; break; }
+          if (d < 50 || (d < vr * (1 - SF.camoOf(p, world)) && SF.losClearAny(world, t.x, t.z, p.x, p.z, SF.bushState(p, world).concealed))) { enemySeesMe = true; break; }
         }
       }
     } else {
       for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow) { enemySeesMe = true; break; }
     }
+    // 草丛隐蔽状态刷新(HUD 指示): 蹲入且 4s 未开炮 = 隐蔽生效
+    const bs = SF.bushState(p, world);
+    bushUi.inBush = bs.inBush; bushUi.concealed = bs.concealed;
     // 六感灯(WoT): 被持续注视 3 秒后才亮起; 不再被盯后余亮 2 秒
     if (enemySeesMe) { lampT += dt; lastSpottedT = world.time; }
     else lampT = 0;
@@ -910,6 +913,7 @@ SF.Main = (() => {
     '急停对炮是基本功：松油门，稳住，一炮定乾坤！',
     '倒车伸缩掐好节奏：打一炮退半步，活活气死对面！',
     '被点亮后敌人的无线电会炸锅——转移要快，履带就是命！',
+    '蹲进草丛/树篱可以隐蔽：敌人看不见你，但一开炮就失效 4 秒！软质物不挡炮弹，找石头房子躲弹。',
     '开炮声会出卖你的方位，敌群马上合围——打一枪，换一个地方！',
     '敌人丢了你会全队搜剿——绕到他们背后放冷炮，才是猎人的打法！',
     '联机对战：房主 npm start 后把控制台 WS 地址填进联机设置'

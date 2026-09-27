@@ -527,6 +527,16 @@ SF.CFG = {
 
   player: { viewRange: 445 },   // WoT 级视野上限
 
+  // PVE 修改器(仅单机战役生效, 联机一律 1 倍): 敌军规模 + 玩家坦克参数倍率(WoT 配件风格)
+  pve: {
+    enemyMul: 1,     // 敌军规模: 每波敌人数量倍率(1~10)
+    reloadMul: 1,    // 输弹机: 装填时间倍率(<1 更快)
+    aimMul: 1,       // 炮控: 缩圈时间倍率(<1 更快)
+    mobilityMul: 1,  // 涡轮增压器: 极速/加速倍率
+    hpMul: 1,        // 强化装甲: 血量倍率
+    viewMul: 1       // 观瞄: 视距倍率
+  },
+
   multiplayer: true,    // 联机入口开关(联机版开启; 单机纯净版可改 false 隐藏)
 
   // 出击前可选的坦克与地图(配合标题界面车库)
@@ -612,7 +622,7 @@ SF.ClsIcon = function (cls, opts = {}) {
     amx13: 390, amx50100: 380, lorr40t: 380, wespe: 330, hummel: 330, m7priest: 330, su26: 330,
     medium: 370, td: 350, heavy: 340
   };
-  const CAMO_CLS = { LT: 0.16, MT: 0.12, HT: 0.07, TD: 0.22, SPG: 0.08 };   // 静止隐蔽(移动减半/开炮近零/灌木+0.2, 见 SF.camoOf)
+  const CAMO_CLS = { LT: 0.16, MT: 0.12, HT: 0.07, TD: 0.22, SPG: 0.08 };   // 静止隐蔽(移动减半/开炮近零/蹲草丛+0.25且挡点亮, 见 SF.camoOf / SF.bushState)
   for (const k in SF.CFG.vehicles) {
     const v = SF.CFG.vehicles[k];
     v.gun.cal = CAL[k] || 75;

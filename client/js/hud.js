@@ -275,12 +275,19 @@ SF.HUD = (() => {
     // 小地图
     const cv = $('minimap'), ctx = cv.getContext('2d');
     ctx.drawImage(minimapBase, 0, 0);
-    // 掩体点
+    // 掩体点: 深灰=硬掩体(挡弹), 绿=隐蔽物(挡视线不挡弹, 可蹲入隐蔽)
     ctx.fillStyle = 'rgba(20,24,18,0.75)';
     for (const c of world.covers.list) {
       if (!c.blocksShells) continue;
       const [mx, my] = worldToMap(c.x, c.z, T);
       ctx.fillRect(mx - 1, my - 1, 2.5, 2.5);
+    }
+    // 隐蔽物点(草丛/树篱/草垛/残骸)
+    ctx.fillStyle = 'rgba(74,132,52,0.85)';
+    for (const c of world.covers.list) {
+      if (!c.blocksSpot || c.blocksShells) continue;
+      const [mx, my] = worldToMap(c.x, c.z, T);
+      ctx.fillRect(mx - 1, my - 1, 2, 2);
     }
     // 敌标(WoT 式): 点亮=实时红标; 开炮暴露=亮标; 丢亮点=停在最后已知位置的暗标
     for (const e of world.enemies) {
@@ -398,6 +405,13 @@ SF.HUD = (() => {
 
     // 点亮指示(被敌人发现): 灯泡
     $('detectLamp').style.opacity = uiState.detected ? 1 : 0;
+    // 隐蔽指示: 蹲入隐蔽物且未开炮=隐蔽生效; 蹲着但刚开炮=隐蔽失效(红色警告)
+    const bt = $('bushTag'), bu = uiState.bush;
+    if (bu && bu.inBush) {
+      bt.textContent = bu.concealed ? '🌿 隐蔽中' : '🌿 开炮 · 隐蔽失效';
+      bt.style.color = bu.concealed ? '#9fe08a' : '#e07a6a';
+      bt.style.opacity = 1;
+    } else bt.style.opacity = 0;
 
     // 大地图(M): 小地图内容放大绘制
     if ($('bigMap').style.display === 'block')

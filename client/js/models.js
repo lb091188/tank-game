@@ -3,6 +3,19 @@ window.SF = window.SF || {};
 
 SF.Models = (() => {
   const lambert = (rgb) => new THREE.MeshLambertMaterial({ color: new THREE.Color(rgb[0], rgb[1], rgb[2]) });
+  // 带贴图的材质(ambientCG CC0): 颜色作色调乘在贴图上; 同名同 repeat 共享纹理实例; 无贴图退回纯色
+  const texCache = {};
+  const texMat = (rgb, texKey, rx = 1, ry = 1) => {
+    const base = texKey && SF.Assets && SF.Assets.textures[texKey];
+    const opts = { color: new THREE.Color(rgb[0], rgb[1], rgb[2]) };
+    if (base) {
+      const k = texKey + '_' + rx + 'x' + ry;
+      let t = texCache[k];
+      if (!t) { t = texCache[k] = base.clone(); t.needsUpdate = true; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); }
+      opts.map = t;
+    }
+    return new THREE.MeshLambertMaterial(opts);
+  };
 
   /* ---------- 坦克: 克隆 GLB, 提取枢轴与部位网格 ---------- */
   function makeTank(type) {
@@ -41,7 +54,8 @@ SF.Models = (() => {
   }
 
   /* ---------- 掩体: 按 map.json 的 type 程序化建模 ----------
-     碰撞: blocksMove 挡车体 / blocksShells 挡弹与视线 / r 圆形碰撞半径 / h 有效高度 */
+     碰撞: blocksMove 挡车体 / blocksShells 挡弹 / blocksSpot 挡点亮视线
+     WoT 对齐: 只有石墙/岩石/建筑真正吸弹; 软质物(草丛/树篱/草垛/残骸)挡视线当隐蔽, 炮弹直接穿过 */
   const geoCache = {};
   function buildCover(c, terrain) {
     const y = terrain.heightAt(c.x, c.z);
@@ -54,30 +68,33 @@ SF.Models = (() => {
 
     if (c.type === 'house') {
       const s = (c.scale || 1);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(7 * s, 3.4, 5.5 * s), lambert([0.80, 0.76, 0.66]));
+      const body = new THREE.Mesh(new THREE.BoxGeometry(7 * s, 3.4, 5.5 * s), texMat([0.92, 0.88, 0.80], 'concrete', 2, 1.2));
       body.position.y = 1.7;
-      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(7.6 * s, 0.25, 3.6 * s), lambert([0.55, 0.26, 0.2]));
+      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(7.6 * s, 0.25, 3.6 * s), texMat([0.78, 0.55, 0.48], 'brick', 3, 1));
       roof1.position.set(0, 4.0, 1.45 * s); roof1.rotation.x = 0.62;
       const roof2 = roof1.clone(); roof2.position.z = -1.45 * s; roof2.rotation.x = -0.62;
       g.add(body, roof1, roof2);
       col = { ...col, ...OBB(3.5 * s, 2.75 * s), h: 5 };
     } else if (c.type === 'hedge') {
       const s = (c.scale || 1);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 2.4, 2.2), lambert([0.15, 0.30, 0.13]));
-      m.position.y = 1.2;
-      g.add(m);
-      col = { ...col, ...OBB(3.0 * s, 1.1 * s), h: 2.6 };
+      const m = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 3.0, 2.2), lambert([0.15, 0.30, 0.13]));
+      m.position.y = 1.5;
+      const top = new THREE.Mesh(new THREE.BoxGeometry(5.2 * s, 0.8, 1.7), lambert([0.17, 0.33, 0.14]));
+      top.position.y = 3.35;
+      g.add(m, top);
+      col = { ...col, blocksShells: false, blocksSpot: true, ...OBB(3.0 * s, 1.1 * s), h: 3.2 };  // 树篱: 挡车挡视线, 不挡弹(WoT 隔树篱对射)
     } else if (c.type === 'rock') {
       const s = (c.scale || 1);
       const geo = geoCache.rock || (geoCache.rock = new THREE.IcosahedronGeometry(1, 0));
-      const m = new THREE.Mesh(geo, lambert([0.42, 0.41, 0.39]));
-      m.scale.set(2.1 * s, 1.5 * s, 1.8 * s);
-      m.position.y = 0.8 * s;
+      const m = new THREE.Mesh(geo, texMat([0.86, 0.85, 0.83], 'rock'));
+      m.scale.set(2.1 * s, 1.8 * s, 1.8 * s);
+      m.position.y = 0.9 * s;
       m.rotation.set(0.3, c.yaw, 0.2);
       g.add(m);
-      col = { ...col, r: 2.5 * s, h: 3.0 * s };   // 坦克比例的巨石: 藏得住整车
+      col = { ...col, r: 2.5 * s, h: 3.3 * s };   // 坦克比例的巨石: 藏得住整车
     } else if (c.type === 'trap') {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 0.22), lambert([0.25, 0.26, 0.28]));
+      const rustM = texMat([0.52, 0.52, 0.55], 'rust');
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 0.22), rustM);
       const b2 = bar.clone(); b2.rotation.z = 0.9; b2.position.y = 0.7;
       const b3 = bar.clone(); b3.rotation.z = -0.9; b3.position.y = 0.7;
       bar.position.y = 0.7; bar.rotation.y = c.yaw;
@@ -96,58 +113,72 @@ SF.Models = (() => {
       col = { ...col, blocksShells: false, r: 0.9, h: 1.6 }; // 树干挡车不挡弹
     } else if (c.type === 'barn') {
       const s = (c.scale || 1);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(11 * s, 5, 7.5 * s), lambert([0.62, 0.42, 0.3]));
+      const body = new THREE.Mesh(new THREE.BoxGeometry(11 * s, 5, 7.5 * s), texMat([0.82, 0.76, 0.68], 'wood', 3.5, 1.3));
       body.position.y = 2.5;
-      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(11.8 * s, 0.3, 4.6 * s), lambert([0.35, 0.22, 0.16]));
+      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(11.8 * s, 0.3, 4.6 * s), texMat([0.55, 0.50, 0.45], 'wood', 3.5, 1));
       roof1.position.set(0, 6.0, 1.9 * s); roof1.rotation.x = 0.6;
       const roof2 = roof1.clone(); roof2.position.z = -1.9 * s; roof2.rotation.x = -0.6;
       g.add(body, roof1, roof2);
       col = { ...col, ...OBB(5.5 * s, 3.75 * s), h: 7 };
     } else if (c.type === 'ruin') {
       const s = (c.scale || 1);
-      const brick = lambert([0.55, 0.44, 0.38]), dark = lambert([0.42, 0.34, 0.3]);
-      const w1 = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 3.2, 0.5), brick); w1.position.set(0, 1.6, 0);
-      const w2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2.2, 4 * s), brick); w2.position.set(-3 * s, 1.1, 2 * s);
-      const w3 = new THREE.Mesh(new THREE.BoxGeometry(2.2 * s, 1.3, 0.45), dark); w3.position.set(1.8 * s, 0.65, -0.8);
+      const brickM = texMat([0.88, 0.83, 0.78], 'brick', 3, 2.2), dark = lambert([0.42, 0.34, 0.3]);
+      const w1 = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 4.4, 0.5), brickM); w1.position.set(0, 2.2, 0);
+      const w2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.0, 4 * s), brickM); w2.position.set(-3 * s, 1.5, 2 * s);
+      const w3 = new THREE.Mesh(new THREE.BoxGeometry(2.2 * s, 2.0, 0.45), dark); w3.position.set(1.8 * s, 1.0, -0.8);
+      const w4 = new THREE.Mesh(new THREE.BoxGeometry(1.4 * s, 3.4, 0.5), brickM); w4.position.set(2.3 * s, 1.7, 0.5);
       const rub = new THREE.Mesh(new THREE.BoxGeometry(4.5 * s, 0.5, 2.6), dark); rub.position.set(0.6, 0.25, 0.6);
-      g.add(w1, w2, w3, rub);
-      col = { ...col, ...OBB(3.2 * s, 2.4 * s), h: 3.4 };
+      g.add(w1, w2, w3, w4, rub);
+      col = { ...col, ...OBB(3.2 * s, 2.4 * s), h: 4.5 };
     } else if (c.type === 'wall') {
       const s = (c.scale || 1);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(7 * s, 1.7, 0.7), lambert([0.46, 0.44, 0.4]));
-      m.position.y = 0.85;
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(7.2 * s, 0.16, 0.9), lambert([0.38, 0.37, 0.34]));
-      cap.position.y = 1.75;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(7 * s, 2.9, 0.7), texMat([0.80, 0.78, 0.74], 'rock', 3.5, 1.5));
+      m.position.y = 1.45;
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(7.2 * s, 0.18, 0.9), lambert([0.38, 0.37, 0.34]));
+      cap.position.y = 2.98;
       g.add(m, cap);
-      col = { ...col, ...OBB(3.5 * s, 0.35 * s), h: 1.9 };   // 石墙: 7m 长 0.7m 厚, 一比一碰撞
+      col = { ...col, ...OBB(3.5 * s, 0.35 * s), h: 3.1 };   // 高石墙: 7m 长 0.7m 厚, 藏得住车体, 一比一碰撞
     } else if (c.type === 'haystack') {
       const s = (c.scale || 1);
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(1.7 * s, 2.0 * s, 2.7 * s, 10), lambert([0.62, 0.5, 0.27]));
+      const thatchM = texMat([0.88, 0.82, 0.68], 'thatch', 2, 1.2);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(1.7 * s, 2.0 * s, 2.7 * s, 10), thatchM);
       m.position.y = 1.35 * s;
-      const cap2 = new THREE.Mesh(new THREE.ConeGeometry(1.75 * s, 1.1 * s, 10), lambert([0.55, 0.43, 0.22]));
+      const cap2 = new THREE.Mesh(new THREE.ConeGeometry(1.75 * s, 1.1 * s, 10), thatchM);
       cap2.position.y = 3.1 * s;
       g.add(m, cap2);
-      col = { ...col, r: 2.6 * s, h: 3.6 };
+      col = { ...col, blocksShells: false, blocksSpot: true, r: 2.6 * s, h: 3.6 * s };  // 草垛: 软质, 挡视线不挡弹
     } else if (c.type === 'wreck') {
       const s = (c.scale || 1);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.1, 6.2), lambert([0.13, 0.13, 0.12]));
+      const rustM = texMat([0.60, 0.60, 0.60], 'rust', 1.5, 2.5);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.1, 6.2), rustM);
       body.position.y = 0.75; body.rotation.z = 0.06;
-      const tur = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.8, 2.4), lambert([0.11, 0.11, 0.1]));
+      const tur = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.8, 2.4), rustM);
       tur.position.set(0.35, 1.7, 0.4); tur.rotation.y = 0.9;
-      const gunB = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.8, 6), lambert([0.1, 0.1, 0.09]));
+      const gunB = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.8, 6), rustM);
       gunB.rotation.set(Math.PI / 2, 0, 0.5); gunB.position.set(0.9, 1.4, 1.5);
-      const track1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 6.3), lambert([0.09, 0.09, 0.08]));
+      const track1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 6.3), rustM);
       track1.position.set(-1.55, 0.35, 0);
       const track2 = track1.clone(); track2.position.x = 1.55;
       g.add(body, tur, gunB, track1, track2);
       g.rotation.z = 0.03;
-      col = { ...col, ...OBB(1.75, 3.1), h: 2.4 };
+      col = { ...col, blocksShells: false, blocksSpot: true, ...OBB(1.75, 3.1), h: 2.4 };  // 残骸: 挡车挡视线, 不挡弹(WoT 击毁车不吸弹)
     } else if (c.type === 'bush') {
       const s = (c.scale || 1);
-      const m = new THREE.Mesh(new THREE.SphereGeometry(1.15 * s, 7, 5), lambert([0.16, 0.3, 0.14]));
-      m.scale.y = 0.75; m.position.y = 0.7 * s;
-      g.add(m);
-      col = { ...col, blocksMove: false, blocksShells: false, r: 1.0, h: 1.4 }; // 纯视觉
+      // 多团簇拥的灌木丛(4-7m 宽植被团): 单个小球在地图比例下根本认不出
+      const geo = geoCache.bush || (geoCache.bush = new THREE.SphereGeometry(1, 7, 5));
+      const mats = geoCache.bushMats || (geoCache.bushMats = [[0.12, 0.28, 0.11], [0.17, 0.34, 0.13], [0.09, 0.24, 0.10]].map(g => lambert(g)));
+      const blob = (dx, dz, r, yy, gi) => {
+        const m = new THREE.Mesh(geo, mats[gi % 3]);
+        m.scale.set(r, r * 0.72, r); m.position.set(dx, yy, dz);
+        return m;
+      };
+      g.add(
+        blob(0, 0, 1.5 * s, 1.3 * s, 0),
+        blob(1.15 * s, 0.5 * s, 1.1 * s, 1.05 * s, 1),
+        blob(-1.0 * s, -0.7 * s, 1.0 * s, 0.95 * s, 2),
+        blob(0.3 * s, -1.1 * s, 0.85 * s, 0.85 * s, 1)
+      );
+      col = { ...col, blocksMove: false, blocksShells: false, blocksSpot: true, r: 1.6 * s, h: 1.9 };  // 草丛: 不挡车不挡弹, 只挡点亮视线(蹲入隐蔽)
     }
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     return { group: g, col };
@@ -228,26 +259,31 @@ SF.Models = (() => {
       return [nx, nz];
     }
     // 弹道/视线遮挡: 包围圆粗剔除 + 方形 rayObb / 圆形 rayCircle, 高度比较
-    blocked(ox, oz, oy, dx, dz, len, dy) {
+    // spot(可选, 点亮专用): 额外计入草丛(不挡弹但挡视线); concealed=目标蹲草未开炮 → 目标脚下那丛加高吞掉整车
+    blocked(ox, oz, oy, dx, dz, len, dy, spot) {
       for (const c of this.list) {
-        if (!c.blocksShells) continue;
+        if (!(c.blocksShells || (spot && c.blocksSpot))) continue;
         const t0 = SF.Util.rayCircle(ox, oz, dx, dz, len, c.x, c.z, c.r);
         if (t0 < 0) continue;
         const t = c.shape === 'box' ? SF.Util.rayObb(ox, oz, dx, dz, len, c) : t0;
         if (t >= 0) {
+          let ch = c.h;
+          if (spot && c.blocksSpot && !c.blocksShells && spot.concealed
+            && Math.hypot(ox + dx * t - spot.tx, oz + dz * t - spot.tz) < 6)
+            ch += 1.8;                                    // 草丛把蹲入的整车连炮塔一起藏住
           const h = oy + dy * t;
-          if (h < SF.Game.world.terrain.heightAt(ox + dx * t, oz + dz * t) + c.h) return t;  // 命中掩体高度内
+          if (h < SF.Game.world.terrain.heightAt(ox + dx * t, oz + dz * t) + ch) return t;  // 命中掩体高度内
         }
       }
       return -1;
     }
-    // 找 a→b 方向最近的掩体(供 AI 找掩体用)
+    // 找 a→b 方向最近的掩体(供 AI 找掩体用): 硬掩体(挡弹)或视觉掩体(挡视线)都算
     nearestCoverBetween(ax, az, bx, bz) {
       let best = null, bestT = 1e9;
       const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
       if (len < 1) return null;
       for (const c of this.list) {
-        if (!c.blocksShells) continue;
+        if (!c.blocksShells && !c.blocksSpot) continue;
         const t = SF.Util.rayCircle(ax, az, dx / len, dz / len, len, c.x, c.z, c.r);
         if (t >= 0 && t < bestT) { bestT = t; best = c; }
       }

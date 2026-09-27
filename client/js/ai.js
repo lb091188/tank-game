@@ -13,29 +13,39 @@ SF.losClear = function (world, ax, az, bx, bz) {
 
 // 多点通视(点亮用): 目标车体 1.2m / 塔心 2.0m / 炮塔顶 2.8m 任一点通视即算可见
 // ——卖头(只露炮塔)或半坡露体的坦克不能再"明明看得见却不点亮"
-SF.losClearAny = function (world, ax, az, bx, bz) {
+// concealed=目标蹲草未开炮: 草丛算遮挡且把目标连炮塔一起吞掉
+SF.losClearAny = function (world, ax, az, bx, bz, concealed) {
   const by0 = world.terrain.heightAt(bx, bz);
   for (const h of [1.2, 2.0, 2.8]) {
     const ay = world.terrain.heightAt(ax, az) + 2.0, by = by0 + h;
     if (world.terrain.losBlocked(ax, az, ay, bx, bz, by)) continue;
     const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
     if (len < 1) return true;
-    if (world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len) < 0) return true;
+    if (world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len, { tx: bx, tz: bz, concealed }) < 0) return true;
   }
   return false;
 };
 
-// 隐蔽值(WoT camo): 基础值按车型; 移动减半, 开炮后 3s 近乎清零, 蹲灌木 +0.2
+// 隐蔽物状态(WoT): 草丛/树篱/草垛/残骸 = 挡视线的软质物; 身处其半径内 = inBush;
+// 开炮后 4s "失效"(不挡点亮也不加隐蔽) —— 吹倒草丛
+SF.bushState = function (t, world) {
+  const bushes = world.covers.bushes || (world.covers.bushes = world.covers.list.filter(b => b.blocksSpot && !b.blocksShells));
+  let inBush = false;
+  for (const b of bushes)
+    if (Math.hypot(b.x - t.x, b.z - t.z) < b.r + 3.5) { inBush = true; break; }
+  return { inBush, concealed: inBush && world.time - (t.lastFireT || -99) >= 4 };
+};
+
+// 隐蔽值(WoT camo): 基础值按车型; 移动减半; 蹲草丛 +0.25 且挡点亮视线(见 bushState);
+// 开炮后 4s 隐蔽近乎清零、草丛同时失效(吹倒草丛)
 // 实际点亮距离 = 视距 × (1 - 隐蔽值)
 SF.camoOf = function (t, world) {
   const c0 = (t.spec && t.spec.camo !== undefined) ? t.spec.camo : 0.12;
   let c = c0;
   if (Math.abs(t.speed) > 1.2 || Math.abs(t.lastYawRate || 0) > 0.08) c *= 0.5;
-  if (world.time - (t.lastFireT || -99) < 3) c = Math.min(c, c0 * 0.1);
-  const bushes = world.covers.bushes || (world.covers.bushes = world.covers.list.filter(b => b.type === 'bush'));
-  for (const b of bushes)
-    if (Math.hypot(b.x - t.x, b.z - t.z) < b.r + 2.6) { c += 0.2; break; }
-  return Math.min(c, 0.75);
+  if (SF.bushState(t, world).inBush) c += 0.25;
+  if (world.time - (t.lastFireT || -99) < 4) c = Math.min(c, c0 * 0.1);
+  return Math.min(c, 0.8);
 };
 
 // AI 目标选择: 合作模式多名玩家 → 锁定最近存活者; 单机 → world.player
@@ -118,9 +128,10 @@ SF.AI = class {
     this.seen = false;
     if (player && player.alive) {
       const d = SF.Util.dist2d(this.tank.x, this.tank.z, player.x, player.z);
-      // 点亮(WoT): 50m 内无视遮挡强制点亮; 否则 视距×(1-目标隐蔽) + 多点通视
+      // 点亮(WoT): 50m 内无视遮挡强制点亮; 否则 视距×(1-目标隐蔽) + 多点通视(草丛对蹲草目标算遮挡)
       const vr = this.tank.spec.view || SF.CFG.ai.viewRange;
-      if (d < 50 || (d < vr * (1 - SF.camoOf(player, world)) && SF.losClearAny(world, this.tank.x, this.tank.z, player.x, player.z))) {
+      const hid = SF.bushState(player, world).concealed;
+      if (d < 50 || (d < vr * (1 - SF.camoOf(player, world)) && SF.losClearAny(world, this.tank.x, this.tank.z, player.x, player.z, hid))) {
         this.seen = true;
         this.lastSeen = { x: player.x, z: player.z, vx: player.velX || 0, vz: player.velZ || 0, t: world.time };
         this.lastTargetId = player.netId || 0;
