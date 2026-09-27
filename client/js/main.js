@@ -984,6 +984,7 @@ SF.Main = (() => {
     if (!SF.CFG.maps.find(m => m.id === selMap)) selMap = 'l01';
     buildGaragePreview();
     buildPicker();
+    buildPve();
 
     document.getElementById('btnStart').addEventListener('click', () => {
       disposeGarage();
