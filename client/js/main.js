@@ -1330,16 +1330,23 @@ SF.Main = (() => {
   function buildPve() {
     const el = document.getElementById('pvePanel');
     const DEFS = [
-      ['enemyMul', '敌军规模', [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9, 10]],
-      ['reloadMul', '输弹机 · 装填', [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2]],
-      ['aimMul', '炮控 · 缩圈', [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2]],
-      ['mobilityMul', '涡轮 · 机动', [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]],
-      ['hpMul', '装甲 · 血量', [0.5, 0.75, 1, 1.5, 2, 3, 5]],
-      ['viewMul', '观瞄 · 视野', [0.5, 0.75, 1, 1.25, 1.5, 2]],
+      ['enemyMul', '敌军规模', '敌军', [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9, 10]],
+      ['reloadMul', '输弹机 · 装填', '装填', [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2]],
+      ['aimMul', '炮控 · 缩圈', '缩圈', [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2]],
+      ['mobilityMul', '涡轮 · 机动', '机动', [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]],
+      ['hpMul', '装甲 · 血量', '血量', [0.5, 0.75, 1, 1.5, 2, 3, 5]],
+      ['viewMul', '观瞄 · 视野', '视野', [0.5, 0.75, 1, 1.25, 1.5, 2]],
     ];
-    let html = '<div class="pveTitle">PVE 修改器 <span>· 仅单机生效, 联机无效</span></div>';
+    // 折叠态摘要: 非默认项拼进标题(如 "敌军3× · 装填0.7×"), 全默认则不显示
+    const sum = () => DEFS.filter(([k]) => PVE[k] != 1).map(t => t[2] + PVE[t[0]] + '×').join(' ');
+    const refresh = () => {
+      const em = el.querySelector('.pveSum');
+      em.textContent = sum();
+      el.querySelector('.pveTitle').classList.toggle('mod', !!sum());
+    };
+    let html = '<div class="pveTitle"><b>⚙ PVE 修改器</b><em class="pveSum"></em><span>仅单机 · 点击展开</span></div>';
     html += '<div class="pveBody">';
-    for (const [k, name, opts] of DEFS)
+    for (const [k, name, ab, opts] of DEFS)
       html += `<div class="pveRow"><label>${name}</label><select data-k="${k}">` +
         opts.map(v => `<option value="${v}"${PVE[k] == v ? ' selected' : ''}>${v == 1 ? '1×(默认)' : v + '×'}</option>`).join('') +
         '</select></div>';
@@ -1353,7 +1360,9 @@ SF.Main = (() => {
       sel.onchange = () => {
         PVE[sel.dataset.k] = parseFloat(sel.value);
         localStorage.setItem('sf_pve', JSON.stringify(PVE));
+        refresh();
       };
+    refresh();
   }
 
   /* ---------- 战斗生命周期: 开战 / 退出回车库 / 再战 ---------- */

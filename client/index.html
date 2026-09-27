@@ -32,10 +32,13 @@
   #garageStats b { display: block; color: #e8dcae; font-size: 17px; letter-spacing: 1px; }
   #garageStats span { color: #a8ad99; font-size: 12px; }
   #pvePanel { padding: 6px 12px; text-align: left; align-self: flex-start; }
-  #pvePanel .pveTitle { color: #e8dcae; font-size: 13px; letter-spacing: 2px; margin-bottom: 4px; cursor: pointer; }
-  #pvePanel .pveTitle span { color: #767b6b; font-size: 11px; letter-spacing: 0; }
-  #pvePanel .pveTitle::after { content: '▾'; color: #8b9080; margin-left: 6px; }
-  #pvePanel.collapsed .pveTitle::after { content: '▸'; }
+  #pvePanel .pveTitle { color: #8b9080; font-size: 13px; margin-bottom: 4px; cursor: pointer; white-space: nowrap; }
+  #pvePanel .pveTitle b { color: #e8dcae; font-size: 13px; letter-spacing: 1px; }
+  #pvePanel .pveTitle.mod b { color: #ffd97a; text-shadow: 0 0 8px rgba(255,215,120,.5); }
+  #pvePanel .pveSum { color: #ffd97a; font-size: 12px; margin-left: 6px; font-style: normal; }
+  #pvePanel .pveTitle span { color: #767b6b; font-size: 11px; margin-left: 6px; }
+  #pvePanel .pveTitle::after { content: ' ▾'; color: #8b9080; }
+  #pvePanel.collapsed .pveTitle::after { content: ' ▸'; }
   #pvePanel.collapsed .pveBody { display: none; }
   #pvePanel .pveRow { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
   #pvePanel .pveRow label { color: #a8ad99; font-size: 12px; width: 96px; }
@@ -187,11 +190,14 @@
     #detectLamp { font-size: 24px; }
     .card { width: 168px !important; }
     #mapRow .card { width: 168px !important; }
-    #titleBrand h1 { font-size: 30px; }
-    #titleBrand h2 { font-size: 14px; }
+    #titleBrand h1 { font-size: 26px; letter-spacing: 5px; white-space: nowrap; }
+    #titleBrand h2 { font-size: 12px; white-space: nowrap; }
+    #btnMp { white-space: nowrap; }
     #btnStart { font-size: 16px; padding: 10px 38px; }
     #pvePanel { max-width: 40vw; }
     #pvePanel .pveRow label { width: 78px; font-size: 11px; }
+    #pvePanel { flex-basis: 100%; max-width: none; order: 5; }   /* 竖屏独占一行: 摘要完整可见 */
+    #pvePanel .pveTitle { overflow: hidden; text-overflow: ellipsis; }
   }
   #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }
   #minimap { display: block; border-radius: 4px; }
