@@ -14,8 +14,8 @@ const ROOT = path.resolve(__dirname, '..', 'client');
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png', '.glb': 'model/gltf-binary', '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.ico': 'image/x-icon'
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.glb': 'model/gltf-binary', '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8'
 };
 
 /* ---------- 房间 ---------- */
@@ -36,17 +36,23 @@ function genCode() {
   return c;
 }
 
-/* ---------- HTTP 静态托管(内网 0.0.0.0) ---------- */
+/* ---------- HTTP 静态托管(内网 0.0.0.0) ----------
+   缓存策略(与 GitHub Pages 部署同思路): 引导文件永远最新, 带版本戳的资源长缓存,
+   版本一变 URL 变 → 旧缓存自然过期(客户端 assets.js 负责盖戳) */
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
+  const hasV = /[?&]v=/.test(req.url);
   if (urlPath === '/') urlPath = '/index.html';
   const file = path.join(ROOT, urlPath);
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404: ' + urlPath); return; }
+    const cache = (urlPath === '/index.html' || urlPath === '/version.txt') ? 'no-store'
+      : hasV ? 'public, max-age=31536000, immutable'
+      : 'no-cache';
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-cache', 'Content-Length': data.length
+      'Cache-Control': cache, 'Content-Length': data.length
     });
     res.end(data);
   });

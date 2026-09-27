@@ -404,3 +404,5 @@ for (const id in MAPS) {
   for (const c of covers) byType[c.type] = (byType[c.type] || 0) + 1;
   console.log(`✓ ${id} ${M.dir}: 主轴最大坡度 ${worst.toFixed(1)}°, 掩体 ${covers.length} 个 [${Object.entries(byType).map(([t, n]) => t + '×' + n).join(' ')}]`);
 }
+// 地图资产变了 → 更新版本戳(客户端按 version.txt 盖 ?v=, 旧缓存自动过期; CI 部署时会重写为提交时刻)
+try { fs.writeFileSync(path.join(ROOT, '..', '..', 'version.txt'), new Date().toISOString()); } catch (e) { }

@@ -597,6 +597,42 @@ SF.Main = (() => {
     }
     return 'pz4';
   }
+  // 等级带内所有车型(含降档扩池), 开战预载用 —— 是 pickTierTank 可能选中的全集
+  function enemyTypesFor(band) {
+    for (let w = 0; w < 4; w++) {
+      const lo = Math.max(3, band[0] - w), hi = Math.min(8, band[1] + w);
+      const pool = [];
+      for (const k in SF.CFG.vehicles) {
+        const v = SF.CFG.vehicles[k];
+        if (v.tier && TIER_NUM[v.tier] >= lo && TIER_NUM[v.tier] <= hi) pool.push(k);
+      }
+      if (pool.length) return pool;
+    }
+    return ['pz4'];
+  }
+
+  // 按需补载(懒加载): 资源已缓存时瞬间完成不闪加载条; 有缺项才显示进度
+  async function withLoading(label, prepare) {
+    const loading = document.getElementById('loading'), bar = document.getElementById('loadBar'), tip = document.getElementById('loadTip');
+    const p = prepare((done, total) => {
+      bar.style.width = (total ? done / total * 100 : 100) + '%';
+      tip.textContent = `${label} ${done}/${total}`;
+    });
+    const settled = await Promise.race([p.then(() => true, () => true), new Promise(r => setTimeout(() => r(false), 90))]);
+    if (!settled) loading.style.display = 'flex';
+    try { await p; } finally { loading.style.display = 'none'; }
+  }
+
+  // 横向卡行(战场/坦克): 鼠标滚轮 → 横向滚动
+  function bindHScroll() {
+    for (const el of document.querySelectorAll('.hscroll'))
+      el.addEventListener('wheel', e => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && el.scrollWidth > el.clientWidth) {
+          el.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }
+      }, { passive: false });
+  }
 
   function playerInput() {
     const p = world.player;
@@ -954,9 +990,14 @@ SF.Main = (() => {
 
   async function start() {
     const bar = document.getElementById('loadBar'), tip = document.getElementById('loadTip');
+    // 先恢复上次选择 —— 启动只载所选坦克(懒加载, 其余后台预取)
+    selTank = localStorage.getItem('sf_mp_tank') || selTank;
+    selMap = localStorage.getItem('sf_map') || selMap;
+    if (!SF.CFG.vehicles[selTank]) selTank = 'sherman';
+    if (!SF.CFG.maps.find(m => m.id === selMap)) selMap = 'l01';
     showTip('tipOnLoad');
     try {
-      await SF.Assets.load((done, total) => {
+      await SF.Assets.load(selTank, (done, total) => {
         bar.style.width = (done / total * 100) + '%';
         tip.textContent = `加载资源 ${done}/${total}`;
       });
@@ -977,14 +1018,11 @@ SF.Main = (() => {
         document.getElementById('verStamp').textContent =
           `v${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
       }).catch(() => { });
-    // 恢复上次选择的坦克与地图
-    selTank = localStorage.getItem('sf_mp_tank') || selTank;
-    selMap = localStorage.getItem('sf_map') || selMap;
-    if (!SF.CFG.vehicles[selTank]) selTank = 'sherman';
-    if (!SF.CFG.maps.find(m => m.id === selMap)) selMap = 'l01';
     buildGaragePreview();
     buildPicker();
     buildPve();
+    bindHScroll();          // 地图/坦克卡行: 滚轮横向滚动
+    SF.Assets.prefetch();   // 后台预取其余资源(音效/语音/模型), 不阻塞车库
 
     document.getElementById('btnStart').addEventListener('click', () => {
       disposeGarage();
@@ -1127,6 +1165,12 @@ SF.Main = (() => {
 
   function setGarageTank(type) {
     if (!garagePV || !garagePV.active) return;
+    garagePV.want = type;   // 竞态防护: 连点切车只渲染最终选择
+    SF.Assets.getModel(type)
+      .then(() => { if (garagePV && garagePV.active && garagePV.want === type) renderGarageTank(type); })
+      .catch(e => console.warn('车库模型加载失败:', e));
+  }
+  function renderGarageTank(type) {
     if (garagePV.tankGroup) garagePV.scene.remove(garagePV.tankGroup);
     const parts = SF.Models.makeTank(type);
     parts.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
@@ -1220,7 +1264,20 @@ SF.Main = (() => {
     buildGaragePreview();       // 重建车库场景(出击时已销毁)
     setGarageTank(selTank);
   }
-  function startBattle() {
+  async function startBattle() {
+    // 按需补载(懒加载): 地图 + 玩家 + 本等级带敌军车型池
+    const pt = TIER_NUM[(SF.CFG.vehicles[selTank] || {}).tier] || 5;
+    try {
+      await withLoading('部署战场', async (onP) => {
+        await SF.Assets.ensureMap(selMap);
+        await SF.Assets.ensureTanks([selTank, ...enemyTypesFor([Math.max(3, pt - 1), Math.min(8, pt + 1)])], onP);
+      });
+    } catch (err) {
+      console.error(err);
+      alert('资源加载失败: ' + err.message);
+      exitToTitle();
+      return;
+    }
     leaveBattle();
     resetBattleVars();
     document.getElementById('titleScreen').style.display = 'none';
@@ -1393,7 +1450,7 @@ SF.Main = (() => {
   }
 
   /* ---------- 联机开局: 房主/加入者共用 ---------- */
-  function startMultiplayer(role, init) {
+  async function startMultiplayer(role, init) {
     MP.mode = role;
     MP.myId = init.you;
     MP.players = init.players;
@@ -1401,6 +1458,23 @@ SF.Main = (() => {
     MP.gameMode = init.mode === 'coop' ? 'coop' : 'dm';
     MP.waveInfo = null; MP.aiId = 100;
     for (const pl of MP.players) MP.scores.set(pl.id, 0);
+    selTank = (init.players.find(pl => pl.id === init.you) || {}).tank || 'sherman';
+    // 按需补载(懒加载): 地图 + 参战玩家坦克(+ 合作主机的敌军车型池)
+    try {
+      const pt0 = Math.max(0, ...MP.players.map(pl => TIER_NUM[(SF.CFG.vehicles[pl.tank] || {}).tier] || 5));
+      await withLoading('加入战斗', async (onP) => {
+        await SF.Assets.ensureMap(MP.mapId);
+        const tanks = MP.players.map(pl => pl.tank);
+        if (MP.gameMode === 'coop' && role === 'host')
+          tanks.push(...enemyTypesFor([Math.max(3, pt0 - 1), Math.min(8, pt0 + 1)]));
+        await SF.Assets.ensureTanks(tanks, onP);
+      });
+    } catch (err) {
+      console.error(err);
+      alert('资源加载失败: ' + err.message);
+      location.reload();
+      return;
+    }
     disposeGarage();
     document.getElementById('titleScreen').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
