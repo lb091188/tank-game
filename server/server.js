@@ -19,8 +19,33 @@ const MIME = {
 };
 
 /* ---------- 房间 ---------- */
+const crypto = require('crypto');
 let nextPid = 1;
-const rooms = new Map();   // code → { players: Map<ws→{id,name,tank,ready,host}> }
+const rooms = new Map();        // code → { players, invites:Set<邀请码>, started }
+const invites = new Map();      // 邀请码 → 房间code (一次性, 加入即销毁)
+
+// 邀请码: 去掉易混字符(0O1IL)的 8 位随机串, 碰撞自动重试
+const INVITE_ALPH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function genInvite() {
+  for (;;) {
+    let c = '';
+    for (const b of crypto.randomBytes(8)) c += INVITE_ALPH[b % INVITE_ALPH.length];
+    if (!invites.has(c)) return c;
+  }
+}
+function newInvite(roomCode) {
+  const room = rooms.get(roomCode);
+  if (!room) return null;
+  const code = genInvite();
+  room.invites.add(code);
+  invites.set(code, roomCode);
+  return code;
+}
+function dropInvites(roomCode) {   // 房间解散 → 其邀请码全部作废
+  const room = rooms.get(roomCode);
+  if (room) for (const c of room.invites) invites.delete(c);
+  else for (const [c, rc] of invites) if (rc === roomCode) invites.delete(c);
+}
 
 function roomState(room) {
   return [...room.players.entries()].map(([ws, p]) => ({ id: p.id, name: p.name, tank: p.tank, ready: p.ready, host: p.host, connected: true }));
@@ -71,26 +96,39 @@ wss.on('connection', (ws) => {
     switch (m.t) {
       case 'create': {
         const code = genCode();
-        const room0 = { players: new Map() };
+        const room0 = { players: new Map(), invites: new Set() };
         rooms.set(code, room0);
         ws._room = room0; ws._code = code;
         room0.players.set(ws, { id: nextPid, name: (m.name || '车长').slice(0, 12), tank: m.tank || 'sherman', ready: true, host: true });
-        ws.send(JSON.stringify({ t: 'joined', room: code, you: nextPid, players: roomState(room0) }));
+        const invite = newInvite(code);   // 建房自动发第一张邀请码
+        ws.send(JSON.stringify({ t: 'joined', room: code, you: nextPid, players: roomState(room0), invite }));
         nextPid++;
-        console.log(`[房间${code}] 创建 by ${m.name}`);
+        console.log(`[房间${code}] 创建 by ${m.name} · 邀请码 ${invite}`);
+        break;
+      }
+      case 'invite': {          // 仅房主: 再生成一张一次性邀请码
+        if (!me || !me.host) break;
+        const invite = newInvite(ws._code);
+        if (invite) ws.send(JSON.stringify({ t: 'invite', code: invite }));
+        console.log(`[房间${ws._code}] 新邀请码 ${invite}`);
         break;
       }
       case 'join': {
-        const r = rooms.get(String(m.room || ''));
-        if (!r) { ws.send(JSON.stringify({ t: 'err', msg: '房间不存在' })); break; }
+        // 仅邀请制: 必须携带未使用的一次性邀请码(旧的按房间号直连已关闭)
+        const roomCode = invites.get(String(m.invite || '').trim().toUpperCase());
+        if (!roomCode) { ws.send(JSON.stringify({ t: 'err', msg: '邀请码无效或已被使用' })); break; }
+        const r = rooms.get(roomCode);
+        if (!r) { invites.delete(String(m.invite).trim().toUpperCase()); ws.send(JSON.stringify({ t: 'err', msg: '房间已解散' })); break; }
         if (r.started) { ws.send(JSON.stringify({ t: 'err', msg: '对战已开始' })); break; }
         if (r.players.size >= 8) { ws.send(JSON.stringify({ t: 'err', msg: '房间已满(8人)' })); break; }
-        ws._room = r; ws._code = String(m.room);
+        invites.delete(String(m.invite).trim().toUpperCase());   // 一次性: 加入即销毁
+        r.invites.delete(String(m.invite).trim().toUpperCase());
+        ws._room = r; ws._code = roomCode;
         r.players.set(ws, { id: nextPid, name: (m.name || '车长').slice(0, 12), tank: m.tank || 'sherman', ready: false, host: false });
-        ws.send(JSON.stringify({ t: 'joined', room: ws._code, you: nextPid, players: roomState(r) }));
+        ws.send(JSON.stringify({ t: 'joined', room: roomCode, you: nextPid, players: roomState(r) }));
         broadcast(r, { t: 'lobby', players: roomState(r) }, ws);
         nextPid++;
-        console.log(`[房间${ws._code}] 加入 ${m.name}`);
+        console.log(`[房间${roomCode}] 邀请加入 ${m.name}`);
         break;
       }
       case 'ready': {
@@ -127,10 +165,11 @@ wss.on('connection', (ws) => {
     const me = room.players.get(ws);
     room.players.delete(ws);
     console.log(`[房间${ws._code}] 离开 ${me ? me.name : '?'}`);
-    if (!room.players.size) { rooms.delete(ws._code); return; }
+    if (!room.players.size) { dropInvites(ws._code); rooms.delete(ws._code); return; }
     if (me && me.host) {      // 主机掉线 → 房间解散
       broadcast(room, { t: 'err', msg: '房主已离开，房间解散' });
       for (const w of room.players.keys()) w.close();
+      dropInvites(ws._code);
       rooms.delete(ws._code);
       return;
     }

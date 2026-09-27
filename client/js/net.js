@@ -41,7 +41,8 @@ SF.Net = (() => {
 
   // 大厅操作
   const createRoom = (name, tank) => send({ t: 'create', name, tank });
-  const joinRoom = (room, name, tank) => send({ t: 'join', room: String(room).trim(), name, tank });
+  const joinRoom = (invite, name, tank) => send({ t: 'join', invite: String(invite).trim(), name, tank });
+  const newInvite = () => send({ t: 'invite' });
   const setReady = (v, tank) => send({ t: 'ready', v, tank });
   const startMatch = (map, mode) => send({ t: 'start', map, mode: mode || 'dm' });
 
@@ -89,5 +90,5 @@ SF.Net = (() => {
     if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { } ws = null; }
   }
 
-  return { connect, normalizeAddr, createRoom, joinRoom, setReady, startMatch, startInputLoop, stopInputLoop, interpolate, resetSnaps, on, send, close, get socket() { return ws; }, get address() { return curAddr; } };
+  return { connect, normalizeAddr, createRoom, joinRoom, newInvite, setReady, startMatch, startInputLoop, stopInputLoop, interpolate, resetSnaps, on, send, close, get socket() { return ws; }, get address() { return curAddr; } };
 })();

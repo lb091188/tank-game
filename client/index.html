@@ -292,14 +292,16 @@
     <div id="lobbyTip">填好地址后创建或加入房间 · 出击界面选的坦克即联机用车</div>
     <div class="row" id="joinBox">
       <button id="btnCreate" class="mbtn gold">创建房间（成为主机）</button>
-      <input id="roomInput" placeholder="房间号" maxlength="4" style="max-width:90px">
-      <button id="btnJoin" class="mbtn">加入房间</button>
+      <input id="roomInput" placeholder="邀请码" maxlength="10" style="max-width:120px; text-transform:uppercase">
+      <button id="btnJoin" class="mbtn">凭邀请码加入</button>
     </div>
     <div id="roomCodeShow"></div>
+    <div id="inviteShow" style="color:#ffd97a; font-size:16px; text-align:center; letter-spacing:3px; margin:4px 0;"></div>
     <div id="playerList"></div>
     <div id="hostPanel">
       <div class="row"><label>模式</label><select id="mpMode"><option value="dm">死斗 · 互殴 3分钟</option><option value="coop">合作 · 组队闯关</option></select></div>
       <div class="row"><label>地图</label><select id="mpMap"></select></div>
+      <div class="row" style="justify-content:center"><button id="btnInvite" class="mbtn">生成新邀请码（一次性）</button></div>
       <div class="row" style="justify-content:center"><button id="btnMpStart" class="mbtn gold">开 始 对 战</button></div>
     </div>
     <div class="row" style="justify-content:center;margin-top:14px">

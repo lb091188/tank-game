@@ -3,7 +3,7 @@ window.SF = window.SF || {};
 
 SF.Lobby = (() => {
   let connected = false, myId = 0, roomCode = '', players = [], isHost = false;
-  let started = false;
+  let started = false, myInvite = '';
 
   const $ = (id) => document.getElementById(id);
 
@@ -48,7 +48,9 @@ SF.Lobby = (() => {
   }
 
   function bindMsgs() {
-    SF.Net.on('joined', (m) => { myId = m.you; roomCode = m.room; players = m.players; isHost = !!m.players.find(p => p.id === myId).host; render(); });
+    SF.Net.on('joined', (m) => { myId = m.you; roomCode = m.room; players = m.players; isHost = !!m.players.find(p => p.id === myId).host; if (m.invite) myInvite = m.invite; render(); });
+    SF.Net.on('invite', (m) => { myInvite = m.code; render(); $('lobbyTip').textContent = `新邀请码 ${m.code} — 发给你的朋友, 每张只能用一次`; });
+    SF.Net.on('err', (m) => { if (!started) $('lobbyTip').textContent = m.msg || '错误'; });
     SF.Net.on('lobby', (m) => { players = m.players; render(); });
     SF.Net.on('start', (m) => {
       if (started) return;
@@ -61,6 +63,7 @@ SF.Lobby = (() => {
 
   function render() {
     $('roomCodeShow').textContent = roomCode ? `房间 ${roomCode}` : '';
+    $('inviteShow').textContent = isHost && myInvite ? `邀请码 ${myInvite}` : '';
     $('playerList').innerHTML = players.map(p =>
       `<div class="pl ${p.id === myId ? 'me' : ''}">${p.host ? '👑' : ''}${p.name}${p.id === myId ? ' (我)' : ''} · ${SF.CFG.vehicles[p.tank] ? SF.CFG.vehicles[p.tank].name : p.tank} ${p.ready ? '<b class="ok">✓准备</b>' : '<b class="no">未准备</b>'}</div>`
     ).join('');
@@ -81,8 +84,10 @@ SF.Lobby = (() => {
     });
     $('btnJoin').addEventListener('click', async () => {
       if (!(await ensureConn())) return;
+      const invite = $('roomInput').value.trim();
+      if (!invite) { $('lobbyTip').textContent = '请输入房主给你的邀请码'; return; }
       const name = myName(); localStorage.setItem('sf_name', name);
-      SF.Net.joinRoom($('roomInput').value, name, myTank());
+      SF.Net.joinRoom(invite, name, myTank());
     });
     $('srvInput').addEventListener('change', () => { connected = false; });   // 换地址重连
     $('roomInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoin').click(); });
@@ -95,6 +100,10 @@ SF.Lobby = (() => {
       if (unready.length) { $('lobbyTip').textContent = `还有 ${unready.length} 人未准备`; return; }
       if (players.length < 2) { $('lobbyTip').textContent = '至少需要 2 名玩家'; return; }
       SF.Net.startMatch(($('mpMap') && $('mpMap').value) || 'l01', ($('mpMode') && $('mpMode').value) || 'dm');
+    });
+    $('btnInvite').addEventListener('click', () => {
+      SF.Net.newInvite();
+      $('lobbyTip').textContent = '已生成新邀请码';
     });
     $('btnMpBack').addEventListener('click', () => location.reload());
   }
