@@ -562,9 +562,18 @@ SF.Main = (() => {
 
     // 右半屏: 第一指=瞄准(鹰眼=平移视野); 已有瞄准指再落指=双指捏合变焦(第三人称调距离/镜内调倍率)
     // 注意: 不能用 e.touches.length(全页触点数)判断捏合——左摇杆按住时右区一落指就会被误判
+    // HUD 可点元素(退出按钮/小地图/大地图)在 zone 之上, 触点落上时放行给其自身的处理器
+    const hudTappable = (t) => {
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      for (let n = el; n && n !== document.body; n = n.parentElement) {
+        if (n.id === 'btnExit' || n.id === 'minimapBox' || n.id === 'bigMap' || n.id === 'tZoomBox') return false;
+      }
+      return true;
+    };
     aimZone.addEventListener('touchstart', e => {
       e.preventDefault();
       for (const t of e.changedTouches) {
+        if (!hudTappable(t)) continue;   // 点在 HUD 元素上: 不当瞄准, 让 click/元素自身逻辑处理
         if (touchCtl.aimId === null) { touchCtl.aimId = t.identifier; touchCtl.aimX = t.clientX; touchCtl.aimY = t.clientY; }
         else if (touchCtl.pinchId === null) {   // 第二指: 与瞄准指构成捏合
           touchCtl.pinchId = t.identifier;
@@ -617,6 +626,25 @@ SF.Main = (() => {
     fireBtn.addEventListener('touchcancel', fireEnd);
     root.querySelector('#tScope').addEventListener('touchstart', e => { e.preventDefault(); toggleSniper(); }, { passive: false });
     root.querySelector('#tFull').addEventListener('touchstart', e => { e.preventDefault(); toggleFullscreen(); }, { passive: false });
+
+    // HUD 按钮/地图触屏直呼(默认层序在 aimZone 之下, 合成 click 会被 preventDefault 吞掉):
+    // 退出/小地图跳转/大地图开关
+    document.getElementById('btnExit').addEventListener('touchstart', e => {
+      e.preventDefault(); e.stopPropagation();
+      exitToTitle();
+    }, { passive: false });
+    const mapTap = (elId, big) => {
+      const el = document.getElementById(elId);
+      el.addEventListener('touchstart', e => {
+        e.preventDefault(); e.stopPropagation();
+        const t = e.changedTouches[0];
+        const r = el.getBoundingClientRect();
+        if (big) SF.HUD.toggleBigMap();
+        else jumpViewTo(t.clientX, t.clientY, el);
+      }, { passive: false });
+    };
+    mapTap('minimap');
+    mapTap('bigMap', true);
   }
 
   function bindInput() {
