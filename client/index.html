@@ -54,8 +54,11 @@
   #tBtns { position: absolute; right: 18px; bottom: 96px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
   #tFire { width: 84px; height: 84px; border-radius: 50%; border: 2px solid rgba(226,58,42,.65); background: rgba(120,26,18,.5); color: #ffd9c9; font-size: 19px; letter-spacing: 2px; font-weight: bold; }
   #tFire.on { background: rgba(190,40,26,.75); }
-  #tScope { width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(200,178,106,.5); background: rgba(14,16,11,.5); color: #d8c887; font-size: 22px; }
+  #tScope { width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(200,178,106,.5); background: rgba(14,16,11,.5); color: #d8c887; font-size: 14px; letter-spacing: 1px; }
   #tFull { width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(200,178,106,.4); background: rgba(14,16,11,.5); color: #d8c887; font-size: 18px; }
+  #tZoomBox { position: absolute; bottom: 108px; left: 50%; transform: translateX(-50%); width: min(62vw, 420px); text-align: center; display: none; pointer-events: auto; touch-action: none; }
+  #tZoom { width: 100%; height: 30px; accent-color: #c8b26a; background: rgba(14,16,11,.5); border-radius: 15px; border: 1px solid rgba(200,178,106,.35); }
+  #tZoomVal { color: #e8dcae; font-size: 13px; text-shadow: 0 1px 3px #000; margin-top: 2px; letter-spacing: 1px; }
   #hud { touch-action: none; }
   #mapPick { text-align: right; max-width: 50vw; }
   #mapPick .pickLabel { margin: 0 0 8px; }

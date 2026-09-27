@@ -437,6 +437,7 @@ SF.Main = (() => {
   function toggleSniper() {
     sniper = !sniper;
     if (sniper) sniperFov = SF.CFG.camera.sniperFovMax;   // 开镜从最广视场开始
+    if (typeof window.updateZoomUI === 'function') window.updateZoomUI();   // 触屏倍率滑杆同步
     // 火炮开鹰眼: 视野中心定位到当前瞄准点(太近则车前方 220m)
     if (sniper && world.player && world.player.spec.cls === 'SPG') {
       const apd = aimPoint ? Math.hypot(aimPoint.pos.x - world.player.x, aimPoint.pos.z - world.player.z) : 0;
@@ -491,7 +492,7 @@ SF.Main = (() => {
       .catch(() => alert('此浏览器不支持网页全屏(iPhone Safari 无此 API)。\n可用 Safari 菜单「添加到主屏幕」, 从主屏幕打开即是全屏。'));
   }
   const touchCtl = { stick: { id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, aimId: null, aimX: 0, aimY: 0,
-    pinch: { d0: 0, dist0: 0 }, ui: null };
+    pinchId: null, pinch: { d0: 0, fov0: 0, dist0: 0 }, ui: null };
 
   function ensureTouchUI() {
     if (!TOUCH || touchCtl.ui) return;
@@ -501,13 +502,29 @@ SF.Main = (() => {
       <div id="tStickBase"><div id="tStickNub"></div></div>
       <div id="tAimZone"></div>
       <div id="tStickZone"></div>
+      <div id="tZoomBox"><input type="range" id="tZoom" min="${SF.CFG.camera.sniperFovMin}" max="${SF.CFG.camera.sniperFovMax}" step="0.25"><div id="tZoomVal">倍率 ×2.0</div></div>
       <div id="tBtns">
-        <button id="tScope">🔍</button>
+        <button id="tScope">开镜</button>
         <button id="tFire">开炮</button>
         <button id="tFull">⛶</button>
       </div>`;
     document.getElementById('hud').appendChild(root);
     touchCtl.ui = root;
+    // 倍率滑杆: 开镜时出现, 拉动调 fov(右=视野广=倍率低); 捏合调倍率时同步回滑杆
+    const zoomBox = root.querySelector('#tZoomBox'), zoomInput = root.querySelector('#tZoom');
+    zoomInput.value = SF.CFG.camera.sniperFovMax;
+    zoomInput.addEventListener('input', () => {
+      if (!sniper) return;
+      sniperFov = parseFloat(zoomInput.value);
+      updateZoomUI();
+    });
+    window.updateZoomUI = () => {
+      const z = root.querySelector('#tZoom'), v = root.querySelector('#tZoomVal');
+      if (!z) return;
+      z.value = sniperFov;
+      v.textContent = '倍率 ×' + (SF.CFG.camera.sniperFovMax / sniperFov).toFixed(1);
+      zoomBox.style.display = sniper && world.player && world.player.spec.cls !== 'SPG' ? 'block' : 'none';
+    };
     const stickBase = root.querySelector('#tStickBase'), nub = root.querySelector('#tStickNub');
     const stickZone = root.querySelector('#tStickZone'), aimZone = root.querySelector('#tAimZone');
     const R = 46;   // 摇杆最大行程(px)
@@ -542,45 +559,51 @@ SF.Main = (() => {
     stickZone.addEventListener('touchend', stickEnd);
     stickZone.addEventListener('touchcancel', stickEnd);
 
-    // 右半屏: 单指拖动 = 瞄准(鹰眼=平移视野); 双指捏合 = 变焦
+    // 右半屏: 第一指=瞄准(鹰眼=平移视野); 已有瞄准指再落指=双指捏合变焦(第三人称调距离/镜内调倍率)
+    // 注意: 不能用 e.touches.length(全页触点数)判断捏合——左摇杆按住时右区一落指就会被误判
     aimZone.addEventListener('touchstart', e => {
       e.preventDefault();
-      if (e.touches.length >= 2) {
-        const [a, b] = [e.touches[0], e.touches[1]];
-        touchCtl.pinch = { d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), dist0: camDist };
-        touchCtl.aimId = null;
-        return;
+      for (const t of e.changedTouches) {
+        if (touchCtl.aimId === null) { touchCtl.aimId = t.identifier; touchCtl.aimX = t.clientX; touchCtl.aimY = t.clientY; }
+        else if (touchCtl.pinchId === null) {   // 第二指: 与瞄准指构成捏合
+          touchCtl.pinchId = t.identifier;
+          touchCtl.pinch = { d0: Math.hypot(t.clientX - touchCtl.aimX, t.clientY - touchCtl.aimY), fov0: sniperFov, dist0: camDist };
+        }
       }
-      const t = e.changedTouches[0];
-      touchCtl.aimId = t.identifier; touchCtl.aimX = t.clientX; touchCtl.aimY = t.clientY;
     }, { passive: false });
     aimZone.addEventListener('touchmove', e => {
       e.preventDefault();
-      if (e.touches.length >= 2) {   // 捏合缩放: 距离比 → 相机距离
-        const [a, b] = [e.touches[0], e.touches[1]];
-        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-        if (touchCtl.pinch.d0 > 0 && !sniper) camDist = U.clamp(touchCtl.pinch.dist0 * touchCtl.pinch.d0 / d, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
-        return;
-      }
       for (const t of e.changedTouches) {
-        if (t.identifier !== touchCtl.aimId) continue;
-        const dx = t.clientX - touchCtl.aimX, dy = t.clientY - touchCtl.aimY;
-        touchCtl.aimX = t.clientX; touchCtl.aimY = t.clientY;
-        if (sniper && world.player && world.player.spec.cls === 'SPG') {   // 鹰眼: 拖动平移视野中心
-          const wpp = artyH * 0.573 / innerHeight * 4;
-          artyX = U.clamp(artyX + dx * wpp, -470, 470);
-          artyZ = U.clamp(artyZ + dy * wpp, -470, 470);
-          vcx = t.clientX; vcy = t.clientY;
-          continue;
+        if (t.identifier === touchCtl.aimId) {
+          if (touchCtl.pinchId !== null) continue;   // 捏合中冻结瞄准, 防跳动
+          const dx = t.clientX - touchCtl.aimX, dy = t.clientY - touchCtl.aimY;
+          touchCtl.aimX = t.clientX; touchCtl.aimY = t.clientY;
+          if (sniper && world.player && world.player.spec.cls === 'SPG') {   // 鹰眼: 拖动平移视野中心
+            const wpp = artyH * 0.573 / innerHeight * 4;
+            artyX = U.clamp(artyX + dx * wpp, -470, 470);
+            artyZ = U.clamp(artyZ + dy * wpp, -470, 470);
+            vcx = t.clientX; vcy = t.clientY;
+            continue;
+          }
+          // 触屏专用灵敏度(手指行程短, 需比鼠标高约 4 倍); 镜内随倍率细化
+          const s = SF.CFG.camera.touchSens * (sniper ? SF.CFG.camera.sniperSens * (sniperFov / 15) : 1);
+          camYaw -= dx * s;
+          camPitch = U.clamp(camPitch + dy * s, -0.12, 1.1);
+        } else if (t.identifier === touchCtl.pinchId) {
+          const d = Math.hypot(t.clientX - touchCtl.aimX, t.clientY - touchCtl.aimY);
+          if (d > 4 && touchCtl.pinch.d0 > 4) {
+            if (sniper) sniperFov = U.clamp(touchCtl.pinch.fov0 * touchCtl.pinch.d0 / d, SF.CFG.camera.sniperFovMin, SF.CFG.camera.sniperFovMax);   // 张开放大
+            else camDist = U.clamp(touchCtl.pinch.dist0 * touchCtl.pinch.d0 / d, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
+            updateZoomUI();
+          }
         }
-        const s = SF.CFG.camera.sens * (sniper ? SF.CFG.camera.sniperSens * (sniperFov / 15) : 1);
-        camYaw -= dx * s;
-        camPitch = U.clamp(camPitch + dy * s, -0.12, 1.1);
       }
     }, { passive: false });
     const aimEnd = e => {
-      for (const t of e.changedTouches) if (t.identifier === touchCtl.aimId) touchCtl.aimId = null;
-      if (e.touches.length < 2) touchCtl.pinch.d0 = 0;
+      for (const t of e.changedTouches) {
+        if (t.identifier === touchCtl.aimId) touchCtl.aimId = null;
+        if (t.identifier === touchCtl.pinchId) touchCtl.pinchId = null;
+      }
     };
     aimZone.addEventListener('touchend', aimEnd);
     aimZone.addEventListener('touchcancel', aimEnd);
@@ -655,6 +678,7 @@ SF.Main = (() => {
         if (!down) sniperFov = Math.max(SF.CFG.camera.sniperFovMin, sniperFov * 0.87);
         else if (sniperFov >= SF.CFG.camera.sniperFovMax - 0.01) { sniper = false; camDist = SF.CFG.camera.minDist; }
         else sniperFov = Math.min(SF.CFG.camera.sniperFovMax, sniperFov * 1.15);
+        if (typeof window.updateZoomUI === 'function') window.updateZoomUI();
         return;
       }
       if (!down) {
