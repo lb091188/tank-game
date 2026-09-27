@@ -792,9 +792,10 @@ SF.Main = (() => {
     if (autoTarget) { autoTarget = null; SF.HUD.showMsg('自动瞄准解除', 1); return; }
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
-    let best = null, bestAng = 16 * Math.PI / 180;   // WoT 式宽容锥角(容纳相机俯仰)
-    for (const e of playerEnemies()) {
-      const to = e.pos3.clone().sub(camera.position);
+      let best = null, bestAng = 16 * Math.PI / 180;   // WoT 式宽容锥角(容纳相机俯仰)
+      for (const e of playerEnemies()) {
+        if (!spotted.has(e)) continue;                 // 只能锁定已点亮目标(未点亮模型已隐藏)
+        const to = e.pos3.clone().sub(camera.position);
       const ang = to.normalize().angleTo(dir);
       if (ang < bestAng && SF.losClear(world, camera.position.x, camera.position.z, e.x, e.z)) { bestAng = ang; best = e; }
     }
@@ -1088,6 +1089,8 @@ SF.Main = (() => {
         else { spottedLast.delete(e); spotLinger.delete(e); }
       for (const e of spotted) lastKnown.set(e, { x: e.x, z: e.z });   // 点亮=实时刷新最后已知位置
       for (const [e] of lastKnown) if (!e.alive) lastKnown.delete(e);
+      // WoT 式: 未点亮的敌军模型隐藏(看得见≠点亮; 阵亡残骸保留); 丢失后残留期内仍可见, 归零即消失
+      for (const e of world.enemies) e.group.visible = !e.alive || spotted.has(e);
     }
     if (MP.mode === 'host') {   // 死斗小地图红点: 其他玩家(同套隐蔽/通视/强制点亮)
       spottedTimer -= dt;
@@ -1198,6 +1201,7 @@ SF.Main = (() => {
     '倒车伸缩掐好节奏：打一炮退半步，活活气死对面！',
     '被点亮后敌人的无线电会炸锅——转移要快，履带就是命！',
     '蹲进草丛/树篱可以隐蔽：敌人看不见你，但一开炮就失效 4 秒！软质物不挡炮弹，找石头房子躲弹。',
+    '看不见的敌人=你没点亮它：视距×隐蔽与遮挡说了算——逼近、升观瞄配件，或等它开炮暴露！',
     '开炮声会出卖你的方位，敌群马上合围——打一枪，换一个地方！',
     '敌人丢了你会全队搜剿——绕到他们背后放冷炮，才是猎人的打法！',
     '联机对战：房主 npm start 后把控制台 WS 地址填进联机设置'
@@ -1450,7 +1454,7 @@ SF.Main = (() => {
       ['aimMul', '炮控 · 瞄准速度', '缩圈', [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5]],
       ['mobilityMul', '涡轮 · 机动', '机动', [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5]],
       ['hpMul', '装甲 · 血量', '血量', [0.5, 1, 2, 3, 5, 8, 10]],
-      ['viewMul', '观瞄 · 视野', '视野', [0.5, 1, 1.5, 2, 2.5, 3]],
+      ['viewMul', '观瞄 · 视野', '视野', [0.5, 1, 1.5, 2, 2.5, 3, 4, 5]],
     ];
     // 折叠态摘要: 非默认项拼进标题(如 "敌军3× · 装填0.7×"), 全默认则不显示
     const sum = () => DEFS.filter(([k]) => PVE[k] != 1).map(t => t[2] + PVE[t[0]] + '×').join(' ');
