@@ -183,22 +183,12 @@
   #btnExit { position: absolute; top: 16px; right: 226px; padding: 8px 14px; color: #b9c4a4; font-size: 13px; letter-spacing: 2px; cursor: pointer; pointer-events: auto; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.3); border-radius: 5px; }
   #btnExit:hover { color: #e8dcae; background: rgba(40,44,32,.75); }
 
-  /* 小屏(手机竖/横屏)适配: HUD 收缩, 卡片变窄 */
-  @media (max-width: 760px) {
-    #minimapBox { transform: scale(.72); transform-origin: top right; }
-    #bottomBar { width: min(92vw, 480px); }
-    #detectLamp { font-size: 24px; }
-    .card { width: 168px !important; }
-    #mapRow .card { width: 168px !important; }
-    #titleBrand h1 { font-size: 26px; letter-spacing: 5px; white-space: nowrap; }
-    #titleBrand h2 { font-size: 12px; white-space: nowrap; }
-    #btnMp { white-space: nowrap; }
-    #btnStart { font-size: 16px; padding: 10px 38px; }
-    #pvePanel { max-width: 40vw; }
-    #pvePanel .pveRow label { width: 78px; font-size: 11px; }
-    #pvePanel { flex-basis: 100%; max-width: none; order: 5; }   /* 竖屏独占一行: 摘要完整可见 */
-    #pvePanel .pveTitle { overflow: hidden; text-overflow: ellipsis; }
-  }
+  /* 强制横屏: 触屏设备竖屏时全屏遮罩提示旋转(仅 body.touch 显示, 桌面窄窗不受影响) */
+  #rotateMask { display: none; position: fixed; inset: 0; z-index: 200; background: #14160f; color: #e8dcae;
+    align-items: center; justify-content: center; flex-direction: column; gap: 18px; font-size: 20px; letter-spacing: 5px; text-align: center; }
+  #rotateMask .ic { font-size: 64px; animation: rotHint 2.2s infinite; }
+  @keyframes rotHint { 0%, 25% { transform: rotate(0); } 65%, 100% { transform: rotate(90deg); } }
+  @media (orientation: portrait) { body.touch #rotateMask { display: flex; } }
   #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }
   #minimap { display: block; border-radius: 4px; }
   #minimapBox .cap { color: #8b9080; font-size: 11px; text-align: center; margin-top: 3px; letter-spacing: 2px; }
@@ -241,7 +231,7 @@
   <div id="reloadText"></div>
   <div id="crosshair"></div>
   <div id="detectLamp">💡</div>
-      <div id="bushTag">🌿 隐蔽中</div>
+  <div id="bushTag">🌿 隐蔽中</div>
   <div id="hitFeedback"></div>
   <div id="alarm"></div>
   <div id="hitDir"></div>
@@ -334,6 +324,8 @@
     </div>
   </div>
 </div>
+
+<div id="rotateMask"><div class="ic">📱</div><div>请横屏游玩</div><div style="font-size:13px; letter-spacing:1px; color:#8b9080">旋转设备以获得完整视野</div></div>
 
 <script src="js/vendor/three.min.js"></script>
 <script src="js/vendor/GLTFLoader.js"></script>

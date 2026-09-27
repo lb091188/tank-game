@@ -448,10 +448,12 @@ SF.Main = (() => {
 
   /* ---------- 移动端触屏操控(WoT 手游式): 左摇杆开车 / 右半屏拖动瞄准 / 开炮·开镜按钮 ----------
      检测: pointer:coarse 或有触点; localStorage.sf_touch=1 强制开启(调试/ hybrid 设备) */
+  const NATIVE_TOUCH = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
   const TOUCH = (() => {
     try { if (localStorage.getItem('sf_touch') === '1') return true; } catch (e) { }
-    return matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
+    return NATIVE_TOUCH;
   })();
+  if (TOUCH) document.body.classList.add('touch');   // 竖屏旋转遮罩等触屏专属样式钩子
   const touchCtl = { stick: { id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, aimId: null, aimX: 0, aimY: 0,
     pinch: { d0: 0, dist0: 0 }, ui: null };
 
@@ -1423,8 +1425,17 @@ SF.Main = (() => {
     SF.HUD.init(world);
     if (!battleBound) { battleBound = true; bindInput(); bindBus(); }
     // 触屏: 摇杆/按钮 UI 就位(仅 TOUCH 设备实际创建); 桌面继续走指针锁定
-    if (TOUCH) ensureTouchUI();
-    else {
+    if (TOUCH) {
+      ensureTouchUI();
+      // 真机尝试全屏 + 锁横屏(Android 支持; iOS Safari 不支持则静默, 由竖屏遮罩兜底提示)
+      // 仅自然触屏设备: 桌面 sf_touch=1 只是调试触屏 UI, 不抢全屏
+      if (NATIVE_TOUCH) {
+        const el2 = document.documentElement;
+        (el2.requestFullscreen ? el2.requestFullscreen() : Promise.reject())
+          .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'))
+          .catch(() => { });
+      }
+    } else {
       // 出击即锁定鼠标(点击是用户手势); 失败(如浏览器冷却期)不阻断, 点画面可补锁
       try {
         const pr = renderer.domElement.requestPointerLock();
