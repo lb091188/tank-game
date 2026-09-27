@@ -83,7 +83,17 @@ SF.Terrain = class {
       }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    // 主题贴图(ambientCG CC0): 顶点色相乘保留生物群系/坡面着色, 贴图补微观细节
+    const TEX = { grass: ['grass', 150], city: ['asphalt', 170], rock: ['rock', 110] }[theme] || ['grass', 150];
+    const base = SF.Assets && SF.Assets.textures[TEX[0]];
+    let mat;
+    if (base) {
+      const tex = base.clone();
+      tex.needsUpdate = true;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(TEX[1], TEX[1]);
+      mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex });
+    } else mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     return mesh;

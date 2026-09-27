@@ -36,7 +36,7 @@ function makeNoise(seed, gridN) {
     return a + (b - a) * sx + (c - a + (a - b - c + d) * sx) * sz;
   };
 }
-const n1 = makeNoise(11, 8), n2 = makeNoise(77, 16), n3 = makeNoise(313, 48), n4 = makeNoise(909, 6);
+const n1 = makeNoise(11, 8), n2 = makeNoise(77, 16), n3 = makeNoise(313, 48), n4 = makeNoise(909, 6), n5 = makeNoise(555, 96);
 const fbm = (x, z) => n1(x, z) * 0.55 + n2(x, z) * 0.3 + n3(x, z) * 0.15;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -83,6 +83,11 @@ function writePNG16(file, w, h, getPixel) {
 const STREAM1 = { a: [-130, 245], b: [130, 165] };
 const CRATERS1 = [];
 { const r = mulberry32(20261001); for (let i = 0; i < 16; i++) CRATERS1.push({ x: -70 + r() * 140, z: -215 + r() * 55, r: 3.5 + r() * 3, d: 0.8 + r() * 0.7 }); }
+const CRATERS2 = [];   // l02 广场前弹坑带
+{ const r = mulberry32(20261005); for (let i = 0; i < 7; i++) CRATERS2.push({ x: -105 + r() * 210, z: -108 + r() * 32, r: 5.5 + r() * 3, d: 1.6 + r() * 0.8 }); }
+function bushPatch(add, rng, x, z, n = 3) {   // 草丛簇: 战术隐蔽位(蹲入挡点亮, 开炮失效 4s)
+  for (let k = 0; k < n; k++) add('bush', x + (rng() - 0.5) * 8, z + (rng() - 0.5) * 8, 0, 1.0 + rng() * 0.5);
+}
 function terrainL01(x, z) {
   let h = 6 + fbm((x + 400) / SIZE, (z + 400) / SIZE) * 7;
   h -= (1 - ss(60, 150, Math.abs(x))) * 3.5;
@@ -94,7 +99,12 @@ function terrainL01(x, z) {
   h -= gauss(Math.hypot((x - 222) * 1.2, z + 60), 16) * 3.2;
   for (const [fz, fw, fh] of [[188, 24, 3.2], [96, 22, 2.6]])
     h += gauss(z - fz, fw) * fh * (1 - ss(120, 220, Math.abs(x)));
-  h -= gauss(distSeg(x, z, ...STREAM1.a, ...STREAM1.b), 6.5) * 2.6;
+  h -= gauss(distSeg(x, z, ...STREAM1.a, ...STREAM1.b), 7.5) * 3.0;
+  // 中场微起伏 + 卖头土丘 + 东侧干沟(复杂化地形)
+  h += (n5((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 2.2;
+  for (const [mx, mz, mw, mh] of [[-95, -40, 26, 4.5], [70, -60, 30, 5], [-40, 120, 24, 3.5], [110, 110, 28, 4.5], [-120, -130, 30, 4]])
+    h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
+  h -= gauss(distSeg(x, z, 40, 150, 150, 60), 8) * 1.8;
   const gap = Math.min(ss(60, 100, Math.abs(Math.abs(x) - 100)), 1);
   h += gauss(z + 230, 42) * 20 * (1 - gap * 0.85) * ss(320, 220, -z - 0);
   for (const c of CRATERS1) h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d;
@@ -129,17 +139,19 @@ function coversL01(add, rng) {
     }
   }
   for (let i = 0; i < 10; i++) add('haystack', -140 + rng() * 280, 100 + rng() * 160, 0, 0.8 + rng() * 0.5);
-  for (let i = 0; i < 26; i++) add('bush', -150 + rng() * 300, 95 + rng() * 170, 0, 0.7 + rng() * 0.8);
+  for (let i = 0; i < 26; i++) add('bush', -150 + rng() * 300, 95 + rng() * 170, 0, 0.9 + rng() * 0.7);
+  for (const [cx2, cz2] of [[-62, 250], [58, 215], [-125, 65], [108, 35], [-75, -95], [42, -62], [-160, -35], [152, -65], [-105, -18]]) bushPatch(add, rng, cx2, cz2);
   for (let z = 315; z > 95; z -= 21) { add('tree', -11.5, z, rng() * 6, 0.85 + rng() * 0.4); if (z < 300) add('tree', 11.5, z - 9, rng() * 6, 0.85 + rng() * 0.4); }
   for (let i = 0; i < 46; i++) add('tree', -285 + rng() * 110, -40 + rng() * 300, rng() * 6, 0.8 + rng() * 0.7);
-  for (let i = 0; i < 16; i++) add('bush', -280 + rng() * 100, -30 + rng() * 280, 0, 0.8 + rng() * 0.8);
+  for (let i = 0; i < 16; i++) add('bush', -280 + rng() * 100, -30 + rng() * 280, 0, 0.9 + rng() * 0.7);
   for (const [rx, rz] of [[-240, 60], [-160, 180], [-230, 240]]) add('rock', rx, rz, rng() * 6, 1 + rng());
   add('rock', 248, -48, 1.2, 1.5); add('rock', 262, -70, 0.4, 1.3); add('rock', 240, -78, 2.2, 1.2);
   add('wreck', 250, -95, 2.4);
   add('ruin', 150, -130, 0.8); add('ruin', 168, -118, 2.1); add('wall', 158, -140, 0.3, 1.2);
   add('wreck', 140, -112, 0.6);
   add('haystack', 172, -142, 0, 1.1);
-  for (const rx of [-195, 195]) for (let z = 260; z > -260; z -= 46) add('rock', rx + (rng() - 0.5) * 36, z + (rng() - 0.5) * 26, rng() * 6, 0.9 + rng() * 0.9);
+  for (const rx of [-195, 195]) for (let z = 260; z > -260; z -= 46) add('rock', rx + (rng() - 0.5) * 36, z + (rng() - 0.5) * 26, rng() * 6, 1.1 + rng() * 0.9);
+  for (const [bx2, bz2] of [[-95, -55], [76, -45], [-34, 128], [112, 100]]) add('rock', bx2 + (rng() - 0.5) * 10, bz2 + (rng() - 0.5) * 10, rng() * 6, 1.5 + rng() * 0.3);  // 土丘顶巨石(卖头位)
   add('rock', -38, 186, 1, 1.3); add('rock', 44, 92, 2, 1.2); add('wreck', 6, 150, 1.1); add('wreck', -52, 96, 2.8);
   add('rock', -22, -170, 0.5, 1.1); add('rock', 38, -120, 2, 1.4);
   for (let x = -52; x <= 52; x += 17) add('trap', x, -186, rng() * 3);
@@ -156,6 +168,14 @@ function terrainL02(x, z) {
   h += gauss(z + 250, 60) * 6 * ss(200, 60, -z);                        // 北侧抬升(防区高地)
   const plaza = ss(90, 30, Math.hypot(x * 0.9, z + 130));              // 北广场略高台阶
   h = h * (1 - plaza * 0.5) + (h + 1.2) * plaza * 0.5;
+  // 街区隔块台阶(1m 火力台阶, 只抬街区内部不动街道) + 大道旁瓦砾坡 + 广场前弹坑带 + 郊区粗糙化
+  const dStreet = (v) => Math.abs(((v % 78) + 78) % 78 - 39);          // 到最近街道中心线的距离(街区中心=0)
+  const interior = ss(30, 22, dStreet(x)) * ss(30, 22, dStreet(z)) * ss(185, 160, Math.abs(x)) * ss(270, 245, z) * ss(-115, -90, z);
+  h += (((Math.round(x / 78) + Math.round(z / 78)) & 1) ? 1.05 : 0) * interior;
+  h += gauss(x - 28, 6) * (ss(-40, -10, z) - ss(190, 220, z)) * 1.4;   // 中央大道东侧瓦砾坡(探身射击位)
+  for (const c of CRATERS2) h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d;
+  h += (n5((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 2.0 * ss(180, 240, Math.abs(x));
+  for (const [mx, mz, mw, mh] of [[-215, 140, 36, 4], [222, -20, 34, 3.5], [-190, -70, 32, 3]]) h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 330));
   h = h * (1 - spawnFlat) + 6 * spawnFlat;
   const bx = Math.max(Math.abs(x) - (352 + 18 * n4(0.2, (z + 400) / SIZE)), 0);
@@ -180,12 +200,16 @@ function coversL02(add, rng) {
   for (let z = 250; z > -100; z -= 34) { add('trap', -13, z, rng() * 3); add('trap', 13, z - 15, rng() * 3); }
   // 北广场: 环形工事
   add('ruin', -50, -160, 0.3, 1.3); add('ruin', 52, -158, 2.8, 1.2); add('barn', 0, -195, 0.05, 1.2);
+  add('rock', -104, -138, 0.8, 1.5); add('rock', 106, -132, 2.2, 1.45);   // 广场两翼巨石(弹坑带后掩体)
   for (let x = -60; x <= 60; x += 20) add('wall', x, -150, rng() * 0.2, 1.3);
   add('wreck', -26, -172, 1.5); add('wreck', 30, -170, 4.2); add('wreck', 0, -140, 2.6);
   // 瓦砾堆与弹坑感散岩
-  for (let i = 0; i < 22; i++) add('rock', -160 + rng() * 320, -90 + rng() * 330, rng() * 6, 0.7 + rng() * 0.6);
+  for (let i = 0; i < 22; i++) add('rock', -160 + rng() * 320, -90 + rng() * 330, rng() * 6, 0.9 + rng() * 0.6);
   // 郊区行道树
   for (let z = 300; z > 200; z -= 24) { add('tree', -150, z, rng() * 6, 0.9); add('tree', 150, z - 10, rng() * 6, 0.9); }
+  // 荒地草丛簇(郊区隐蔽位) + 南缘散草
+  for (const [cx2, cz2] of [[-215, 90], [218, 120], [-200, -55], [205, -40], [-150, 255], [150, 250], [-95, 265], [95, 240]]) bushPatch(add, rng, cx2, cz2, 3);
+  for (let i = 0; i < 10; i++) add('bush', -250 + rng() * 500, 190 + rng() * 90, 0, 0.9 + rng() * 0.6);
   // 城市加密: 外环街区建筑 + 混凝土围墙 + 瓦砾
   for (let gx = -246; gx <= 246; gx += 82) {
     if (Math.abs(gx) < 130) continue;
@@ -196,30 +220,39 @@ function coversL02(add, rng) {
       else add('ruin', gx, gz, rng() * 3, 1.1);
     }
   }
-  for (let i = 0; i < 26; i++) add('rock', -250 + rng() * 500, -80 + rng() * 320, rng() * 6, 0.6 + rng() * 0.5);
+  for (let i = 0; i < 26; i++) add('rock', -250 + rng() * 500, -80 + rng() * 320, rng() * 6, 0.8 + rng() * 0.7);
   for (let i = 0; i < 12; i++) add('wreck', -220 + rng() * 440, -60 + rng() * 300, rng() * 3);
 }
 
 /* ============ l03 山川高地 ============ */
 function terrainL03(x, z) {
   let h = 5 + fbm((x + 400) / SIZE, (z + 400) / SIZE) * 5;
-  // 两条陡峭南北山脊 x=±140, 高 26m, 各带一处鞍部通道
+  // 两条陡峭南北山脊 x=±140, 高 28m, 各带一处鞍部通道
   for (const rx of [-140, 140]) {
     const d = Math.abs(x - rx) * (1 + 0.3 * Math.sin(z * 0.01 + rx));
-    h += gauss(d, 34) * 26;
+    h += gauss(d, 34) * 28;
   }
   h -= gauss(x + 140, 26) * gauss(z - 100, 46) * 11;    // 西脊鞍部(z≈100)
   h -= gauss(x - 140, 26) * gauss(z + 150, 46) * 11;    // 东脊鞍部(z≈-150)
-  // 中央峡谷干河床(蜿蜒)
+  // 横向支脊(褶皱地形, 脊间即推进车道)
+  for (const [ax, az, bx2, bz2, w, sh] of [[-140, 170, -30, 140, 24, 6.5], [-140, -60, -50, -30, 26, 7], [140, 90, 40, 60, 24, 6], [140, -240, 30, -215, 26, 6.5]])
+    h += gauss(distSeg(x, z, ax, az, bx2, bz2), w) * sh;
+  // 中央峡谷干河床(蜿蜒) + 两侧冲沟 + 谷中土丘(卖头位)
   const riverZ = 40 * Math.sin(x * 0.012) - 20;
   h -= gauss(z - riverZ, 26) * 2.2 * (1 - ss(70, 130, Math.abs(x)));
+  h -= gauss(Math.abs(Math.abs(x) - 62), 9) * 1.5 * (1 - ss(60, 130, Math.abs(x)));
+  h += gauss(Math.hypot(x - 46, z + 58), 26) * 4.5;
+  h += (n5((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 2.4;
   // 北峰高地(阵地) 与南坡
-  h += gauss(Math.hypot(x * 0.8, z + 250), 90) * 16;
+  h += gauss(Math.hypot(x * 0.8, z + 250), 90) * 19;
+  h += gauss(Math.hypot(x + 95, z + 285), 55) * 8;      // 北峰西肩(第二制高点)
   const spawnFlat = ss(110, 70, Math.hypot(x - 0, z - 325));
   h = h * (1 - spawnFlat) + 6 * spawnFlat;
   // 中部山间小村台地
   const vil = ss(40, 16, Math.hypot(x + 20, z - 40));
   h = h * (1 - vil * 0.5) + (h + 0.8) * vil * 0.5;
+  // 南麓滚丘(出击通道起伏)
+  for (const [mx, mz, mw, mh] of [[-65, 215, 30, 3.5], [50, 240, 26, 4], [-8, 150, 32, 3]]) h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
   const bx = Math.max(Math.abs(x) - (350 + 26 * n4((x + 400) / SIZE, 0.5)), 0);
   const bz = Math.max(Math.abs(z) - (350 + 26 * n4(0.5, (z + 400) / SIZE)), 0);
   h += ss(0, 42, Math.hypot(bx, bz)) * 60;
@@ -230,16 +263,18 @@ function coversL03(add, rng) {
   add('barn', -32, 52, 0.2, 0.9); add('house', -8, 30, 0.4, 0.95); add('house', -46, 28, 1.9, 0.9);
   add('ruin', -20, 62, 2.9); add('wall', -30, 44, 0.6, 1.1); add('wall', -2, 52, 0.1, 1.0);
   add('haystack', -50, 48, 0, 0.9); add('haystack', 6, 44, 0, 0.8);
-  // 峡谷乱石阵
-  for (let i = 0; i < 34; i++) add('rock', -60 + rng() * 120, -140 + rng() * 320, rng() * 6, 0.9 + rng() * 1.1);
+  // 峡谷乱石阵 + 谷中土丘顶巨石
+  for (let i = 0; i < 34; i++) add('rock', -60 + rng() * 120, -140 + rng() * 320, rng() * 6, 1.0 + rng() * 1.2);
+  add('rock', 46, -64, rng() * 6, 1.5);
   // 山坡松林
   for (let i = 0; i < 62; i++) {
     const side = rng() < 0.5 ? -1 : 1;
     add('tree', side * (95 + rng() * 130), 300 - rng() * 600, rng() * 6, 0.85 + rng() * 0.7);
   }
-  for (let i = 0; i < 14; i++) add('bush', -100 + rng() * 200, -100 + rng() * 300, 0, 0.8 + rng() * 0.7);
+  for (let i = 0; i < 14; i++) add('bush', -100 + rng() * 200, -100 + rng() * 300, 0, 0.9 + rng() * 0.7);
+  for (const [cx2, cz2] of [[-58, 128], [52, 92], [-45, -118], [28, -188], [-78, 242], [68, 208], [-8, 258]]) bushPatch(add, rng, cx2, cz2, 3);
   // 脊线岩石(反斜面卖头位标记)
-  for (const rx of [-140, 140]) for (let z = 270; z > -270; z -= 42) add('rock', rx + (rng() - 0.5) * 26, z + (rng() - 0.5) * 20, rng() * 6, 1 + rng() * 0.9);
+  for (const rx of [-140, 140]) for (let z = 270; z > -270; z -= 42) add('rock', rx + (rng() - 0.5) * 26, z + (rng() - 0.5) * 20, rng() * 6, 1.1 + rng() * 0.9);
   // 北峰阵地工事
   for (let x = -46; x <= 46; x += 19) add('trap', x, -232, rng() * 3);
   add('wall', -58, -240, 0.15, 1.2); add('wall', 56, -238, -0.1, 1.2);
@@ -247,7 +282,7 @@ function coversL03(add, rng) {
   // 谷地残骸
   add('wreck', -30, 140, 2.9); add('wreck', 34, -40, 0.4);
   // 南侧出身掩护
-  for (const [rx, rz] of [[-36, 268], [30, 276]]) add('rock', rx, rz, rng() * 6, 1.2);
+  for (const [rx, rz] of [[-36, 268], [30, 276]]) add('rock', rx, rz, rng() * 6, 1.4);
 }
 
 /* ============ 地图定义 ============ */

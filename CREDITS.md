@@ -20,3 +20,20 @@
 - 语音走玩家系统 TTS 实时合成，游戏不携带任何语音文件；系统缺少中文语音时自动静默（文字提示不受影响）。
 - 若商业发行：CC-BY 素材（引擎循环）必须在游戏内或发行说明中保留署名；CC0 无义务但建议保留本文件。
 - 备用合成音源在 `audio/synth/`（由 tools/build-audio.js 生成），与开源音源互不影响。
+
+## 地面/掩体贴图 (client/assets/textures/)
+
+全部来自 [ambientCG.com](https://ambientcg.com)，**CC0（公有领域，无需署名）**。
+
+| 游戏内文件 | 素材 ID | 用途 |
+|---|---|---|
+| grass.jpg | Grass001 | 草原地面 (l01) |
+| rock.jpg | Rock034 | 山岩地面 (l03) / 岩石 / 石墙 |
+| asphalt.jpg | Asphalt002 | 城市地面 (l02) |
+| brick.jpg | Bricks045 | 废墟 / 房顶 |
+| wood.jpg | Planks009 | 谷仓木板 |
+| thatch.jpg | ThatchedRoof002A | 草垛 |
+| concrete.jpg | Concrete012 | 房屋墙面 |
+| rust.jpg | Rust001 | 残骸 / 反坦克桩 |
+
+下载方式: `https://ambientcg.com/get?file=<ID>_1K-JPG.zip` 取 Color 贴图，本地重压缩 quality 80。
