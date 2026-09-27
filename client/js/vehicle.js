@@ -10,7 +10,7 @@ SF.Tank = class {
   constructor(type, opts) {
     const U = SF.Util;
     this.type = type;
-    this.spec = SF.CFG.vehicles[type];
+    this.spec = opts.spec || SF.CFG.vehicles[type];   // opts.spec: PVE 修改器克隆 spec(不动全局配置)
     this.parts = SF.Models.makeTank(type);
     this.group = this.parts.root;
     this.isPlayer = !!opts.isPlayer;

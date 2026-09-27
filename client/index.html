@@ -31,6 +31,12 @@
   #garageStats { padding: 8px 14px; text-align: left; width: max-content; max-width: 42vw; }
   #garageStats b { display: block; color: #e8dcae; font-size: 17px; letter-spacing: 1px; }
   #garageStats span { color: #a8ad99; font-size: 12px; }
+  #pvePanel { padding: 6px 12px; text-align: left; align-self: flex-start; }
+  #pvePanel .pveTitle { color: #e8dcae; font-size: 13px; letter-spacing: 2px; margin-bottom: 4px; }
+  #pvePanel .pveTitle span { color: #767b6b; font-size: 11px; letter-spacing: 0; }
+  #pvePanel .pveRow { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+  #pvePanel .pveRow label { color: #a8ad99; font-size: 12px; width: 96px; }
+  #pvePanel select { background: #23261c; color: #d8c887; border: 1px solid #5c6244; border-radius: 3px; font-size: 12px; padding: 2px 4px; cursor: pointer; }
   #mapPick { text-align: right; max-width: 50vw; }
   #mapPick .pickLabel { margin: 0 0 8px; }
   #bottomDock { padding: 0 26px; }
@@ -280,6 +286,7 @@
     <div id="bottomDock">
       <div id="dockRow">
         <div id="garageStats" class="panel"></div>
+        <div id="pvePanel" class="panel"></div>
         <div id="tipOnTitle"></div>
         <div id="btnRow">
           <button id="btnStart">出 击</button>

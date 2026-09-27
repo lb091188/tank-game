@@ -40,7 +40,13 @@ SF.Main = (() => {
   const keys = {};
   let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
   let selTank = 'sherman', selMap = 'l01';   // 出击前选择
+  // PVE 修改器(仅单机): localStorage 持久化, 联机战斗一律不读取
+  let PVE = (() => {
+    try { return { ...SF.CFG.pve, ...JSON.parse(localStorage.getItem('sf_pve') || '{}') }; }
+    catch (e) { return { ...SF.CFG.pve }; }
+  })();
   let lastSpottedT = -99, wasDetected = false;   // 点亮机制(2s 宽限)
+  const bushUi = { inBush: false, concealed: false };   // 草丛隐蔽状态(HUD 指示)
   let deathMark = null;                          // 上次阵亡位置(小地图 ✕ 标记)
   // 联机死斗(主机权威): mode=host 房主跑模拟; client 幽灵插值; sp 单机
   const MP = SF.Game_mp = {
@@ -114,9 +120,22 @@ SF.Main = (() => {
     scene.add(terrain.buildMesh(map.theme || 'grass'));
     const covers = new SF.Models.CoverField(map, terrain, scene);
 
-    // 玩家
+    // 玩家(PVE 修改器: 克隆 spec 应用配件倍率, 不污染全局配置; 联机不生效)
     const [sx, sz, syaw] = map.player.spawn;
-    const player = new SF.Tank(selTank, { x: sx, z: sz, yaw: syaw, isPlayer: true });
+    let playerSpec = null;
+    if (MP.mode === 'sp') {
+      const b = SF.CFG.vehicles[selTank], M = PVE;
+      playerSpec = { ...b, gun: { ...b.gun }, dispersion: { ...b.dispersion } };
+      if (b.gun.autoloader) playerSpec.gun.autoloader = { ...b.gun.autoloader };
+      playerSpec.hp = Math.round(b.hp * M.hpMul);
+      playerSpec.maxSpeed = b.maxSpeed * M.mobilityMul;
+      playerSpec.accel = b.accel * M.mobilityMul;
+      playerSpec.gun.reload = b.gun.reload * M.reloadMul;
+      if (playerSpec.gun.autoloader) { playerSpec.gun.autoloader.intra *= M.reloadMul; playerSpec.gun.autoloader.long *= M.reloadMul; }
+      playerSpec.dispersion.aimTime = b.dispersion.aimTime * M.aimMul;
+      playerSpec.view = Math.round((b.view || SF.CFG.player.viewRange) * M.viewMul);
+    }
+    const player = new SF.Tank(selTank, { x: sx, z: sz, yaw: syaw, isPlayer: true, spec: playerSpec });
     scene.add(player.group);
 
     // intel = 全敌共享的玩家情报: {x,z 最后已知位置, t 时刻, level 0无/1听见炮声/2目视确认}
@@ -164,15 +183,18 @@ SF.Main = (() => {
     if (MP.mode !== 'sp')
       for (const pl of MP.players) pt = Math.max(pt, TIER_NUM[(SF.CFG.vehicles[pl.tank] || {}).tier] || 5);
     const waveBand = i === 0 ? [pt - 1, pt] : [pt, pt + 1];
-    // 按玩家数量定敌军规模(带随机浮动): 单人少打一两个, 每多一名玩家约 +1.6 辆
+    // 敌军规模: 单机=PVE 倍率(1~10); 联机=按玩家数量(带随机浮动)
     const nP = MP.mode === 'sp' ? 1 : Math.max(1, MP.players.length);
-    const target = Math.max(1, Math.min(9, Math.round(
-      wave.enemies.length + (nP - 1) * 1.6 + (Math.random() - 0.5) * 1.5 + (nP === 1 ? -1 : 0))));
+    const target = MP.mode === 'sp'
+      ? Math.max(1, Math.min(60, Math.round(wave.enemies.length * PVE.enemyMul)))
+      : Math.max(1, Math.min(9, Math.round(
+        wave.enemies.length + (nP - 1) * 1.6 + (Math.random() - 0.5) * 1.5 + (nP === 1 ? -1 : 0))));
     const defs = wave.enemies.slice();
     while (defs.length > target) defs.splice((Math.random() * defs.length) | 0, 1);   // 随机裁减
-    while (defs.length < target) {                    // 增援: 优先复制机动单位, 出生位大幅偏移
+    while (defs.length < target) {                    // 增援: 优先复制机动单位, 出生位大幅偏移(人越多散得越开)
       const src = defs.find(d => !d.hold) || defs[0] || wave.enemies[0];
-      defs.push({ ...src, pos: [src.pos[0] + (Math.random() - 0.5) * 180, src.pos[1] + (Math.random() - 0.5) * 180] });
+      const jr2 = 90 + target * 4;
+      defs.push({ ...src, pos: [src.pos[0] + (Math.random() - 0.5) * 2 * jr2, src.pos[1] + (Math.random() - 0.5) * 2 * jr2] });
     }
     const n = defs.length;
     waveEnemies = defs.map((def, wi) => {
@@ -199,7 +221,7 @@ SF.Main = (() => {
     world.enemies = waveEnemies;
     if (MP.mode !== 'sp') SF.Net.send({ t: 'ev', k: 'aiWave', d: { list: aiSpawned } });
     stats.total += waveEnemies.length;
-    SF.HUD.showMsg(`第 ${i + 1} 波 · ${wave.name}`, 3);
+    SF.HUD.showMsg(`第 ${i + 1} 波 · ${wave.name}` + (MP.mode === 'sp' && PVE.enemyMul > 1 ? ` · 敌军 ×${waveEnemies.length}` : ''), 3);
     SF.HUD.log(`遭遇：${wave.name}`, '#e8c977');
   }
 
@@ -1138,6 +1160,30 @@ SF.Main = (() => {
       m.appendChild(el);
     }
     setGarageTank(selTank);   // 初始渲染上次选择的坦克
+  }
+
+  /* ---------- PVE 修改器面板: 敌军规模 + 配件倍率(仅单机, localStorage 持久化) ---------- */
+  function buildPve() {
+    const el = document.getElementById('pvePanel');
+    const DEFS = [
+      ['enemyMul', '敌军规模', [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9, 10]],
+      ['reloadMul', '输弹机 · 装填', [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2]],
+      ['aimMul', '炮控 · 缩圈', [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2]],
+      ['mobilityMul', '涡轮 · 机动', [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]],
+      ['hpMul', '装甲 · 血量', [0.5, 0.75, 1, 1.5, 2, 3, 5]],
+      ['viewMul', '观瞄 · 视野', [0.5, 0.75, 1, 1.25, 1.5, 2]],
+    ];
+    let html = '<div class="pveTitle">PVE 修改器 <span>· 仅单机生效, 联机无效</span></div>';
+    for (const [k, name, opts] of DEFS)
+      html += `<div class="pveRow"><label>${name}</label><select data-k="${k}">` +
+        opts.map(v => `<option value="${v}"${PVE[k] == v ? ' selected' : ''}>${v == 1 ? '1×(默认)' : v + '×'}</option>`).join('') +
+        '</select></div>';
+    el.innerHTML = html;
+    for (const sel of el.querySelectorAll('select'))
+      sel.onchange = () => {
+        PVE[sel.dataset.k] = parseFloat(sel.value);
+        localStorage.setItem('sf_pve', JSON.stringify(PVE));
+      };
   }
 
   /* ---------- 战斗生命周期: 开战 / 退出回车库 / 再战 ---------- */
