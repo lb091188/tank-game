@@ -72,6 +72,15 @@ SF.Models = (() => {
       texMat([0.88, 0.86, 0.82], 'rock', 2.2, 1.4),
     ]);
   }
+  // 三角山墙棱柱(精确截面, 代替易穿模的圆柱 hack): w=沿房宽, h=山墙高, d=跨房深; 内缩 inset 防戳出瓦面
+  function gableGeo(w, h, d) {
+    const shape = new THREE.Shape();
+    shape.moveTo(-d / 2, 0); shape.lineTo(d / 2, 0); shape.lineTo(0, h); shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
+    g.translate(0, 0, -w / 2);
+    g.rotateY(Math.PI / 2);   // 挤出方向 Z → X(沿房宽)
+    return g;
+  }
   function buildStonewall(g, w, h, thick, seed) {
     const rng = srand(seed);
     const mats = stoneWallMats();
@@ -116,10 +125,9 @@ SF.Models = (() => {
       roof1.position.set(0, H + rH / 2, D / 4);
       roof1.rotation.x = Math.atan2(rH, D / 2);
       const roof2 = roof1.clone(); roof2.position.z = -D / 4; roof2.rotation.x = -roof1.rotation.x;
-      // 山墙三角封板
-      const gab = new THREE.Mesh(new THREE.CylinderGeometry(0.02, D / 2 * 0.98, W, 3), texMat([0.88, 0.84, 0.74], 'concrete', 1.5, 1));
-      gab.rotation.z = Math.PI / 2; gab.rotation.y = Math.PI / 2;
-      gab.scale.y = rH / (D / 2); gab.position.y = H + rH / 2 - 0.05;
+      // 山墙三角封板(精确棱柱, 内缩藏进瓦面下)
+      const gab = new THREE.Mesh(gableGeo(W - 0.1 * s, rH - 0.18, D - 0.3), texMat([0.88, 0.84, 0.74], 'concrete', 1.5, 1));
+      gab.position.y = H - 0.02;
       // 烟囱
       const chim = new THREE.Mesh(new THREE.BoxGeometry(0.55 * s, 1.6 * s, 0.55 * s), texMat([0.60, 0.44, 0.38], 'brick', 1, 1.4));
       chim.position.set(W * 0.28, H + rH * 0.85, -D * 0.18);
@@ -134,11 +142,18 @@ SF.Models = (() => {
       col = { ...col, ...OBB(W / 2, D / 2), h: H + rH };
     } else if (c.type === 'hedge') {
       const s = (c.scale || 1);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 3.0, 2.2), lambert([0.15, 0.30, 0.13]));
-      m.position.y = 1.5;
-      const top = new THREE.Mesh(new THREE.BoxGeometry(5.2 * s, 0.8, 1.7), lambert([0.17, 0.33, 0.14]));
-      top.position.y = 3.35;
-      g.add(m, top);
+      const rng = srand(Math.abs(hash(c.x, c.z) * 6000) | 0);
+      // 拟物: 沿墙线的叶团簇拥(深绿灌木球, 替代长方盒)
+      const geo = geoCache.bush || (geoCache.bush = new THREE.SphereGeometry(1, 7, 5));
+      const mats = [[0.30, 0.52, 0.20], [0.24, 0.44, 0.16], [0.36, 0.58, 0.24]].map(c => texMat(c, 'thatch', 3.5, 1.8));
+      const N = 4;
+      for (let i = 0; i < N; i++) {
+        const r = (1.15 + rng() * 0.5) * s;
+        const m = new THREE.Mesh(geo, mats[(rng() * 3) | 0]);
+        m.scale.set(r, r * 0.78, r * (0.9 + rng() * 0.3));
+        m.position.set(-3 * s + 6 * s * (i + 0.5) / N, 0.95 * s + rng() * 0.5, (rng() - 0.5) * 0.5);
+        g.add(m);
+      }
       col = { ...col, blocksShells: false, blocksSpot: true, ...OBB(3.0 * s, 1.1 * s), h: 3.2 };  // 树篱: 挡车挡视线, 不挡弹(WoT 隔树篱对射)
     } else if (c.type === 'rock') {
       const s = (c.scale || 1);
@@ -172,13 +187,19 @@ SF.Models = (() => {
       g.add(m, m2, m3);
       col = { ...col, r: 2.5 * s, h: 3.3 * s };   // 坦克比例的巨石: 藏得住整车
     } else if (c.type === 'trap') {
-      const rustM = texMat([0.52, 0.52, 0.55], 'rust');
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 0.22), rustM);
-      const b2 = bar.clone(); b2.rotation.z = 0.9; b2.position.y = 0.7;
-      const b3 = bar.clone(); b3.rotation.z = -0.9; b3.position.y = 0.7;
-      bar.position.y = 0.7; bar.rotation.y = c.yaw;
-      b2.rotation.y = b3.rotation.y = c.yaw;
-      g.add(bar, b2, b3);
+      // 拟物: 捷克刺猬(三根钢梁互交 + 中部焊接节点), 锈蚀贴图
+      const rustM = texMat([0.52, 0.52, 0.55], 'rust', 1, 1.2);
+      const beam = (rx, rz) => {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.6, 0.2), rustM);
+        b.rotation.set(rx, 0, rz);
+        b.position.y = 0.95;
+        return b;
+      };
+      const b1 = beam(0, 0.62), b2 = beam(0, -0.62), b3 = beam(0.62, 0);
+      b3.rotation.set(0.62, 0.35, 0.55);
+      const node = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), lambert([0.20, 0.19, 0.18]));
+      node.position.y = 0.95;
+      g.add(b1, b2, b3, node);
       col = { ...col, blocksShells: false, r: 1.2, h: 1.2 };
     } else if (c.type === 'tree') {
       const s = (c.scale || 1);
@@ -233,21 +254,43 @@ SF.Models = (() => {
       const roof2 = roof1.clone(); roof2.position.z = -D / 4; roof2.rotation.x = -roof1.rotation.x;
       const ridge = new THREE.Mesh(new THREE.BoxGeometry(W + 0.7 * s, 0.22, 0.4 * s), woodDark);
       ridge.position.y = H + rH + 0.02;
-      // 山墙封板(三角)
-      const gab = new THREE.Mesh(new THREE.CylinderGeometry(0.02, D / 2 * 0.97, W, 3), woodDark);
-      gab.rotation.z = Math.PI / 2; gab.rotation.y = Math.PI / 2;
-      gab.scale.y = rH / (D / 2); gab.position.y = H + rH / 2 - 0.05;
+      // 山墙封板(三角棱柱, 内缩)
+      const gab = new THREE.Mesh(gableGeo(W - 0.1 * s, rH - 0.2, D - 0.35), woodDark);
+      gab.position.y = H - 0.02;
       g.add(body, doorF, doorL, doorR, roof1, roof2, ridge, gab);
       col = { ...col, ...OBB(W / 2, D / 2), h: H + rH };
     } else if (c.type === 'ruin') {
       const s = (c.scale || 1);
+      const rng = srand(Math.abs(hash(c.x, c.z) * 4000) | 0);
       const brickM = texMat([0.88, 0.83, 0.78], 'brick', 3, 2.2), dark = lambert([0.42, 0.34, 0.3]);
-      const w1 = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 4.4, 0.5), brickM); w1.position.set(0, 2.2, 0);
-      const w2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.0, 4 * s), brickM); w2.position.set(-3 * s, 1.5, 2 * s);
-      const w3 = new THREE.Mesh(new THREE.BoxGeometry(2.2 * s, 2.0, 0.45), dark); w3.position.set(1.8 * s, 1.0, -0.8);
-      const w4 = new THREE.Mesh(new THREE.BoxGeometry(1.4 * s, 3.4, 0.5), brickM); w4.position.set(2.3 * s, 1.7, 0.5);
+      // 主断墙: 分段锯齿缺口(弹毁感)
+      const W = 6 * s, segs = 4, sw = W / segs;
+      for (let i = 0; i < segs; i++) {
+        const segH = (2.6 + rng() * 1.9) * (i === 0 ? 1.05 : 1);
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(sw * (0.96 + rng() * 0.08), segH, 0.5), brickM);
+        seg.position.set(-W / 2 + sw * (i + 0.5), segH / 2, 0);
+        g.add(seg);
+      }
+      // 侧墙残段(高低不一)
+      const w2h = 2.4 + rng() * 0.9;
+      const w2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, w2h, 3.6 * s), brickM);
+      w2.position.set(-W / 2 - 0.25, w2h / 2, 2 * s);
+      g.add(w2);
+      // 焦黑断梁(斜插)
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.2 * s, 0.16), lambert([0.16, 0.12, 0.09]));
+      beam.position.set(W * 0.2, 1.3, 0.8);
+      beam.rotation.set(0.5, rng() * 3, 0.35);
+      g.add(beam);
+      // 瓦砾堆: 碎砖+小石块
+      for (let i = 0; i < 5; i++) {
+        const rb = new THREE.Mesh(new THREE.BoxGeometry((0.4 + rng() * 0.7) * s, (0.2 + rng() * 0.3) * s, (0.3 + rng() * 0.5) * s),
+          rng() < 0.5 ? brickM : dark);
+        rb.position.set((rng() - 0.5) * W * 0.9, 0.15 * s, (rng() - 0.5) * 3.4 * s);
+        rb.rotation.y = rng() * 3;
+        g.add(rb);
+      }
       const rub = new THREE.Mesh(new THREE.BoxGeometry(4.5 * s, 0.5, 2.6), dark); rub.position.set(0.6, 0.25, 0.6);
-      g.add(w1, w2, w3, w4, rub);
+      g.add(rub);
       col = { ...col, ...OBB(3.2 * s, 2.4 * s), h: 4.5 };
     } else if (c.type === 'wall') {
       const s = (c.scale || 1);
@@ -267,18 +310,38 @@ SF.Models = (() => {
       col = { ...col, blocksShells: false, blocksSpot: true, r: 2.6 * s, h: 3.6 * s };  // 草垛: 软质, 挡视线不挡弹
     } else if (c.type === 'wreck') {
       const s = (c.scale || 1);
-      const rustM = texMat([0.60, 0.60, 0.60], 'rust', 1.5, 2.5);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.1, 6.2), rustM);
-      body.position.y = 0.75; body.rotation.z = 0.06;
-      const tur = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.8, 2.4), rustM);
-      tur.position.set(0.35, 1.7, 0.4); tur.rotation.y = 0.9;
-      const gunB = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.8, 6), rustM);
-      gunB.rotation.set(Math.PI / 2, 0, 0.5); gunB.position.set(0.9, 1.4, 1.5);
-      const track1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 6.3), rustM);
-      track1.position.set(-1.55, 0.35, 0);
-      const track2 = track1.clone(); track2.position.x = 1.55;
-      g.add(body, tur, gunB, track1, track2);
-      g.rotation.z = 0.03;
+      // 拟物: 真坦克 GLB 烧毁姿态(歪斜+炮塔错位+焦黑涂装); 模型未就绪时退回盒子拼装
+      const types = ['pz4', 't34', 'stug3', 'sherman'].filter(t => SF.Assets.models[t]);
+      if (types.length) {
+        const rng = srand(Math.abs(hash(c.x, c.z) * 5000) | 0);
+        const parts = makeTank(types[(rng() * types.length) | 0]);
+        parts.root.traverse(o => {
+          if (o.isMesh) {
+            o.material = o.material.clone();          // 焦黑涂装只作用于此辆, 不污染同型活车
+            o.material.color.multiplyScalar(0.22);
+            o.receiveShadow = true;
+          }
+        });
+        parts.root.position.y = -0.18;                // 半陷+歪斜
+        parts.root.rotation.z = 0.05 + rng() * 0.06;
+        parts.root.rotation.x = (rng() - 0.5) * 0.08;
+        if (parts.turret) { parts.turret.rotation.y = 1.1 + rng() * 1.2; }   // 炮塔被打飞般错位
+        if (parts.gun) parts.gun.rotation.x = -0.5 - rng() * 0.3;            // 炮管耷拉
+        g.add(parts.root);
+      } else {
+        const rustM = texMat([0.60, 0.60, 0.60], 'rust', 1.5, 2.5);
+        const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.1, 6.2), rustM);
+        body.position.y = 0.75; body.rotation.z = 0.06;
+        const tur = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.8, 2.4), rustM);
+        tur.position.set(0.35, 1.7, 0.4); tur.rotation.y = 0.9;
+        const gunB = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.8, 6), rustM);
+        gunB.rotation.set(Math.PI / 2, 0, 0.5); gunB.position.set(0.9, 1.4, 1.5);
+        const track1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 6.3), rustM);
+        track1.position.set(-1.55, 0.35, 0);
+        const track2 = track1.clone(); track2.position.x = 1.55;
+        g.add(body, tur, gunB, track1, track2);
+        g.rotation.z = 0.03;
+      }
       col = { ...col, blocksShells: false, blocksSpot: true, ...OBB(1.75, 3.1), h: 2.4 };  // 残骸: 挡车挡视线, 不挡弹(WoT 击毁车不吸弹)
     } else if (c.type === 'bush') {
       const s = (c.scale || 1);
