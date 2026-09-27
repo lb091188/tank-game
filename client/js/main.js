@@ -433,6 +433,128 @@ SF.Main = (() => {
     return KEY_ALIAS[k] || null;
   }
 
+  // 开镜/鹰眼切换(键盘 Shift 与移动端开镜按钮共用)
+  function toggleSniper() {
+    sniper = !sniper;
+    if (sniper) sniperFov = SF.CFG.camera.sniperFovMax;   // 开镜从最广视场开始
+    // 火炮开鹰眼: 视野中心定位到当前瞄准点(太近则车前方 220m)
+    if (sniper && world.player && world.player.spec.cls === 'SPG') {
+      const apd = aimPoint ? Math.hypot(aimPoint.pos.x - world.player.x, aimPoint.pos.z - world.player.z) : 0;
+      if (aimPoint && apd > 60) { artyX = aimPoint.pos.x; artyZ = aimPoint.pos.z; }
+      else { artyX = world.player.x + Math.sin(camYaw) * 220; artyZ = world.player.z + Math.cos(camYaw) * 220; }
+      SF.HUD.showMsg('鹰眼 · 拖动瞄准 · 按钮切换视场', 3);
+    }
+  }
+
+  /* ---------- 移动端触屏操控(WoT 手游式): 左摇杆开车 / 右半屏拖动瞄准 / 开炮·开镜按钮 ----------
+     检测: pointer:coarse 或有触点; localStorage.sf_touch=1 强制开启(调试/ hybrid 设备) */
+  const TOUCH = (() => {
+    try { if (localStorage.getItem('sf_touch') === '1') return true; } catch (e) { }
+    return matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
+  })();
+  const touchCtl = { stick: { id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, aimId: null, aimX: 0, aimY: 0,
+    pinch: { d0: 0, dist0: 0 }, ui: null };
+
+  function ensureTouchUI() {
+    if (!TOUCH || touchCtl.ui) return;
+    const root = document.createElement('div');
+    root.id = 'touchUI';
+    root.innerHTML = `
+      <div id="tStickBase"><div id="tStickNub"></div></div>
+      <div id="tAimZone"></div>
+      <div id="tStickZone"></div>
+      <div id="tBtns">
+        <button id="tScope">🔍</button>
+        <button id="tFire">开炮</button>
+      </div>`;
+    document.getElementById('hud').appendChild(root);
+    touchCtl.ui = root;
+    const stickBase = root.querySelector('#tStickBase'), nub = root.querySelector('#tStickNub');
+    const stickZone = root.querySelector('#tStickZone'), aimZone = root.querySelector('#tAimZone');
+    const R = 46;   // 摇杆最大行程(px)
+
+    stickZone.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (touchCtl.stick.id !== null) return;
+      const t = e.changedTouches[0];
+      touchCtl.stick = { id: t.identifier, ox: t.clientX, oy: t.clientY, dx: 0, dy: 0 };
+      stickBase.style.display = 'block';
+      stickBase.style.left = (t.clientX - 55) + 'px'; stickBase.style.top = (t.clientY - 55) + 'px';
+      nub.style.transform = 'translate(0px,0px)';
+    }, { passive: false });
+    stickZone.addEventListener('touchmove', e => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        if (t.identifier !== touchCtl.stick.id) continue;
+        let dx = t.clientX - touchCtl.stick.ox, dy = t.clientY - touchCtl.stick.oy;
+        const d = Math.hypot(dx, dy);
+        if (d > R) { dx *= R / d; dy *= R / d; }         // 行程 clamp, 方向保留
+        touchCtl.stick.dx = dx / R; touchCtl.stick.dy = dy / R;
+        nub.style.transform = `translate(${dx}px,${dy}px)`;
+      }
+    }, { passive: false });
+    const stickEnd = e => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== touchCtl.stick.id) continue;
+        touchCtl.stick = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+        stickBase.style.display = 'none';
+      }
+    };
+    stickZone.addEventListener('touchend', stickEnd);
+    stickZone.addEventListener('touchcancel', stickEnd);
+
+    // 右半屏: 单指拖动 = 瞄准(鹰眼=平移视野); 双指捏合 = 变焦
+    aimZone.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (e.touches.length >= 2) {
+        const [a, b] = [e.touches[0], e.touches[1]];
+        touchCtl.pinch = { d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), dist0: camDist };
+        touchCtl.aimId = null;
+        return;
+      }
+      const t = e.changedTouches[0];
+      touchCtl.aimId = t.identifier; touchCtl.aimX = t.clientX; touchCtl.aimY = t.clientY;
+    }, { passive: false });
+    aimZone.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (e.touches.length >= 2) {   // 捏合缩放: 距离比 → 相机距离
+        const [a, b] = [e.touches[0], e.touches[1]];
+        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        if (touchCtl.pinch.d0 > 0 && !sniper) camDist = U.clamp(touchCtl.pinch.dist0 * touchCtl.pinch.d0 / d, SF.CFG.camera.minDist, SF.CFG.camera.maxDist);
+        return;
+      }
+      for (const t of e.changedTouches) {
+        if (t.identifier !== touchCtl.aimId) continue;
+        const dx = t.clientX - touchCtl.aimX, dy = t.clientY - touchCtl.aimY;
+        touchCtl.aimX = t.clientX; touchCtl.aimY = t.clientY;
+        if (sniper && world.player && world.player.spec.cls === 'SPG') {   // 鹰眼: 拖动平移视野中心
+          const wpp = artyH * 0.573 / innerHeight * 4;
+          artyX = U.clamp(artyX + dx * wpp, -470, 470);
+          artyZ = U.clamp(artyZ + dy * wpp, -470, 470);
+          vcx = t.clientX; vcy = t.clientY;
+          continue;
+        }
+        const s = SF.CFG.camera.sens * (sniper ? SF.CFG.camera.sniperSens * (sniperFov / 15) : 1);
+        camYaw -= dx * s;
+        camPitch = U.clamp(camPitch + dy * s, -0.12, 1.1);
+      }
+    }, { passive: false });
+    const aimEnd = e => {
+      for (const t of e.changedTouches) if (t.identifier === touchCtl.aimId) touchCtl.aimId = null;
+      if (e.touches.length < 2) touchCtl.pinch.d0 = 0;
+    };
+    aimZone.addEventListener('touchend', aimEnd);
+    aimZone.addEventListener('touchcancel', aimEnd);
+
+    // 按钮: 开炮(按住连发由装填节奏控制) / 开镜
+    const fireBtn = root.querySelector('#tFire');
+    fireBtn.addEventListener('touchstart', e => { e.preventDefault(); mouseDown = true; fireBtn.classList.add('on'); }, { passive: false });
+    const fireEnd = e => { e.preventDefault(); mouseDown = false; fireBtn.classList.remove('on'); };
+    fireBtn.addEventListener('touchend', fireEnd);
+    fireBtn.addEventListener('touchcancel', fireEnd);
+    root.querySelector('#tScope').addEventListener('touchstart', e => { e.preventDefault(); toggleSniper(); }, { passive: false });
+  }
+
   function bindInput() {
     document.addEventListener('pointerlockchange', () => { });
     document.addEventListener('mousemove', (e) => {
@@ -512,17 +634,7 @@ SF.Main = (() => {
       if (!k) return;
       keySeen = true;
       if (k === 'Shift') {
-        if (!e.repeat) {
-          sniper = !sniper;
-          if (sniper) sniperFov = SF.CFG.camera.sniperFovMax;   // 开镜从最广视场开始
-          // 火炮开鹰眼: 视野中心定位到当前瞄准点(太近则车前方 220m)
-          if (sniper && world.player && world.player.spec.cls === 'SPG') {
-            const apd = aimPoint ? Math.hypot(aimPoint.pos.x - world.player.x, aimPoint.pos.z - world.player.z) : 0;
-            if (aimPoint && apd > 60) { artyX = aimPoint.pos.x; artyZ = aimPoint.pos.z; }
-            else { artyX = world.player.x + Math.sin(camYaw) * 220; artyZ = world.player.z + Math.cos(camYaw) * 220; }
-            SF.HUD.showMsg('鹰眼 · 鼠标拖动瞄准 · 滚轮变焦 · 按住 Alt 操作地图', 3);
-          }
-        }
+        if (!e.repeat) toggleSniper();
         keys.Shift = true; return;
       }
       if (k === 'Tab') { e.preventDefault(); if (!e.repeat) SF.HUD.toggleMissionDetail(); return; }
@@ -636,11 +748,18 @@ SF.Main = (() => {
 
   function playerInput() {
     const p = world.player;
-    const manual = (keys.KeyW || keys.ArrowUp ? 1 : 0) + (keys.KeyS || keys.ArrowDown ? -1 : 0);
+    let thr = (keys.KeyW || keys.ArrowUp ? 1 : 0) + (keys.KeyS || keys.ArrowDown ? -1 : 0);
+    let str = (keys.KeyA || keys.ArrowLeft ? 1 : 0) + (keys.KeyD || keys.ArrowRight ? -1 : 0);
+    // 触屏摇杆优先于键盘: 模拟量直接驱动(带死区)
+    if (touchCtl.stick.id !== null) {
+      const dz = v => Math.abs(v) < 0.16 ? 0 : v;
+      thr = -dz(touchCtl.stick.dy);   // 上推=前进
+      str = -dz(touchCtl.stick.dx);   // 右推=右转(steer 负=右, 同 D 键)
+    }
     const input = {
-      throttle: manual || cruise,
+      throttle: thr || cruise,
       // 注意: yaw 增大 = 向左转(俯视逆时针), 所以 A=+1 / D=-1
-      steer: (keys.KeyA || keys.ArrowLeft ? 1 : 0) + (keys.KeyD || keys.ArrowRight ? -1 : 0),
+      steer: str,
       fire: mouseDown
     };
     if (aimPoint) {
@@ -1219,11 +1338,17 @@ SF.Main = (() => {
       ['viewMul', '观瞄 · 视野', [0.5, 0.75, 1, 1.25, 1.5, 2]],
     ];
     let html = '<div class="pveTitle">PVE 修改器 <span>· 仅单机生效, 联机无效</span></div>';
+    html += '<div class="pveBody">';
     for (const [k, name, opts] of DEFS)
       html += `<div class="pveRow"><label>${name}</label><select data-k="${k}">` +
         opts.map(v => `<option value="${v}"${PVE[k] == v ? ' selected' : ''}>${v == 1 ? '1×(默认)' : v + '×'}</option>`).join('') +
         '</select></div>';
+    html += '</div>';
     el.innerHTML = html;
+    // 标题点击折叠/展开(窄屏默认折叠, 给车库预览让位)
+    const title = el.querySelector('.pveTitle');
+    title.onclick = () => el.classList.toggle('collapsed');
+    if (innerWidth < 960) el.classList.add('collapsed');
     for (const sel of el.querySelectorAll('select'))
       sel.onchange = () => {
         PVE[sel.dataset.k] = parseFloat(sel.value);
@@ -1288,11 +1413,15 @@ SF.Main = (() => {
     buildScene();
     SF.HUD.init(world);
     if (!battleBound) { battleBound = true; bindInput(); bindBus(); }
-    // 出击即锁定鼠标(点击是用户手势); 失败(如浏览器冷却期)不阻断, 点画面可补锁
-    try {
-      const pr = renderer.domElement.requestPointerLock();
-      if (pr && pr.catch) pr.catch(() => { });
-    } catch (e) { }
+    // 触屏: 摇杆/按钮 UI 就位(仅 TOUCH 设备实际创建); 桌面继续走指针锁定
+    if (TOUCH) ensureTouchUI();
+    else {
+      // 出击即锁定鼠标(点击是用户手势); 失败(如浏览器冷却期)不阻断, 点画面可补锁
+      try {
+        const pr = renderer.domElement.requestPointerLock();
+        if (pr && pr.catch) pr.catch(() => { });
+      } catch (e) { }
+    }
     SF.HUD.showMsg(world.map.briefing, 5);
     running = true; lastT = performance.now();
     requestAnimationFrame(loop);
