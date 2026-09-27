@@ -453,6 +453,16 @@ SF.Main = (() => {
     try { if (localStorage.getItem('sf_touch') === '1') return true; } catch (e) { }
     return NATIVE_TOUCH;
   })();
+  // 移动端第一次触摸即尝试全屏+锁横屏(浏览器要求用户手势, touchstart 合法;
+  // iOS Safari 不支持元素全屏则静默, 由竖屏遮罩兜底提示; 仅尝试一次, 被拒不再骚扰)
+  if (NATIVE_TOUCH) {
+    addEventListener('touchstart', () => {
+      const el = document.documentElement;
+      (el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : Promise.reject())
+        .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'))
+        .catch(() => { });
+    }, { capture: true, once: true, passive: true });
+  }
   if (TOUCH) document.body.classList.add('touch');   // 竖屏旋转遮罩等触屏专属样式钩子
   const touchCtl = { stick: { id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, aimId: null, aimX: 0, aimY: 0,
     pinch: { d0: 0, dist0: 0 }, ui: null };
@@ -1428,8 +1438,8 @@ SF.Main = (() => {
     if (TOUCH) {
       ensureTouchUI();
       // 真机尝试全屏 + 锁横屏(Android 支持; iOS Safari 不支持则静默, 由竖屏遮罩兜底提示)
-      // 仅自然触屏设备: 桌面 sf_touch=1 只是调试触屏 UI, 不抢全屏
-      if (NATIVE_TOUCH) {
+      // 仅自然触屏设备: 桌面 sf_touch=1 只是调试触屏 UI, 不抢全屏; 首触已全屏则跳过
+      if (NATIVE_TOUCH && !document.fullscreenElement) {
         const el2 = document.documentElement;
         (el2.requestFullscreen ? el2.requestFullscreen() : Promise.reject())
           .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'))
