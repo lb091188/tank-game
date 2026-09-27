@@ -60,6 +60,39 @@ SF.Models = (() => {
      碰撞: blocksMove 挡车体 / blocksShells 挡弹 / blocksSpot 挡点亮视线
      WoT 对齐: 只有石墙/岩石/建筑真正吸弹; 软质物(草丛/树篱/草垛/残骸)挡视线当隐蔽, 炮弹直接穿过 */
   const geoCache = {};
+  // 确定性伪随机(每个掩体实例稳定变化, 不随刷新抖动)
+  const srand = (seed) => { let t = seed * 9301 + 49297; return () => { t = (t * 9301 + 49297) % 233280; return t / 233280; }; };
+  const hash = (x, z) => (Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+
+  // 拟物化: 石砌墙体(底宽顶窄+起伏+分段错缝) —— house/ruin/wall 共用
+  function stoneWallMats() {
+    return stoneWallMats.m || (stoneWallMats.m = [
+      texMat([0.82, 0.80, 0.76], 'rock', 2.2, 1.4),
+      texMat([0.72, 0.70, 0.66], 'rock', 2.2, 1.4),
+      texMat([0.88, 0.86, 0.82], 'rock', 2.2, 1.4),
+    ]);
+  }
+  function buildStonewall(g, w, h, thick, seed) {
+    const rng = srand(seed);
+    const mats = stoneWallMats();
+    const SEG = Math.max(3, Math.round(w / 1.4));          // 1.4m 一段
+    const sw = w / SEG;
+    for (let i = 0; i < SEG; i++) {
+      const segH = h * (0.86 + rng() * 0.24);              // 每段高低起伏
+      const lean = (rng() - 0.5) * 0.05;                   // 轻微倾斜
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(sw * (1 + rng() * 0.06), segH, thick * (0.92 + rng() * 0.16)), mats[i % 3]);
+      seg.position.set(-w / 2 + sw * (i + 0.5), segH / 2, (rng() - 0.5) * thick * 0.08);
+      seg.rotation.z = lean;
+      g.add(seg);
+    }
+    // 顶部碎石压边
+    for (let i = 0; i < SEG; i += 2) {
+      const r = new THREE.Mesh(new THREE.BoxGeometry(sw * 0.7, 0.16, thick * 1.05), mats[(i + 1) % 3]);
+      r.position.set(-w / 2 + sw * (i + 0.5), h * (0.93 + rng() * 0.05), 0);
+      r.rotation.y = (rng() - 0.5) * 0.1;
+      g.add(r);
+    }
+  }
   function buildCover(c, terrain) {
     const y = terrain.heightAt(c.x, c.z);
     const g = new THREE.Group();
@@ -71,13 +104,34 @@ SF.Models = (() => {
 
     if (c.type === 'house') {
       const s = (c.scale || 1);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(7 * s, 3.4, 5.5 * s), texMat([0.92, 0.88, 0.80], 'concrete', 2, 1.2));
-      body.position.y = 1.7;
-      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(7.6 * s, 0.25, 3.6 * s), texMat([0.78, 0.55, 0.48], 'brick', 3, 1));
-      roof1.position.set(0, 4.0, 1.45 * s); roof1.rotation.x = 0.62;
-      const roof2 = roof1.clone(); roof2.position.z = -1.45 * s; roof2.rotation.x = -0.62;
-      g.add(body, roof1, roof2);
-      col = { ...col, ...OBB(3.5 * s, 2.75 * s), h: 5 };
+      const W = 7 * s, D = 5.5 * s, H = 3.4;
+      const wallMats = [texMat([0.92, 0.88, 0.78], 'concrete', 1.8, 1.1), texMat([0.85, 0.78, 0.66], 'brick', 1.8, 1.1)];
+      const wallM = wallMats[Math.abs(hash(c.x, c.z) | 0) % 2];
+      const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), wallM);
+      body.position.y = H / 2;
+      // 人字坡屋顶(双斜面, 出檐)
+      const roofM = texMat([0.72, 0.50, 0.44], 'brick', 2.4, 0.9);
+      const roofL = 1.9 * s, rH = 1.8 * s;
+      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(W + 0.5 * s, 0.22, Math.sqrt((D / 2 + roofL * 0.3) ** 2 + rH ** 2)), roofM);
+      roof1.position.set(0, H + rH / 2, D / 4);
+      roof1.rotation.x = Math.atan2(rH, D / 2);
+      const roof2 = roof1.clone(); roof2.position.z = -D / 4; roof2.rotation.x = -roof1.rotation.x;
+      // 山墙三角封板
+      const gab = new THREE.Mesh(new THREE.CylinderGeometry(0.02, D / 2 * 0.98, W, 3), texMat([0.88, 0.84, 0.74], 'concrete', 1.5, 1));
+      gab.rotation.z = Math.PI / 2; gab.rotation.y = Math.PI / 2;
+      gab.scale.y = rH / (D / 2); gab.position.y = H + rH / 2 - 0.05;
+      // 烟囱
+      const chim = new THREE.Mesh(new THREE.BoxGeometry(0.55 * s, 1.6 * s, 0.55 * s), texMat([0.60, 0.44, 0.38], 'brick', 1, 1.4));
+      chim.position.set(W * 0.28, H + rH * 0.85, -D * 0.18);
+      // 门窗(深色嵌板, 不单独碰撞)
+      const trim = lambert([0.30, 0.24, 0.18]);
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.9 * s, 2.0, 0.08), trim);
+      door.position.set(-W * 0.22, 1.0, D / 2 + 0.03);
+      const win1 = new THREE.Mesh(new THREE.BoxGeometry(1.05 * s, 0.9, 0.08), trim);
+      win1.position.set(W * 0.2, 1.9, D / 2 + 0.03);
+      const win2 = win1.clone(); win2.position.set(D / 2 + 0.03, 1.9, -W * 0.1); win2.rotation.y = Math.PI / 2; win2.scale.set(0.9, 1, 1);
+      g.add(body, roof1, roof2, gab, chim, door, win1, win2);
+      col = { ...col, ...OBB(W / 2, D / 2), h: H + rH };
     } else if (c.type === 'hedge') {
       const s = (c.scale || 1);
       const m = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 3.0, 2.2), lambert([0.15, 0.30, 0.13]));
@@ -88,12 +142,34 @@ SF.Models = (() => {
       col = { ...col, blocksShells: false, blocksSpot: true, ...OBB(3.0 * s, 1.1 * s), h: 3.2 };  // 树篱: 挡车挡视线, 不挡弹(WoT 隔树篱对射)
     } else if (c.type === 'rock') {
       const s = (c.scale || 1);
-      const geo = geoCache.rock || (geoCache.rock = new THREE.IcosahedronGeometry(1, 0));
-      const m = new THREE.Mesh(geo, texMat([0.86, 0.85, 0.83], 'rock'));
+      const rng = srand(Math.abs(hash(c.x, c.z) * 1000) | 0);
+      const rockM = texMat([0.86, 0.85, 0.83], 'rock', 1.6, 1.2);
+      const rockM2 = texMat([0.72, 0.71, 0.68], 'rock', 1.6, 1.2);
+      // 主石: 二十面体顶点噪声扰动(不规则棱角) + 副石叠垒
+      const geo = geoCache.rock || (geoCache.rock = (() => {
+        const gg = new THREE.IcosahedronGeometry(1, 1);
+        const p = gg.attributes.position;
+        for (let i = 0; i < p.count; i++) {
+          const k = 0.82 + (Math.sin(p.getX(i) * 5.3 + p.getY(i) * 3.1) * 0.5 + 0.5) * 0.36;   // 顶点扰动
+          p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.86, p.getZ(i) * k);
+        }
+        gg.computeVertexNormals();
+        return gg;
+      })());
+      const m = new THREE.Mesh(geo, rockM);
       m.scale.set(2.1 * s, 1.8 * s, 1.8 * s);
       m.position.y = 0.9 * s;
       m.rotation.set(0.3, c.yaw, 0.2);
-      g.add(m);
+      const m2 = new THREE.Mesh(geo, rockM2);
+      const r2 = 0.9 + rng() * 0.5;
+      m2.scale.set(r2 * s, r2 * 0.8 * s, r2 * s);
+      m2.position.set((rng() - 0.5) * 2.4 * s, 0.35 * s, (rng() - 0.5) * 2.2 * s);
+      m2.rotation.set(rng() * 3, rng() * 3, rng() * 3);
+      const m3 = new THREE.Mesh(geo, rockM);
+      m3.scale.set(0.65 * s, 0.5 * s, 0.6 * s);
+      m3.position.set((rng() - 0.5) * 2.8 * s, 0.25 * s, (rng() - 0.5) * 2.6 * s);
+      m3.rotation.set(rng() * 3, rng() * 3, rng() * 3);
+      g.add(m, m2, m3);
       col = { ...col, r: 2.5 * s, h: 3.3 * s };   // 坦克比例的巨石: 藏得住整车
     } else if (c.type === 'trap') {
       const rustM = texMat([0.52, 0.52, 0.55], 'rust');
@@ -106,23 +182,63 @@ SF.Models = (() => {
       col = { ...col, blocksShells: false, r: 1.2, h: 1.2 };
     } else if (c.type === 'tree') {
       const s = (c.scale || 1);
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 2.6, 6), lambert([0.35, 0.26, 0.16]));
-      trunk.position.y = 1.3;
-      const c1 = new THREE.Mesh(new THREE.ConeGeometry(1.9 * s, 3.2 * s, 7), lambert([0.13, 0.28, 0.12]));
-      c1.position.y = 3.4 * s;
-      const c2 = new THREE.Mesh(new THREE.ConeGeometry(1.4 * s, 2.4 * s, 7), lambert([0.15, 0.33, 0.13]));
-      c2.position.y = 4.9 * s;
-      g.add(trunk, c1, c2);
+      const rng = srand(Math.abs(hash(c.x, c.z) * 2000) | 0);
+      // 多段渐细弯曲树干(松科: 挺直; 阔叶: 微弯) + 3 层不规则树冠锥
+      const trunkM = lambert([0.33, 0.24, 0.15]);
+      let ty = 0, tx = 0, tz = 0;
+      const segs = 3;
+      const segL = 1.1 * s;
+      for (let i = 0; i < segs; i++) {
+        const rTop = 0.26 * s * (1 - i / segs * 0.5), rBot = 0.32 * s * (1 - i / segs * 0.4);
+        const seg = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, segL, 6), trunkM);
+        tx += (rng() - 0.5) * 0.22 * s * (i + 1) * 0.5;
+        tz += (rng() - 0.5) * 0.22 * s * (i + 1) * 0.5;
+        seg.position.set(tx, ty + segL / 2, tz);
+        seg.rotation.z = (rng() - 0.5) * 0.08;
+        g.add(seg);
+        ty += segL * 0.96;
+      }
+      const leafM = lambert([0.13 + rng() * 0.05, 0.28 + rng() * 0.06, 0.12]);
+      const tiers = 3;
+      let cy = ty - 0.4 * s;
+      for (let i = 0; i < tiers; i++) {
+        const cr = (1.9 - i * 0.42) * s * (0.9 + rng() * 0.2);
+        const ch = (2.4 - i * 0.4) * s;
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(cr, ch, 7), leafM);
+        cone.position.set(tx * (0.4 + i * 0.25), cy + ch / 2, tz * (0.4 + i * 0.25));
+        cone.rotation.y = rng() * 3;
+        g.add(cone);
+        cy += ch * 0.62;
+      }
       col = { ...col, blocksShells: false, r: 0.9, h: 1.6 }; // 树干挡车不挡弹
     } else if (c.type === 'barn') {
       const s = (c.scale || 1);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(11 * s, 5, 7.5 * s), texMat([0.82, 0.76, 0.68], 'wood', 3.5, 1.3));
-      body.position.y = 2.5;
-      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(11.8 * s, 0.3, 4.6 * s), texMat([0.55, 0.50, 0.45], 'wood', 3.5, 1));
-      roof1.position.set(0, 6.0, 1.9 * s); roof1.rotation.x = 0.6;
-      const roof2 = roof1.clone(); roof2.position.z = -1.9 * s; roof2.rotation.x = -0.6;
-      g.add(body, roof1, roof2);
-      col = { ...col, ...OBB(5.5 * s, 3.75 * s), h: 7 };
+      const W = 11 * s, D = 7.5 * s, H = 5;
+      const woodM = texMat([0.80, 0.72, 0.62], 'wood', 2.6, 1);
+      const woodDark = texMat([0.52, 0.45, 0.38], 'wood', 2.6, 1);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), woodM);
+      body.position.y = H / 2;
+      // 谷仓大门(深色门框+对开门板)
+      const doorF = new THREE.Mesh(new THREE.BoxGeometry(3.2 * s, 3.4, 0.12), woodDark);
+      doorF.position.set(0, 1.7, D / 2 + 0.05);
+      const doorL = new THREE.Mesh(new THREE.BoxGeometry(1.5 * s, 3.0, 0.06), texMat([0.62, 0.55, 0.47], 'wood', 1.2, 1.6));
+      doorL.position.set(-0.78 * s, 1.55, D / 2 + 0.12);
+      const doorR = doorL.clone(); doorR.position.x = 0.78 * s;
+      // 双坡屋顶(出檐+屋脊)
+      const roofM = texMat([0.50, 0.44, 0.40], 'wood', 3, 1.1);
+      const rH = 2.2 * s;
+      const roof1 = new THREE.Mesh(new THREE.BoxGeometry(W + 0.7 * s, 0.28, Math.sqrt((D / 2 + 0.35 * s) ** 2 + rH ** 2)), roofM);
+      roof1.position.set(0, H + rH / 2, D / 4);
+      roof1.rotation.x = Math.atan2(rH, D / 2);
+      const roof2 = roof1.clone(); roof2.position.z = -D / 4; roof2.rotation.x = -roof1.rotation.x;
+      const ridge = new THREE.Mesh(new THREE.BoxGeometry(W + 0.7 * s, 0.22, 0.4 * s), woodDark);
+      ridge.position.y = H + rH + 0.02;
+      // 山墙封板(三角)
+      const gab = new THREE.Mesh(new THREE.CylinderGeometry(0.02, D / 2 * 0.97, W, 3), woodDark);
+      gab.rotation.z = Math.PI / 2; gab.rotation.y = Math.PI / 2;
+      gab.scale.y = rH / (D / 2); gab.position.y = H + rH / 2 - 0.05;
+      g.add(body, doorF, doorL, doorR, roof1, roof2, ridge, gab);
+      col = { ...col, ...OBB(W / 2, D / 2), h: H + rH };
     } else if (c.type === 'ruin') {
       const s = (c.scale || 1);
       const brickM = texMat([0.88, 0.83, 0.78], 'brick', 3, 2.2), dark = lambert([0.42, 0.34, 0.3]);
@@ -135,11 +251,10 @@ SF.Models = (() => {
       col = { ...col, ...OBB(3.2 * s, 2.4 * s), h: 4.5 };
     } else if (c.type === 'wall') {
       const s = (c.scale || 1);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(7 * s, 2.9, 0.7), texMat([0.80, 0.78, 0.74], 'rock', 3.5, 1.5));
-      m.position.y = 1.45;
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(7.2 * s, 0.18, 0.9), lambert([0.38, 0.37, 0.34]));
-      cap.position.y = 2.98;
-      g.add(m, cap);
+      buildStonewall(g, 7 * s, 2.9, 0.7, Math.abs(hash(c.x, c.z) * 3000) | 0);   // 拟物: 分段错缝石墙
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(7.15 * s, 0.15, 0.9), lambert([0.38, 0.37, 0.34]));
+      cap.position.y = 2.97;
+      g.add(cap);
       col = { ...col, ...OBB(3.5 * s, 0.35 * s), h: 3.1 };   // 高石墙: 7m 长 0.7m 厚, 藏得住车体, 一比一碰撞
     } else if (c.type === 'haystack') {
       const s = (c.scale || 1);
