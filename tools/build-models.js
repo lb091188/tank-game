@@ -532,31 +532,47 @@ function buildRosterTank(T) {
 
   const gun = { r: T.gr || 0.075, len: T.gl2, brake: T.brake !== false, evac: !!T.evac };
   if (T.turret === 'casemate') {
-    // 固定战斗室(突击炮/歼击车)
-    const cy = H.y + H.h / 2;
+    // 固定战斗室(V2拟物: 三突同款六棱截面 — 内倾侧壁 + 后仰梯形正/后壁), openCab 敞篷不封顶
+    const cy = H.y + H.h / 2, cz = T.casZ || 0;
+    const casH = T.casH, splay = T.casSplay || 0.16, tilt = T.casA || 0.35;
+    const fZ = H.l / 2 - 0.45 + cz, casL = T.casL || 2.4, rZ = fZ - casL;
+    const wBot = H.w * 0.5, wTop = wBot - Math.tan(splay) * casH;
+    const fpShape = new THREE.Shape();   // 梯形截面(正/后壁共用, 顶边收窄对齐内倾侧壁)
+    fpShape.moveTo(-wBot, 0); fpShape.lineTo(wBot, 0); fpShape.lineTo(wTop, casH); fpShape.lineTo(-wTop, casH); fpShape.closePath();
+    const fpGeo = new THREE.ExtrudeGeometry(fpShape, { depth: 0.14, bevelEnabled: false });
+    fpGeo.translate(0, 0, -0.07);
     const mantlet = Z('mantlet', T.armor.mantlet);
-    const cz = T.casZ || 0;
-    mantlet.parts.push(part(box(H.w * 0.84, T.casH, 0.22), M4x(0, cy + T.casH / 2, H.l / 2 - 0.45 + cz, -T.casA || -0.35, 0, 0), C));
-    if (T.mantletBlob) mantlet.parts.push(part(new THREE.SphereGeometry(0.55, 10, 8), M4x(0, cy + T.casH * 0.58, H.l / 2 + 0.08 + cz, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.92, 0.75)), C));  // 铸造炮盾(ISU-152)
+    mantlet.parts.push(part(fpGeo, M4x(0, cy, fZ, -tilt, 0, 0), C));   // 后仰梯形正面板
+    const gunY = cy + casH * 0.6;
+    const faceZ = fZ + 0.07 - Math.tan(tilt) * casH * 0.6;             // 枪膛高处正面板前表面
+    if (T.mantletBlob) {
+      mantlet.parts.push(part(sphere(0.55, 10), M4x(0, cy + casH * 0.55, faceZ + 0.08, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.95, 0.78)), C));   // 铸造炮盾(ISU-152/SU-100)
+    } else {
+      mantlet.parts.push(part(box(0.58, 0.46, 0.38), M4x(0, gunY, faceZ + 0.16, -tilt, 0, 0), C));   // 防盾箱(猎豹/SU-85)
+    }
     root.children.push(mantlet);
     const casS = Z('turretSide', T.armor.turretSide);
-    for (const sx of [-1, 1]) casS.parts.push(part(box(0.16, T.casH, T.casL || 2.4), M4x(sx * H.w * 0.4, cy + T.casH / 2, H.l / 2 - 1.2 + cz), C));
+    for (const sx of [-1, 1])
+      casS.parts.push(part(box(0.16, casH / Math.cos(splay), casL),
+        M4x(sx * (wBot - Math.tan(splay) * casH / 2 - 0.01), cy + casH / 2, fZ - casL / 2, 0, 0, sx * splay), C));
+    casS.parts.push(part(fpGeo, M4x(0, cy, rZ, 0, Math.PI, 0), C));   // 后壁
     root.children.push(casS);
     const casT = Z('turretRoof', T.armor.top);
     if (T.openCab) {
       // 敞篷战斗室(黄蜂/野蜂/牧师史实开顶): 无顶板——俯射掉进战斗室打车体顶; 只留防水布卷+通风罩+天线
-      casT.parts.push(part(cyl(0.055, 0.055, (T.casL || 2.4) * 0.9, 8), M4x(0, cy + T.casH + 0.05, H.l / 2 - 1.35 + cz, 0, 0, Math.PI / 2), CANVAS));  // 后防水布卷
-      casT.parts.push(part(sphereSeg(0.13, 8, 5, 0, Math.PI * 2), M4x(-H.w * 0.18, cy + T.casH + 0.12, H.l / 2 - 1.6 + cz), C));                      // 通风罩
-      casT.parts.push(part(cyl(0.014, 0.02, 1.3, 5), M4x(H.w * 0.32, cy + T.casH + 0.6, H.l / 2 - 1.5 + cz, 0.08, 0, 0.05), DARK));                    // 天线
+      casT.parts.push(part(cyl(0.055, 0.055, casL * 0.9, 8), M4x(0, cy + casH + 0.05, fZ - casL * 0.55, 0, 0, Math.PI / 2), CANVAS));  // 后防水布卷
+      casT.parts.push(part(sphereSeg(0.13, 8, 5, 0, Math.PI * 2), M4x(-H.w * 0.18, cy + casH + 0.12, fZ - casL * 0.8), C));            // 通风罩
+      casT.parts.push(part(cyl(0.014, 0.02, 1.3, 5), M4x(H.w * 0.32, cy + casH + 0.6, fZ - casL * 0.7, 0.08, 0, 0.05), DARK));         // 天线
     } else {
-      casT.parts.push(part(box(H.w * 0.85, 0.12, (T.casL || 2.4) + 0.4), M4x(0, cy + T.casH + 0.05, H.l / 2 - 1.25 + cz), C));
-      casT.parts.push(part(cyl(0.26, 0.28, 0.06, 10), M4x(-H.w * 0.18, cy + T.casH + 0.12, H.l / 2 - 1.6 + cz), C));      // 车长舱盖
-      casT.parts.push(part(cyl(0.2, 0.22, 0.05, 10), M4x(H.w * 0.2, cy + T.casH + 0.1, H.l / 2 - 1.1 + cz), C));          // 装填手舱盖
-      casT.parts.push(part(sphereSeg(0.13, 8, 5, 0, Math.PI * 2), M4x(0, cy + T.casH + 0.14, H.l / 2 - 0.7 + cz), C));    // 通风罩
-      casT.parts.push(part(cyl(0.014, 0.02, 1.3, 5), M4x(H.w * 0.32, cy + T.casH + 0.6, H.l / 2 - 1.5 + cz, 0.08, 0, 0.05), DARK));  // 天线
+      casT.parts.push(part(box(wTop * 2 - 0.06, 0.12, casL + 0.18), M4x(0, cy + casH + 0.05, fZ - casL / 2 - 0.03), C));
+      if (T.nation === 'GER') cupola(casT, -H.w * 0.18, cy + casH + 0.11, rZ + 0.4, C, 0.95);                     // 德系: 鼓形车长塔
+      else casT.parts.push(part(cyl(0.26, 0.28, 0.06, 10), M4x(-H.w * 0.18, cy + casH + 0.12, rZ + 0.45), C));    // 苏系: 平舱盖
+      casT.parts.push(part(cyl(0.2, 0.22, 0.05, 10), M4x(H.w * 0.2, cy + casH + 0.1, fZ - casL * 0.35), C));      // 装填手舱盖
+      casT.parts.push(part(sphereSeg(0.13, 8, 5, 0, Math.PI * 2), M4x(0, cy + casH + 0.14, fZ - casL * 0.75), C));  // 通风罩
+      casT.parts.push(part(cyl(0.014, 0.02, 1.3, 5), M4x(H.w * 0.32, cy + casH + 0.6, fZ - casL * 0.6, 0.08, 0, 0.05), DARK));  // 天线
     }
     root.children.push(casT);
-    root.children.push(buildGun([0, cy + T.casH * 0.6, H.l / 2 + 0.05 + cz], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
+    root.children.push(buildGun([0, gunY, faceZ + 0.34], gun.r, gun.len, GUN_C, gun.brake, gun.evac));   // 枢轴贴防盾面(炮根不悬空)
   } else {
     // 旋转炮塔: cyl(铸造圆塔) / box(方塔) / open(敞篷圆塔)
     const cy = H.y + H.h / 2 + 0.04;
@@ -568,25 +584,30 @@ function buildRosterTank(T) {
     const tRear = Z('turretRear', T.armor.turretRear || T.armor.turretSide);
     const tRoof = Z('turretRoof', T.armor.top);
     if (TR.kind === 'dome') {
-      // 铸造半球炮塔(59式/IS-3/T-44/百人队长): 前扇区=炮塔正面, 侧扇区=侧面, 顶部圆盖
+      // 铸造圆炮塔(59式/IS-3/T-44/百人队长/V2拟物): 车床曲面轮廓(环座→最宽→弧形收顶),
+      // LatheGeometry 分扇区成型: 前=炮塔正面, 侧=侧面, 后=炮塔尾部(phi=0 朝 +Z 车头)
       const rr = TR.r;
-      tFront.parts.push(part(sphereSeg(rr, 10, 6, -0.75, 1.5), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
-      tSide.parts.push(part(sphereSeg(rr, 10, 6, 0.75, 1.82), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
-      tSide.parts.push(part(sphereSeg(rr, 10, 6, 2.57, 1.82), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
-      tRear.parts.push(part(sphereSeg(rr, 10, 6, 4.39, 1.5), M4x(0, ty, 0, 0, Math.PI / 2, 0).multiply(new THREE.Matrix4().makeScale(1, 0.72, 1)), C));
-      tRoof.parts.push(part(cyl(rr * 0.55, rr * 0.62, 0.12, 12), M4x(0, ty + TR.th * 0.72, 0), C));
-      cupola(tRoof, rr * 0.42, ty + TR.th * 0.72 + 0.06, -0.15, C, 0.9);                                 // 半球上指挥塔
-      turretKit(tRoof, tSide, { hw: rr * 0.52, hl: rr * 0.6, roofY: ty + TR.th * 0.72 + 0.06, boxK: false }, C);
-      if (TR.bustle) tRear.parts.push(part(box(rr * 1.3, TR.th * 0.5, 0.7), M4x(0, ty, -rr - 0.3), C));
+      const prof = [
+        [rr * 0.86, 0], [rr * 1.00, TR.th * 0.12], [rr * 1.04, TR.th * 0.32], [rr * 0.97, TR.th * 0.54],
+        [rr * 0.82, TR.th * 0.70], [rr * 0.55, TR.th * 0.84], [rr * 0.22, TR.th * 0.93], [rr * 0.01, TR.th * 0.97]
+      ].map(p => new THREE.Vector2(p[0], p[1]));
+      const sec = (zone, a0, len) => zone.parts.push(part(new THREE.LatheGeometry(prof, 10, a0, len), M4x(0, 0, 0), C));
+      sec(tFront, -1.05, 2.10);
+      sec(tSide, 1.05, 1.34); sec(tSide, -2.39, 1.34);
+      sec(tRear, 2.39, 1.50);
+      cupola(tRoof, -rr * 0.40, TR.th * 0.84, -rr * 0.25, C, 0.9);                                       // 弧顶上指挥塔(左后)
+      turretKit(tRoof, tSide, { hw: rr * 0.52, hl: rr * 0.60, roofY: TR.th * 0.86, boxK: false }, C);
+      if (TR.bustle) tRear.parts.push(part(box(rr * 1.15, TR.th * 0.42, 0.55), M4x(0, TR.th * 0.10, -rr * 0.92), C));
     } else if (TR.kind === 'hex') {
-      // T-34/76 式六棱炮塔: 六棱柱体 + 前装甲板 + 后尾舱
-      tSide.parts.push(part(cyl(TR.r, TR.r * 0.94, TR.th, 6), M4x(0, ty, 0, 0, Math.PI / 6, 0), C));
-      tFront.parts.push(part(box(TR.r * 1.1, TR.th, 0.2), M4x(0, ty, TR.r * 0.72), C));
-      tRear.parts.push(part(box(TR.r * 1.5, TR.th * 0.7, 0.6), M4x(0, ty - 0.05, -TR.r * 0.85), C));
-      tRoof.parts.push(part(cyl(TR.r * 0.62, TR.r * 0.62, 0.1, 6), M4x(0, TR.th + 0.03, 0, 0, Math.PI / 6, 0), C));
-      cupola(tRoof, TR.r * 0.3, TR.th + 0.08, -0.1, C, 0.85);
-      turretKit(tRoof, tSide, { hw: TR.r * 0.58, hl: TR.r * 0.62, roofY: TR.th + 0.08, boxK: false }, C);
-      tRoof.parts.push(part(box(0.6, 0.3, 0.4), M4x(-TR.r * 0.3, TR.th + 0.06, 0.2), C));   // 双开舱门
+      // T-34/76 式六棱炮塔(V2拟物): 底宽顶窄锥台六棱 + 前斜面 + 圆弧尾舱(带手枪口)
+      tSide.parts.push(part(cyl(TR.r * 0.90, TR.r * 1.10, TR.th, 6), M4x(0, ty, 0, 0, Math.PI / 6, 0), C));
+      tFront.parts.push(part(box(TR.r * 1.16, TR.th * 0.92, 0.20), M4x(0, ty - 0.02, TR.r * 0.64, -0.16, 0, 0), C));
+      tRear.parts.push(part(cyl(TR.r * 0.52, TR.r * 0.52, TR.r * 1.15, 10), M4x(0, ty - 0.03, -TR.r * 0.92, 0, 0, Math.PI / 2), C));
+      tRear.parts.push(part(cyl(0.06, 0.06, 0.12, 8), M4x(0, ty - TR.th * 0.16, -TR.r * 1.50, Math.PI / 2, 0, 0), DARK));  // 手枪口
+      tRoof.parts.push(part(cyl(TR.r * 0.58, TR.r * 0.88, 0.14, 6), M4x(0, TR.th + 0.02, 0, 0, Math.PI / 6, 0), C));
+      cupola(tRoof, TR.r * 0.30, TR.th + 0.10, -0.1, C, 0.85);
+      turretKit(tRoof, tSide, { hw: TR.r * 0.58, hl: TR.r * 0.62, roofY: TR.th + 0.10, boxK: false }, C);
+      tRoof.parts.push(part(box(0.6, 0.06, 0.44), M4x(-TR.r * 0.3, TR.th + 0.10, 0.2), C));   // 双开舱门(放平)
     } else if (TR.kind === 'osc') {
       // 摇摆炮塔(AMX-13/AMX-50 家族): 低矮托架 + 大倾角楔形上塔体
       const tw = TR.w, tl = TR.l;
@@ -597,11 +618,14 @@ function buildRosterTank(T) {
       tRear.parts.push(part(box(tw * 0.92, TR.th * 0.55, 0.18), M4x(0, TR.th * 0.68, -tl / 2 + 0.06, 0.3, 0, 0), C));
       tRoof.parts.push(part(box(tw * 0.78, 0.08, tl * 0.6), M4x(0, TR.th * 0.86, -tl * 0.08), C));
     } else if (TR.kind === 'cyl' || TR.kind === 'open') {
-      tFront.parts.push(part(cyl(TR.r * 0.94, TR.r, TR.th, 16), M4x(0, ty, 0), C));
+      tFront.parts.push(part(cyl(TR.r * 0.90, TR.r, TR.th, 16), M4x(0, ty, 0), C));   // 微收顶锥度塔壁
       if (TR.bustle) tFront.parts.push(part(box(TR.r * 1.3, TR.th * 0.7, 0.8), M4x(0, ty, -TR.r - 0.35), C));
       tSide.parts.push(part(cyl(TR.r * 0.96, TR.r, 0.06, 16), M4x(0, TR.th + 0.02, 0), C));
       tRear.parts.push(part(box(TR.r * 1.4, TR.th * 0.6, 0.2), M4x(0, ty - 0.06, -TR.r + 0.05), C));
-      if (TR.kind === 'cyl') tRoof.parts.push(part(cyl(TR.r * 0.95, TR.r * 0.95, 0.1, 16), M4x(0, TR.th + 0.06, 0), C));
+      if (TR.kind === 'cyl') {
+        tRoof.parts.push(part(cyl(TR.r * 0.95, TR.r * 0.95, 0.08, 16), M4x(0, TR.th + 0.04, 0), C));
+        tRoof.parts.push(part(cyl(TR.r * 0.45, TR.r * 0.88, TR.th * 0.26, 16), M4x(0, TR.th + 0.06, 0), C));   // 圆肩弧顶
+      }
       else tRoof.parts.push(part(cyl(TR.r * 0.5, TR.r * 0.5, 0.12, 10), M4x(0, TR.th + 0.05, 0.1), C));  // 敞篷: 后部小指挥塔
     } else {  // box
       const tw = TR.w, tl = TR.l;
@@ -634,12 +658,124 @@ function buildRosterTank(T) {
     if (mR) mantlet.parts.push(part(cyl(mR, mR, 0.32, 12), M4x(0, ty + 0.02, (TR.l || TR.r * 2) / 2 + 0.04, Math.PI / 2, 0, 0), C));
     else if (!T.mantletBlob && !T.wedgeShield) {
       const mw = TR.outerMantlet ? TR.w * 0.62 : 0.95, mh = TR.outerMantlet ? TR.th * 0.68 : 0.66;       // 四号外置炮盾
-      mantlet.parts.push(part(box(mw, mh, 0.3), M4x(0, ty + 0.02, (TR.l || TR.r * 2) / 2 + 0.08), C));
+      const mz = TR.kind === 'hex' ? TR.r * 0.80 : (TR.l || TR.r * 2) / 2 + 0.08;
+      mantlet.parts.push(part(box(mw, mh, 0.3), M4x(0, ty + 0.02, mz), C));
     }
     turret.children.push(tFront, tSide, tRear, tRoof, mantlet);
-    turret.children.push(buildGun([0, ty, (TR.kind === 'box' || TR.kind === 'hex' || TR.kind === 'osc') ? (TR.l || TR.r * 1.5) / 2 + 0.5 : TR.r + 0.5], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
+    const gunZ = (TR.kind === 'dome' || TR.kind === 'cyl' || TR.kind === 'open') ? TR.r + 0.08
+      : TR.kind === 'hex' ? TR.r * 0.85
+      : (TR.l || TR.r * 1.5) / 2 + 0.5;   // 枢轴贴防盾面(炮根不悬空)
+    turret.children.push(buildGun([0, ty, gunZ], gun.r, gun.len, GUN_C, gun.brake, gun.evac));
     root.children.push(turret);
   }
+  return root;
+}
+
+/* ============ 三号突击炮 Ausf.G 专属拟物(史照还原) ============
+   通用 casemate 模板的"方盒战斗室"不符史实, 本车按史照重造:
+   - 六棱截面战斗室: 侧壁内倾 + 后仰梯形正面板 + 梯形后壁(通用版是竖直方盒)
+   - 猪头铸造防盾(Saukopf 圆角梯形挤出), 通用版是斜插球
+   - StuK 40 L/48 不带炮口制退器(通用版默认双气室制退器, 史实三突没有)
+   - 鼓形车长塔 / 装填手双开舱盖 / 车尾机枪圆盾 / 驾驶员潜望镜对 / 首上备用履带 / 4 段侧裙板
+   装甲数值/分区/枢轴契约与 buildRosterTank 完全一致(引擎零改动) */
+function buildStug3(T) {
+  const C = NATION_COLOR[T.nation], A = T.armor;
+  const root = N(T.type, { extras: { type: T.type } });
+
+  /* ---- 行走机构(6 大直径负重轮 + 滚动履带纹理) ---- */
+  const hw = T.hull.w / 2;
+  const tracks = Z('tracks', 20);
+  runningGear(root, tracks, hw + 0.16, T.wheels, T.wr, T.tl, T.th || 0.84, 0, C);
+  tracks.trackTex = true;
+  root.children.push(tracks);
+
+  /* ---- 车体(Pz III 底盘): 近垂直首上 + 大倾角首下 ---- */
+  const hl = T.hull.l, hy = T.hull.y, sh = T.hull.h, topY = hy + sh / 2;
+  const hullSide = Z('hullSide', A.side);
+  for (const sx of [-1, 1]) {
+    hullSide.parts.push(part(box(0.18, sh, hl), M4x(sx * hw, hy, 0), C));
+    for (let i = 0; i < 4; i++)   // 侧裙板(Schürzen): 4 段留缝吊挂, 微歪斜
+      hullSide.parts.push(part(box(0.04, 0.62, 1.08), M4x(sx * (hw + 0.40), 1.24, 2.15 - i * 1.24, 0, (hash3(i, sx, 7) - 0.5) * 0.12, 0), C));
+  }
+  fenders(hullSide, hw, topY + 0.04, hl * 0.94, C);
+  hullKit(hullSide, T.hull.w, topY + 0.18, hl / 2 - 0.2, C);
+  root.children.push(hullSide);
+
+  const glacis = Z('glacis', A.glacis);
+  const gH = 0.72, gA = 0.14;
+  glacis.parts.push(part(box(2.56, gH / Math.cos(gA), 0.18), M4x(0, topY - gH / 2, hl / 2 + 0.02, -gA, 0, 0), C));
+  for (let i = 0; i < 3; i++)   // 首上备用履带(史照: 挂在车头)
+    glacis.parts.push(part(box(0.44, 0.07, 0.8), M4x(-0.85 + i * 0.85, topY - gH * 0.45, hl / 2 + 0.16, -gA, (hash3(i, 3, 9) - 0.5) * 0.1, 0), TRACK_C));
+  root.children.push(glacis);
+
+  const lower = Z('lowerPlate', A.lower);
+  lower.parts.push(part(box(2.56, 0.62, 0.18), M4x(0, topY - gH - 0.26, hl / 2 + 0.10, -0.5, 0, 0), C));
+  root.children.push(lower);
+
+  const rear = Z('hullRear', A.rear);
+  rear.parts.push(part(box(2.72, sh, 0.18), M4x(0, hy, -hl / 2 + 0.02, 0.15, 0, 0), C));
+  for (const sx of [-1, 1]) {   // 双消音筒 + 护板(史照车尾标志) + 拖钩
+    rear.parts.push(part(cyl(0.13, 0.13, 0.8, 8), M4x(sx * 0.62, 1.72, -hl / 2 - 0.10, 0.15, 0, 0), [0.17, 0.16, 0.14]));
+    rear.parts.push(part(box(0.36, 0.80, 0.05), M4x(sx * 0.62, 1.70, -hl / 2 - 0.18, 0.15, 0, 0), C));
+    rear.parts.push(part(cyl(0.045, 0.045, 0.24, 6), M4x(sx * 0.8, hy - sh * 0.3, -hl / 2 + 0.08, Math.PI / 2, 0, 0), STEEL));
+  }
+  root.children.push(rear);
+
+  const top = Z('hullTop', A.top);
+  top.parts.push(part(box(2.72, 0.12, hl - 0.06), M4x(0, topY + 0.05, -0.03), C));   // 前缘露到首上顶边(战斗室前留甲面台阶)
+  engineDeck(top, rear, 2.72, topY + 0.07, -hl / 2 + 1.15, C);
+  root.children.push(top);
+
+  /* ---- 战斗室: 六棱截面 ---- */
+  const casH = 0.95, splay = 0.20, tilt = 0.12;
+  const fZ = 2.52, casLen = 2.85, rZ = fZ - casLen;   // 底部前缘/后壁 z
+  const wBot = 1.47, wTop = wBot - Math.tan(splay) * casH;
+
+  const fpShape = new THREE.Shape();   // 梯形截面(前后壁共用, 顶边收窄对齐内倾侧壁)
+  fpShape.moveTo(-wBot, 0); fpShape.lineTo(wBot, 0); fpShape.lineTo(wTop, casH); fpShape.lineTo(-wTop, casH); fpShape.closePath();
+  const fpGeo = new THREE.ExtrudeGeometry(fpShape, { depth: 0.14, bevelEnabled: false });
+  fpGeo.translate(0, 0, -0.07);
+
+  glacis.parts.push(part(fpGeo, M4x(0, topY, fZ, -tilt, 0, 0), C));   // 正面梯形板(后仰)
+  const pY = topY + casH * 0.78, pZ = fZ - Math.tan(tilt) * casH * 0.78 + 0.10;
+  for (const sx of [-1.02, -0.78])   // 驾驶员潜望镜对(史照: 双潜望镜在火炮左侧)
+    glacis.parts.push(part(box(0.14, 0.1, 0.16), M4x(sx, pY, pZ, -tilt, 0, 0), DARK));
+
+  const casS = Z('turretSide', A.turretSide);
+  for (const sx of [-1, 1])   // 侧壁内倾
+    casS.parts.push(part(box(0.14, casH / Math.cos(splay), casLen),
+      M4x(sx * (wBot - Math.tan(splay) * casH / 2 - 0.02), topY + casH / 2, fZ - casLen / 2, 0, 0, sx * splay), C));
+  casS.parts.push(part(fpGeo, M4x(0, topY, rZ, 0, Math.PI, 0), C));   // 后壁(同梯形截面, 翻转朝后)
+  root.children.push(casS);
+
+  const roofY = topY + casH + 0.06;
+  const casT = Z('turretRoof', A.top);
+  casT.parts.push(part(box(2.56, 0.12, casLen + 0.18), M4x(0, roofY, fZ - casLen / 2 - 0.05), C));
+  cupola(casT, -0.62, roofY + 0.06, rZ + 0.45, C, 1.05);              // 鼓形车长塔(左后)
+  for (const sx of [-1, 1])   // 装填手双开舱盖(右前, 平放闭合一缝)
+    casT.parts.push(part(box(0.34, 0.04, 0.62), M4x(0.60 + sx * 0.19, roofY + 0.05, fZ - 1.15, 0, 0, 0), DGRAY));
+  casT.parts.push(part(sphereSeg(0.14, 8, 5, 0, Math.PI * 2), M4x(0.05, roofY + 0.08, fZ - 1.85), C));  // 通风罩
+  casT.parts.push(part(cyl(0.27, 0.27, 0.05, 12), M4x(0.12, roofY + 0.14, rZ + 0.12, Math.PI / 2 - 0.25, 0, 0), C));    // 车尾机枪圆盾
+  casT.parts.push(part(cyl(0.028, 0.028, 0.78, 6), M4x(0.12, roofY + 0.30, rZ + 0.02, -1.15, 0, 0), GUN_C));            // MG34 枪身
+  casT.parts.push(part(cyl(0.014, 0.02, 1.4, 5), M4x(1.02, roofY + 0.72, rZ + 0.55, 0.06, 0, 0.05), DARK));             // 天线
+  root.children.push(casT);
+
+  /* ---- 猪头防盾(Saukopf 圆角梯形挤出) + StuK 40 L/48(无制退器) ---- */
+  const gunY = topY + casH * 0.50, gunZ = fZ - Math.tan(tilt) * casH * 0.50 + 0.05;
+  const mantlet = Z('mantlet', A.mantlet);
+  const sk = new THREE.Shape();
+  sk.moveTo(-0.52, -0.31); sk.lineTo(0.52, -0.31);
+  sk.quadraticCurveTo(0.66, -0.31, 0.60, -0.19); sk.lineTo(0.38, 0.27);
+  sk.quadraticCurveTo(0.34, 0.33, 0.26, 0.33); sk.lineTo(-0.26, 0.33);
+  sk.quadraticCurveTo(-0.34, 0.33, -0.38, 0.27); sk.lineTo(-0.60, -0.19);
+  sk.quadraticCurveTo(-0.66, -0.31, -0.52, -0.31);
+  const skGeo = new THREE.ExtrudeGeometry(sk, { depth: 0.40, bevelEnabled: false });
+  skGeo.translate(0, 0, -0.05);
+  mantlet.parts.push(part(skGeo, M4x(0, gunY, gunZ, -tilt, 0, 0), C));
+  mantlet.parts.push(part(cyl(0.15, 0.17, 0.44, 10), M4x(0, gunY, gunZ + 0.16, Math.PI / 2 - tilt, 0, 0), C));  // 防盾枪膛座
+  root.children.push(mantlet);
+
+  root.children.push(buildGun([0, gunY, gunZ + 0.30], 0.062, 3.1, GUN_C, false, false));
   return root;
 }
 
@@ -666,7 +802,7 @@ const ROSTER = [
     hull: { l: 5.9, w: 2.72, h: 1.05, y: 1.28 }, gl: 1.4, ga: 0.52, gl2: 3.45, turret: 'casemate', casH: 0.95, casA: 0.3, casL: 2.3,
     armor: { glacis: 60, lower: 50, side: 30, rear: 30, top: 16, turretSide: 30, mantlet: 80 } },
   { type: 'jagdpanther', nation: 'GER', hw: 1.55, wheels: 7, wr: 0.40, tl: 6.9, th: 0.88, interleave: 0.30, skirts: true,
-    hull: { l: 6.9, w: 3.1, h: 1.1, y: 1.30 }, gl: 2.0, ga: 0.96, gl2: 4.9, gr: 0.09, turret: 'casemate', casH: 1.0, casA: 0.5, casL: 2.6,
+    hull: { l: 6.9, w: 3.1, h: 1.1, y: 1.30 }, gl: 2.0, ga: 0.96, gl2: 4.9, gr: 0.09, turret: 'casemate', casH: 1.0, casA: 0.5, casL: 2.6, casSplay: 0.12,
     armor: { glacis: 80, lower: 60, side: 40, rear: 40, top: 16, turretSide: 45, mantlet: 100 } },
   // 苏联
   { type: 'bt7', nation: 'USSR', hw: 1.06, wheels: 4, wr: 0.55, tl: 5.5, th: 0.8,
@@ -694,13 +830,13 @@ const ROSTER = [
     armor: { glacis: 120, lower: 90, side: 90, rear: 60, top: 20, turretFront: 100, turretSide: 90, turretRear: 90, mantlet: 120 },
     turret: { kind: 'dome', r: 1.1, th: 0.68, bustle: true } },
   { type: 'su85', nation: 'USSR', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.2, th: 0.86,
-    hull: { l: 6.0, w: 2.9, h: 1.05, y: 1.28 }, gl: 1.6, ga: 1.05, gl2: 4.0, turret: 'casemate', casH: 0.85, casA: 0.5, casL: 2.4,
+    hull: { l: 6.0, w: 2.9, h: 1.05, y: 1.28 }, gl: 1.6, ga: 1.05, gl2: 4.0, turret: 'casemate', casH: 0.85, casA: 0.5, casL: 2.4, casSplay: 0.24,
     armor: { glacis: 45, lower: 45, side: 45, rear: 45, top: 16, turretSide: 45, mantlet: 75 } },
   { type: 'su100', nation: 'USSR', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.2, th: 0.86, mantletBlob: true,
-    hull: { l: 6.0, w: 2.9, h: 1.05, y: 1.28 }, gl: 1.6, ga: 1.05, gl2: 4.6, gr: 0.09, turret: 'casemate', casH: 0.85, casA: 0.5, casL: 2.4,
+    hull: { l: 6.0, w: 2.9, h: 1.05, y: 1.28 }, gl: 1.6, ga: 1.05, gl2: 4.6, gr: 0.09, turret: 'casemate', casH: 0.85, casA: 0.5, casL: 2.4, casSplay: 0.24,
     armor: { glacis: 45, lower: 45, side: 45, rear: 45, top: 16, turretSide: 45, mantlet: 75 } },
   { type: 'isu152', nation: 'USSR', hw: 1.5, wheels: 6, wr: 0.44, tl: 6.8, th: 0.9,
-    hull: { l: 6.8, w: 3.0, h: 1.1, y: 1.32 }, gl: 1.7, ga: 0.44, gl2: 4.3, gr: 0.13, brake: false, mantletBlob: true, turret: 'casemate', casH: 1.05, casA: 0.35, casL: 2.8,
+    hull: { l: 6.8, w: 3.0, h: 1.1, y: 1.32 }, gl: 1.7, ga: 0.44, gl2: 4.3, gr: 0.13, brake: false, mantletBlob: true, turret: 'casemate', casH: 1.05, casA: 0.35, casL: 2.8, casSplay: 0.22,
     armor: { glacis: 100, lower: 90, side: 90, rear: 60, top: 20, turretSide: 75, mantlet: 130 } },
   // 美国
   { type: 'm3lee', nation: 'USA', hw: 1.30, wheels: 6, wr: 0.42, tl: 6.2, th: 0.9, sponson: true,
@@ -756,7 +892,7 @@ const ROSTER = [
     armor: { glacis: 150, lower: 100, side: 80, rear: 80, top: 25, turretFront: 180, turretSide: 80, turretRear: 80, mantlet: 180 },
     turret: { kind: 'box', w: 2.35, l: 2.6, th: 0.78, bustle: true, z: 0.15, slopeFront: true } },
   { type: 'ferdinand', nation: 'GER', hw: 1.6, wheels: 6, wr: 0.42, tl: 7.0, th: 0.9,
-    hull: { l: 6.8, w: 3.1, h: 1.15, y: 1.34 }, gl: 1.9, ga: 0.26, gl2: 5.3, gr: 0.09, turret: 'casemate', casH: 1.05, casA: 0.35, casL: 2.7, casZ: -0.9,
+    hull: { l: 6.8, w: 3.1, h: 1.15, y: 1.34 }, gl: 1.9, ga: 0.26, gl2: 5.3, gr: 0.09, turret: 'casemate', casH: 1.05, casA: 0.35, casL: 2.7, casZ: -0.9, casSplay: 0.05,
     armor: { glacis: 160, lower: 100, side: 80, rear: 60, top: 25, turretSide: 80, mantlet: 200 } },
   { type: 'is3', nation: 'USSR', hw: 1.5, wheels: 6, wr: 0.44, tl: 6.9, th: 0.9, pike: true,
     hull: { l: 6.9, w: 3.1, h: 1.1, y: 1.32 }, gl: 1.7, ga: 1.05, gl2: 4.1, gr: 0.11, brake: false,
@@ -783,13 +919,13 @@ const ROSTER = [
     armor: { glacis: 76, lower: 64, side: 50, rear: 38, top: 20, turretFront: 152, turretSide: 89, turretRear: 89, mantlet: 140 },
     turret: { kind: 'cyl', r: 1.12, th: 0.75, bustle: true } },
   { type: 'type62', nation: 'CHN', hw: 1.25, wheels: 5, wr: 0.42, tl: 6.0, th: 0.82, evac: true,
-    hull: { l: 5.9, w: 2.5, h: 0.95, y: 1.20 }, gl: 1.5, ga: 1.05, gl2: 3.9, gr: 0.085,
+    hull: { l: 5.9, w: 2.7, h: 0.80, y: 1.10 }, gl: 1.5, ga: 1.05, gl2: 4.2, gr: 0.085,   // 史实低矮车体(高2.25m) + 近车宽大圆塔
     armor: { glacis: 45, lower: 35, side: 25, rear: 20, top: 12, turretFront: 60, turretSide: 40, turretRear: 35, mantlet: 90 },
-    turret: { kind: 'dome', r: 0.95, th: 0.56 } },
+    turret: { kind: 'dome', r: 1.16, th: 0.64 } },
   { type: 'type59', nation: 'CHN', hw: 1.45, wheels: 5, wr: 0.45, tl: 6.4, th: 0.88, evac: true,
-    hull: { l: 6.2, w: 2.9, h: 1.0, y: 1.26 }, gl: 1.7, ga: 1.05, gl2: 4.5, gr: 0.09,
+    hull: { l: 6.2, w: 2.9, h: 0.92, y: 1.20 }, gl: 1.7, ga: 1.05, gl2: 4.5, gr: 0.09,   // 史实低矮车体 + 近车宽大扁圆塔(史照)
     armor: { glacis: 100, lower: 100, side: 80, rear: 45, top: 20, turretFront: 130, turretSide: 100, turretRear: 80, mantlet: 160 },
-    turret: { kind: 'dome', r: 1.1, th: 0.64 } },
+    turret: { kind: 'dome', r: 1.24, th: 0.70 } },
   { type: 'wz111', nation: 'CHN', hw: 1.55, wheels: 7, wr: 0.44, tl: 7.1, th: 0.92, evac: true,
     hull: { l: 7.0, w: 3.1, h: 1.1, y: 1.32 }, gl: 1.9, ga: 0.79, gl2: 5.0, gr: 0.11, brake: false,
     armor: { glacis: 130, lower: 100, side: 90, rear: 60, top: 20, turretFront: 160, turretSide: 110, turretRear: 90, mantlet: 190 },
@@ -1115,7 +1251,7 @@ const TANKS = [
   { file: 'enemy-medium.glb', build: buildMedium },
   { file: 'enemy-td.glb', build: buildTD },
   { file: 'enemy-heavy.glb', build: buildHeavy },
-  ...ROSTER.map(T => ({ file: T.type + '.glb', build: () => buildRosterTank(T), roster: true }))
+  ...ROSTER.map(T => ({ file: T.type + '.glb', build: () => (T.type === 'stug3' ? buildStug3(T) : buildRosterTank(T)), roster: true }))
 ];
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
