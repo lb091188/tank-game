@@ -38,16 +38,19 @@ SF.HUD = (() => {
   // 双准星(WoT 式): 中心点=鼠标/相机瞄准; 散布圈=炮管实际指向(炮塔回转时滞后追赶) + 最小像素保证不开镜也可见
   function updateAimCircle(player, world, uiState) {
     const circle = $('aimCircle');
-    // 火炮(抛物线射击): 圆心=火炮当前指向×射程(车体未对准前圈跟随炮管, 诚实反映落点), 散布按炮→落点射程
+    // 火炮(弹道射击): 圆心=弹道积分真实落点(见 main.updateTraj), 散布椭圆随落角拉长(平射≈圆/曲射纵长)
     const spg = player.spec.cls === 'SPG';
     let aim = spg ? uiState.aimPoint : uiState.gunAim;
     if (!player.alive || !aim) { circle.style.display = 'none'; return; }
     let pos = aim.pos, aimDist = Math.hypot(aim.pos.x - player.x, aim.pos.z - player.z);
     if (spg) {
-      const gd = player.gunDir();
-      const gh = Math.atan2(gd.x, gd.z);                        // 火炮当前世界指向
-      const lx = player.x + Math.sin(gh) * aimDist, lz = player.z + Math.cos(gh) * aimDist;
-      pos = new THREE.Vector3(lx, world.terrain.heightAt(lx, lz), lz);
+      // 圆心=炮弹真实落点(按当前炮管姿态弹道积分, main.updateTraj 输出):
+      // 转炮/压仰角时圈如实跟着落点走, 不再按"炮管方位×瞄准距离"偏到准星旁边
+      const L = uiState.trajLand;
+      if (L) {
+        pos = new THREE.Vector3(L.x, L.y + 0.05, L.z);
+        aimDist = Math.hypot(L.x - player.x, L.z - player.z);
+      }
     }
     const center = project(pos);
     if (!center) { circle.style.display = 'none'; return; }
@@ -60,8 +63,9 @@ SF.HUD = (() => {
     const fU = { x: Math.sin(gh), z: Math.cos(gh) }, rU = { x: Math.cos(gh), z: -Math.sin(gh) };
     const prj = (ux, uz, m) => project(new THREE.Vector3(pos.x + ux * m, pos.y + 0.05, pos.z + uz * m));
     if (spg) {
-      // 抛物线弹道: 落点散布为沿射击方向拉长的椭圆(纵向 ≈ 横向 × 2.6)
-      const pLong = prj(fU.x, fU.z, radiusM * 2.6), pShort = prj(rU.x, rU.z, radiusM);
+      // 抛物线弹道: 落点散布为沿射击方向拉长的椭圆; 平射低伸(落角小)≈正圆, 曲射高抛≈纵长 2.6 倍
+      const elong = Math.min(1 + (uiState.trajLand ? uiState.trajLand.slope : 1.8) * 0.9, 2.6);
+      const pLong = prj(fU.x, fU.z, radiusM * elong), pShort = prj(rU.x, rU.z, radiusM);
       if (!pLong || !pShort) { circle.style.display = 'none'; return; }
       const lv = { x: pLong.x - center.x, y: pLong.y - center.y };
       const sv = { x: pShort.x - center.x, y: pShort.y - center.y };

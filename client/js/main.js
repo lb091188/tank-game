@@ -149,7 +149,7 @@ SF.Main = (() => {
     buildTrajLine();
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
-      aimPoint, gunAim, sniper, spotted, lastKnown, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT, bush: bushUi,
+      aimPoint, gunAim, sniper, spotted, lastKnown, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT, trajLand, bush: bushUi,
       // 鹰眼俯视视野足迹(小地图绿框): 中心=artyX/Z, w/h=当前 fov 与高度下的地面可视范围
       arty: (() => {
         if (!(sniper && world && world.player && world.player.spec.cls === 'SPG')) return null;
@@ -369,11 +369,11 @@ SF.Main = (() => {
       const hit = findRayHit(mz, gd);
       gunAim = hit || { pos: mz.clone().addScaledVector(gd, 400), dist: 400 };   // 打天时取炮向 400m 虚拟点, 保证圈始终存在
       updateTraj();
-    } else { gunAim = null; if (trajLine) trajLine.visible = false; setAimOutline(null); }
+    } else { gunAim = null; if (trajLine) trajLine.visible = false; trajLand = null; setAimOutline(null); }
   }
 
   /* ---------- 鹰眼弹道预览线: 从炮口按真实弹道积分, 被地形/建筑遮挡则截断变红 ---------- */
-  let trajLine = null, groundLine = null, trajFlightT = 0;   // trajFlightT: 炮弹到落点的飞行时间(秒)
+  let trajLine = null, groundLine = null, trajFlightT = 0, trajLand = null;   // trajFlightT: 炮弹到落点的飞行时间(秒); trajLand: 弹道积分真实落点(散布椭圆圆心)
   const TRAJ_N = 140, TRAJ_DT = 0.02;     // 飞行 ~1.3-1.8s; 步长要细(粗了落点判定会漂进 20m 警戒区)
   function buildTrajLine() {
     const geo = new THREE.BufferGeometry();
@@ -394,14 +394,15 @@ SF.Main = (() => {
   }
   function updateTraj() {
     const p = world.player;
-    const show = sniper && p.alive && p.spec.cls === 'SPG' && !gameOver;
     if (!trajLine) return;
-    // 弹道仿真照跑(飞行时间/遮挡判定用), 但 3D 弧线在鹰眼里不画:
-    // 高抛弧顶(300-400m)远超俯视相机高度, 穿过相机平面的线段会被透视放大成
-    // 横扫屏幕的巨线("炮线从别的角飞出来") —— WoT 鹰眼同样只看地面引导线
+    const show = sniper && p.alive && p.spec.cls === 'SPG' && !gameOver;
+    // 3D 弧线(trajLine)恒不画: 高抛弧顶(300-400m)远超俯视相机高度, 穿过相机平面的线段会被
+    // 透视放大成横扫屏幕的巨线 —— WoT 鹰眼同样只看地面引导线
     trajLine.visible = false;
     if (groundLine) groundLine.visible = show;
-    if (!show) return;
+    // 弹道仿真常跑(不开鹰眼也要): 真实落点是散布椭圆圆心/飞行时间的唯一权威来源
+    trajLand = null;
+    if (!p.alive || p.spec.cls !== 'SPG' || gameOver) return;
     const pos = p.muzzleWorld();
     const vel = p.gunDir().multiplyScalar(p.spec.gun.speed);
     const g = p.spec.gun.grav || SF.CFG.sim.shellGravity;
@@ -416,10 +417,12 @@ SF.Main = (() => {
       if (pos.y <= T.heightAt(pos.x, pos.z)) { endType = 'ground'; break; }     // 触地
     }
     trajFlightT = (n + 1) * TRAJ_DT;
+    // 落点(含触地斜率): 平射=近圆散布, 曲射=纵长椭圆
+    trajLand = { x: pos.x, y: pos.y, z: pos.z, slope: Math.abs(vel.y) / (Math.hypot(vel.x, vel.z) || 1) };
     // 地面引导线着色: 中途撞掩体/撞山(落点远离瞄准点) → 红色警告; 正常 → 金色
     const endErr = endType === 'ground' && aimPoint ? Math.hypot(pos.x - aimPoint.pos.x, pos.z - aimPoint.pos.z) : 0;
     const warn = endType === 'cover' || (endType === 'ground' && endErr > 20);
-    if (groundLine) {
+    if (groundLine && show) {
       const arr = groundLine.geometry.attributes.position.array, G = 32;
       for (let i = 0; i < G; i++) {
         const k = i / (G - 1);
@@ -882,34 +885,34 @@ SF.Main = (() => {
       steer: str,
       fire: mouseDown
     };
-    if (aimPoint) {
-      const dx = aimPoint.pos.x - p.x, dz = aimPoint.pos.z - p.z;
+    // 有效瞄准目标: 自动瞄准锁定目标 > 相机准星点
+    const tg = (autoTarget && autoTarget.alive) ? { x: autoTarget.x, y: autoTarget.y + 1.1, z: autoTarget.z }
+      : (aimPoint ? aimPoint.pos : null);
+    if (tg) {
+      const dx = tg.x - p.x, dz = tg.z - p.z, d = Math.max(Math.hypot(dx, dz), 1);
       input.aimYaw = Math.atan2(dx, dz);
-      input.aimPitch = Math.atan2(aimPoint.pos.y - (p.y + 2.2), Math.hypot(dx, dz));
-      // 自行火炮: 纯曲射解算(WoT 火炮) —— 只取高抛根, 永不直射;
-      // 近于最小射程(高抛根超出仰角上限)压最大仰角, 炮弹落在最小射程外(打不进近目标)
+      input.aimPitch = Math.atan2(tg.y - (p.y + 2.2), d);
+      // 自行火炮弹道解算(WoT): 远距取高抛根曲射; 近距高抛根超仰角上限时自动切低弹道平射
+      // —— 炮管压得平, 炮弹靠自然下坠砸中准星(不是"必须抛物线"), 自动瞄准同样走弹道解算;
+      // 两根都够不着(超最大射程)才压最大仰角打最远
       if (p.spec.cls === 'SPG') {
         const v = p.spec.gun.speed, g = p.spec.gun.grav || SF.CFG.sim.shellGravity;
-        const d = Math.hypot(dx, dz);
-        const h = (p.y + 2.2) - aimPoint.pos.y;              // 炮口高于落点
+        const h = (p.y + 2.2) - tg.y;                        // 炮口高于落点
         const A = g * d * d / (2 * v * v);
         const disc = d * d - 4 * A * (A - h);
-        const uMax = Math.tan(p.spec.gunElevation);
+        const uMax = Math.tan(p.spec.gunElevation), uMin = Math.tan(p.spec.gunDepression);
         let u = uMax;
-        if (d > 2 && disc >= 0) u = Math.min((d + Math.sqrt(disc)) / (2 * A), uMax);   // 高抛解, 封顶
-        input.aimPitch = Math.atan(u);
+        if (disc >= 0) {
+          const s = Math.sqrt(disc), uHi = (d + s) / (2 * A), uLo = (d - s) / (2 * A);
+          u = uHi <= uMax ? uHi : uLo;                       // 高抛根优先, 超上限 → 低弹道平射
+        }
+        input.aimPitch = Math.atan(U.clamp(u, uMin, uMax));
       }
     } else { input.aimYaw = camYaw; input.aimPitch = 0; }
     // WoT 式右键自由视角: 按住右键时炮塔转角/炮管俯仰相对车体锁定(车体转动炮塔跟着走),
     // 相机自由查看四周; 松开后炮塔伺服重新追赶相机瞄准
     // (鹰眼模式例外: 落点恒为视野中心, 右键不解锁弹道解算)
     if (freeLook && !(sniper && p.spec.cls === 'SPG')) input.holdTurret = true;
-    // 自动瞄准: 炮塔持续跟踪锁定目标(优先于自由视角)
-    if (autoTarget && autoTarget.alive) {
-      const dx = autoTarget.x - p.x, dz = autoTarget.z - p.z;
-      input.aimYaw = Math.atan2(dx, dz);
-      input.aimPitch = Math.atan2(autoTarget.y + 1.1 - (p.y + 2.2), Math.max(Math.hypot(dx, dz), 1));
-    }
     // 固定战斗室(WoT 式): 准星超出炮管射界 → 车体自动转向, 转到对准准星(±1.5°)才停;
     // 玩家按键转向优先(打断自动转向); 右键自由视角时不自动转
     if (input.steer) p._autoTurn = false;
