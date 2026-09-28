@@ -366,7 +366,7 @@ SF.HUD = (() => {
       if (!e.alive) continue;
       const spotted = uiState.spotted.has(e) || world.time - (e.lastFireT || -99) < 5;
       if (!spotted) continue;
-      const p = project(new THREE.Vector3(e.x, e.y + 5.0, e.z));
+      const p = project(new THREE.Vector3(e.x, e.y + 5.6, e.z));
       if (!p || p.x < 0 || p.x > innerWidth || p.y < 0 || p.y > innerHeight) continue;
       const d = document.createElement('div');
       d.className = 'emark';

@@ -64,7 +64,7 @@ SF.Main = (() => {
   const spotStreak = new Map();    // 敌 → 本次持续点亮起始时刻(决定残留时长 5→10s)
   const spotLinger = new Map();    // 敌 → 丢失视野后的残留秒数(WoT: 最短 5s, 持续暴露可延至 10s)
   let lampT = 0;                   // 被敌人持续注视的时长(六感灯 3s 延迟, WoT)
-  let waveIdx = 0, waveEnemies = [], repairT = 0, repairDone = false, gameOver = false, loseT = -1;
+  let waveIdx = 0, waveEnemies = [], repairT = 0, repairMsgText = '', repairMsgOn = false, repairDone = false, gameOver = false, loseT = -1;
   let stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   let aimPoint = null, gunAim = null;
 
@@ -237,7 +237,8 @@ SF.Main = (() => {
         const fix = (t) => { t.hp = Math.min(t.spec.hp, t.hp + heal); t.modules = { track: 0, engine: 0, gun: 0, ammo: 0 }; };
         if (MP.mode === 'sp') fix(world.player);
         else for (const [id, t] of MP.tanks) if (id < 100 && t.alive) fix(t);
-        SF.HUD.showMsg(world.map.repairBetweenWaves.text + ` (+${heal} HP)`, repairT);
+        repairMsgText = world.map.repairBetweenWaves.text + ` (+${heal} HP)`;
+        SF.HUD.showMsg(`${repairMsgText} ${Math.ceil(repairT)}s`, 0);   // dur=0 常驻, 倒计时由主循环逐帧刷新
       }
       if (repairT > 0) return;
       waveIdx++; repairDone = false;
@@ -327,8 +328,9 @@ SF.Main = (() => {
       }
       if (t > 500 && py > 160 && dir.y > 0) break;
     }
-    // 掩体与敌坦克(含残骸: 挡弹即挡瞄, 不出幽灵准星)
-    const objs = [world.covers.group];
+    // 挡弹掩体与敌坦克(含残骸: 挡弹即挡瞄, 不出幽灵准星)
+    // 草丛/树篱/草垛/残骸等软质物挡视线不挡弹 → 准星与弹道预览同样直接穿过(WoT 隔草对射)
+    const objs = world.covers.solid.slice();
     for (const e of world.enemies) objs.push(...e.parts.zones);
     _ray.set(origin, dir); _ray.far = Math.min(bestT, maxDist);
     const hits = _ray.intersectObjects(objs, true);
@@ -345,10 +347,20 @@ SF.Main = (() => {
   }
 
   // 相机瞄准点(鼠标中心) + 炮管实际指向点(双准星: 散布圈跟炮走, 追赶后与中心合拢)
+  // 瞄准轮廓(WoT 红色剪影): 准星压在敌坦克上时勾出整车轮廓
+  let aimOutline = null;
+  function setAimOutline(t) {
+    if (t === aimOutline) return;
+    if (aimOutline && aimOutline.parts.outline) aimOutline.parts.outline.set(false);
+    if (t && t.parts.outline) t.parts.outline.set(true);
+    aimOutline = t;
+  }
   function computeAim() {
     const camDir = new THREE.Vector3();
     camera.getWorldDirection(camDir);
     aimPoint = findRayHit(camera.position.clone(), camDir);
+    const hitTank = aimPoint && aimPoint.hit && aimPoint.hit.tank;
+    setAimOutline(hitTank && hitTank.alive ? hitTank : null);
 
     const p = world.player;
     if (p.alive) {
@@ -357,7 +369,7 @@ SF.Main = (() => {
       const hit = findRayHit(mz, gd);
       gunAim = hit || { pos: mz.clone().addScaledVector(gd, 400), dist: 400 };   // 打天时取炮向 400m 虚拟点, 保证圈始终存在
       updateTraj();
-    } else { gunAim = null; if (trajLine) trajLine.visible = false; }
+    } else { gunAim = null; if (trajLine) trajLine.visible = false; setAimOutline(null); }
   }
 
   /* ---------- 鹰眼弹道预览线: 从炮口按真实弹道积分, 被地形/建筑遮挡则截断变红 ---------- */
@@ -1005,6 +1017,12 @@ SF.Main = (() => {
   }
 
   /* ---------- 主循环 ---------- */
+  // 敌车是否应显示模型(单一权威判定): 点亮残留期内, 或 5s 内开过炮(炮口焰暴露, 与小地图/名牌同款)
+  // 之前模型只认 spotted, 而红点/名牌还认开炮暴露 → 出现"小地图有红点、屏幕上却没车"的分裂
+  function spotDisplay(e) {
+    return spotted.has(e) || world.time - (e.lastFireT || -99) < 5;
+  }
+
   function step(dt) {
     const p = world.player;
     const prevX = p.x, prevZ = p.z;
@@ -1057,7 +1075,10 @@ SF.Main = (() => {
     shells.update(dt, world);
 
     if (MP.mode === 'sp' || (MP.mode === 'host' && MP.gameMode === 'coop')) {
-      if (repairT > 0) repairT -= dt;
+      if (repairT > 0) {
+        repairT -= dt;
+        if (repairT > 0) SF.HUD.showMsg(`${repairMsgText} ${Math.ceil(repairT)}s`, 0);   // 逐帧刷新倒计时
+      }
       checkWave();
     }
 
@@ -1089,8 +1110,9 @@ SF.Main = (() => {
         else { spottedLast.delete(e); spotLinger.delete(e); }
       for (const e of spotted) lastKnown.set(e, { x: e.x, z: e.z });   // 点亮=实时刷新最后已知位置
       for (const [e] of lastKnown) if (!e.alive) lastKnown.delete(e);
-      // WoT 式: 未点亮的敌军模型隐藏(看得见≠点亮; 阵亡残骸保留); 丢失后残留期内仍可见, 归零即消失
-      for (const e of world.enemies) e.group.visible = !e.alive || spotted.has(e);
+      // WoT 式: 未点亮的敌军模型隐藏(看得见≠点亮; 阵亡残骸保留)
+      // 显示判定与 HUD 名牌/小地图红点同一条规则: 点亮残留期内, 或 5s 内开过炮(炮口焰暴露)
+      for (const e of world.enemies) e.group.visible = !e.alive || spotDisplay(e);
     }
     if (MP.mode === 'host') {   // 死斗小地图红点: 其他玩家(同套隐蔽/通视/强制点亮)
       spottedTimer -= dt;
@@ -1200,7 +1222,7 @@ SF.Main = (() => {
     '急停对炮是基本功：松油门，稳住，一炮定乾坤！',
     '倒车伸缩掐好节奏：打一炮退半步，活活气死对面！',
     '被点亮后敌人的无线电会炸锅——转移要快，履带就是命！',
-    '蹲进草丛/树篱可以隐蔽：敌人看不见你，但一开炮就失效 4 秒！软质物不挡炮弹，找石头房子躲弹。',
+    '草丛/树篱/草垛都是软质草本，直接压过去就行：蹲进去还能隐蔽，敌人看不见你，但一开炮就失效 4 秒！软质物不挡炮弹，找石头房子躲弹。',
     '看不见的敌人=你没点亮它：视距×隐蔽与遮挡说了算——逼近、升观瞄配件，或等它开炮暴露！',
     '开炮声会出卖你的方位，敌群马上合围——打一枪，换一个地方！',
     '敌人丢了你会全队搜剿——绕到他们背后放冷炮，才是猎人的打法！',
@@ -1487,7 +1509,7 @@ SF.Main = (() => {
   /* ---------- 战斗生命周期: 开战 / 退出回车库 / 再战 ---------- */
   let battleBound = false;   // 输入与事件总线只绑一次(重开战斗不重复绑定)
   function resetBattleVars() {
-    gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairDone = false; spottedTimer = 0;
+    gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairMsgText = ''; repairMsgOn = false; repairDone = false; spottedTimer = 0;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
     vcx = innerWidth / 2; vcy = innerHeight / 2;
     spottedLast.clear(); spotStreak.clear(); spotLinger.clear(); lastKnown.clear(); lampT = 0;
@@ -1582,6 +1604,7 @@ SF.Main = (() => {
       for (const [id] of MP.tanks) if (id < 100)
         for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow && e.ai.lastTargetId === id) { dtMap[id] = 1; break; }
       msg.dt = dtMap;
+      if (repairT > 0) msg.rp = Math.ceil(repairT);   // 波间维修倒计时: 客户端同样有提示
     }
     SF.Net.send(msg);
   }
@@ -1600,6 +1623,9 @@ SF.Main = (() => {
     MP.timeLeft = snap.timeLeft;
     if (snap.scores) for (const id in snap.scores) MP.scores.set(+id, snap.scores[id]);
     if (snap.wv) MP.waveInfo = { idx: snap.wv[0], total: snap.wv[1], name: snap.wv[2], kills: snap.wv[3], totalEnemies: snap.wv[4] };
+    // 波间维修(主机快照下发): 常驻倒计时; 结束瞬间收尾提示(客户端收不到主机的"第 N 波"消息, 需自己收尾)
+    if (snap.rp) { SF.HUD.showMsg(`${world.map.repairBetweenWaves.text} ${snap.rp}s`, 0); repairMsgOn = true; }
+    else if (repairMsgOn) { repairMsgOn = false; SF.HUD.showMsg('维修完成', 1.5); }
     // 点亮: 主机裁决(dt 表)分发; 小地图红点用本地 视距×(1-隐蔽)+通视+50m 强制
     const p = world.player;
     spottedTimer -= dt;
@@ -1621,6 +1647,8 @@ SF.Main = (() => {
       for (const t of spotted) lastKnown.set(t, { x: t.x, z: t.z });
       for (const [t] of lastKnown) if (!t.alive) lastKnown.delete(t);
     }
+    // 与主机同一套模型显示判定(点亮 或 炮口焰暴露): 之前客户端从不隐藏未点亮敌军, 主/客表现不一致
+    for (const e of world.enemies) e.group.visible = !e.alive || spotDisplay(e);
     const seenByHost = MP.gameMode === 'coop' ? (p.alive && !!(snap.dt && snap.dt[MP.myId])) : (p.alive && spotted.size > 0);
     if (seenByHost) { lampT += dt; lastSpottedT = world.time; }
     else lampT = 0;
@@ -1669,6 +1697,7 @@ SF.Main = (() => {
       if (m.k === 'fire') {
         SF.Bus.emit('fire', { tank: proxyTank(d.id), pos: new THREE.Vector3(...d.p), dir: new THREE.Vector3(0, 0, 1) });
         const tk = MP.tanks.get(d.id);
+        if (tk) tk.lastFireT = world.time;   // 炮口焰暴露: 客户端也要记录, 模型显示/红点/名牌才与主机一致
         if (tk && tk.team !== MP.tanks.get(MP.myId).team) SF.HUD.shotFrom({ x: d.p[0], z: d.p[2] }, false);
       }
       else if (m.k === 'hit') {

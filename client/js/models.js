@@ -53,12 +53,35 @@ SF.Models = (() => {
     });
     parts.noTurret = !parts.turret;
     if (parts.noTurret && parts.gun) parts.gun.rotation.order = 'YXZ';   // 歼击车: 炮管需在射界内横摆(先 yaw 后 pitch)
+    parts.outline = buildOutline(root);   // 瞄准轮廓(WoT 红色剪影), 默认隐藏
     return parts;
+  }
+
+  /* ---------- 瞄准轮廓(WoT 式红色剪影): 反转外壳 + 法线外扩定厚 ----------
+     轮廓网格挂在原网格的同父节点并拷贝其局部变换 → 炮塔/火炮旋转自动同步;
+     默认隐藏, 由 main 按准星命中开关; 不投影、不参与任何射线 */
+  const outlineMat = new THREE.MeshBasicMaterial({ color: 0xff2d1f, side: THREE.BackSide, depthWrite: false });
+  outlineMat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\n\ttransformed += normal * 0.11;');
+  };
+  function buildOutline(root) {
+    const src = [];
+    root.traverse(o => { if (o.isMesh) src.push(o); });   // 先收集后挂载, 避免遍历时改树
+    const meshes = src.map(o => {
+      const m = new THREE.Mesh(o.geometry, outlineMat);
+      m.position.copy(o.position); m.quaternion.copy(o.quaternion); m.scale.copy(o.scale);
+      m.raycast = () => {};   // 命中判定/瞄准点射线都只查 zones, 双保险
+      m.visible = false;
+      o.parent.add(m);
+      return m;
+    });
+    return { meshes, set(v) { for (const m of meshes) m.visible = v; } };
   }
 
   /* ---------- 掩体: 按 map.json 的 type 程序化建模 ----------
      碰撞: blocksMove 挡车体 / blocksShells 挡弹 / blocksSpot 挡点亮视线
-     WoT 对齐: 只有石墙/岩石/建筑真正吸弹; 软质物(草丛/树篱/草垛/残骸)挡视线当隐蔽, 炮弹直接穿过 */
+     WoT 对齐: 只有石墙/岩石/建筑真正吸弹; 草本软质物(草丛/树篱/草垛)能直接压过且挡视线当隐蔽, 炮弹直接穿过; 残骸挡车不挡弹 */
   const geoCache = {};
   // 确定性伪随机(每个掩体实例稳定变化, 不随刷新抖动)
   const srand = (seed) => { let t = seed * 9301 + 49297; return () => { t = (t * 9301 + 49297) % 233280; return t / 233280; }; };
@@ -154,7 +177,7 @@ SF.Models = (() => {
         m.position.set(-3 * s + 6 * s * (i + 0.5) / N, 0.95 * s + rng() * 0.5, (rng() - 0.5) * 0.5);
         g.add(m);
       }
-      col = { ...col, blocksShells: false, blocksSpot: true, ...OBB(3.0 * s, 1.1 * s), h: 3.2 };  // 树篱: 挡车挡视线, 不挡弹(WoT 隔树篱对射)
+      col = { ...col, blocksMove: false, blocksShells: false, blocksSpot: true, ...OBB(3.0 * s, 1.1 * s), h: 3.2 };  // 树篱: 软质草本, 能直接压过; 挡视线不挡弹(WoT 隔树篱对射)
     } else if (c.type === 'rock') {
       const s = (c.scale || 1);
       const rng = srand(Math.abs(hash(c.x, c.z) * 1000) | 0);
@@ -307,7 +330,7 @@ SF.Models = (() => {
       const cap2 = new THREE.Mesh(new THREE.ConeGeometry(1.75 * s, 1.1 * s, 10), thatchM);
       cap2.position.y = 3.1 * s;
       g.add(m, cap2);
-      col = { ...col, blocksShells: false, blocksSpot: true, r: 2.6 * s, h: 3.6 * s };  // 草垛: 软质, 挡视线不挡弹
+      col = { ...col, blocksMove: false, blocksShells: false, blocksSpot: true, r: 2.6 * s, h: 3.6 * s };  // 草垛: 软质草本, 能直接压过; 挡视线不挡弹
     } else if (c.type === 'wreck') {
       const s = (c.scale || 1);
       // 拟物: 真坦克 GLB 烧毁姿态(歪斜+炮塔错位+焦黑涂装); 模型未就绪时退回盒子拼装
@@ -372,9 +395,11 @@ SF.Models = (() => {
     constructor(mapJson, terrain, scene) {
       this.list = [];
       this.group = new THREE.Group();
+      this.solid = [];   // 挡弹掩体的网格组(瞄准 raycast 只查这些: 软质物挡视线不挡弹, 也不能挡准星/弹道)
       for (const c of mapJson.covers) {
         const { group, col } = buildCover(c, terrain);
         this.group.add(group);
+        if (col.blocksShells) this.solid.push(group);
         this.list.push(col);
       }
       scene.add(this.group);
@@ -450,6 +475,8 @@ SF.Models = (() => {
         if (t0 < 0) continue;
         const t = c.shape === 'box' ? SF.Util.rayObb(ox, oz, dx, dz, len, c) : t0;
         if (t >= 0) {
+          // WoT: 观察者身边 50m 内的软质草本(草丛/树篱/草垛)对视线透明 —— 视野里看得见就点得亮
+          if (spot && c.blocksSpot && !c.blocksShells && t < 50) continue;
           let ch = c.h;
           if (spot && c.blocksSpot && !c.blocksShells && spot.concealed
             && Math.hypot(ox + dx * t - spot.tx, oz + dz * t - spot.tz) < 6)

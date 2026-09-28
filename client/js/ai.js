@@ -11,17 +11,21 @@ SF.losClear = function (world, ax, az, bx, bz) {
   return world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len) < 0;
 };
 
-// 多点通视(点亮用): 目标车体 1.2m / 塔心 2.0m / 炮塔顶 2.8m 任一点通视即算可见
-// ——卖头(只露炮塔)或半坡露体的坦克不能再"明明看得见却不点亮"
+// 多点通视(点亮用): WoT 双视口(车体 2.0m / 塔顶 3.0m) × 目标三点(车体 1.2m / 塔心 2.0m / 炮塔顶 2.8m),
+// 任一组合通视即算可见 —— 卖头、半坡露体、贴着小土脊/远处草丛边缘都不再"明明看得见却不点亮"
+// (观察者 50m 内的草丛直接透明, 见 CoverField.blocked)
 // concealed=目标蹲草未开炮: 草丛算遮挡且把目标连炮塔一起吞掉
 SF.losClearAny = function (world, ax, az, bx, bz, concealed) {
-  const by0 = world.terrain.heightAt(bx, bz);
-  for (const h of [1.2, 2.0, 2.8]) {
-    const ay = world.terrain.heightAt(ax, az) + 2.0, by = by0 + h;
-    if (world.terrain.losBlocked(ax, az, ay, bx, bz, by)) continue;
-    const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
-    if (len < 1) return true;
-    if (world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len, { tx: bx, tz: bz, concealed }) < 0) return true;
+  const ay0 = world.terrain.heightAt(ax, az), by0 = world.terrain.heightAt(bx, bz);
+  for (const aH of [2.0, 3.0]) {
+    const ay = ay0 + aH;
+    for (const h of [1.2, 2.0, 2.8]) {
+      const by = by0 + h;
+      if (world.terrain.losBlocked(ax, az, ay, bx, bz, by)) continue;
+      const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
+      if (len < 1) return true;
+      if (world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len, { tx: bx, tz: bz, concealed }) < 0) return true;
+    }
   }
   return false;
 };
