@@ -662,12 +662,13 @@ SF.Main = (() => {
       <div id="tStickBase"><div id="tStickNub"></div></div>
       <div id="tAimZone"></div>
       <div id="tStickZone"></div>
+      <button id="tFull" title="全屏">⛶</button>
       <div id="tZoomBox"><input type="range" id="tZoom" min="${SF.CFG.camera.sniperFovMin}" max="${SF.CFG.camera.sniperFovMax}" step="0.25"><div id="tZoomVal">倍率 ×2.0</div></div>
       <div id="tBtns">
         <button id="tScope">开镜</button>
         <button id="tFire">开炮</button>
-        <button id="tFull">⛶</button>
-      </div>`;
+      </div>
+      <button id="tFireL">开炮</button>`;
     document.getElementById('hud').appendChild(root);
     touchCtl.ui = root;
     // 倍率滑杆: 开镜时出现, 拉动调 fov(右=视野广=倍率低); 捏合调倍率时同步回滑杆
@@ -777,12 +778,14 @@ SF.Main = (() => {
     aimZone.addEventListener('touchend', aimEnd);
     aimZone.addEventListener('touchcancel', aimEnd);
 
-    // 按钮: 开炮(按住连发由装填节奏控制) / 开镜
-    const fireBtn = root.querySelector('#tFire');
-    fireBtn.addEventListener('touchstart', e => { e.preventDefault(); mouseDown = true; fireBtn.classList.add('on'); }, { passive: false });
-    const fireEnd = e => { e.preventDefault(); mouseDown = false; fireBtn.classList.remove('on'); };
-    fireBtn.addEventListener('touchend', fireEnd);
-    fireBtn.addEventListener('touchcancel', fireEnd);
+    // 按钮: 开炮(按住连发由装填节奏控制; 右下主炮 + 左侧副炮两枚) / 开镜
+    for (const id of ['#tFire', '#tFireL']) {
+      const fireBtn = root.querySelector(id);
+      fireBtn.addEventListener('touchstart', e => { e.preventDefault(); mouseDown = true; fireBtn.classList.add('on'); }, { passive: false });
+      const fireEnd = e => { e.preventDefault(); mouseDown = false; fireBtn.classList.remove('on'); };
+      fireBtn.addEventListener('touchend', fireEnd);
+      fireBtn.addEventListener('touchcancel', fireEnd);
+    }
     root.querySelector('#tScope').addEventListener('touchstart', e => { e.preventDefault(); toggleSniper(); }, { passive: false });
     root.querySelector('#tFull').addEventListener('touchstart', e => { e.preventDefault(); toggleFullscreen(); }, { passive: false });
 

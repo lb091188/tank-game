@@ -56,18 +56,19 @@
   #gfxPanel select { background: #23261c; color: #d8c887; border: 1px solid #5c6244; border-radius: 3px; font-size: 12px; padding: 2px 4px; cursor: pointer; }
   #gfxPanel .pveNote { color: #767b6b; font-size: 11px; }
 
-  /* 触屏操控(仅 TOUCH 设备由 JS 挂载): 左半屏摇杆 / 右半屏瞄准 / 右下开炮·开镜 */
+  /* 触屏操控(仅 TOUCH 设备由 JS 挂载): 左半屏摇杆 / 右半屏瞄准 / 右下开炮·开镜 / 左侧副开炮 */
   #touchUI { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
   #touchUI > * { pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   #tStickZone { position: absolute; left: 0; top: 12%; bottom: 0; width: 45%; }
   #tAimZone { position: absolute; right: 0; top: 0; bottom: 0; width: 55%; }
   #tStickBase { position: absolute; width: 110px; height: 110px; border: 2px solid rgba(200,178,106,.45); border-radius: 50%; background: rgba(14,16,11,.35); display: none; pointer-events: none !important; }
   #tStickNub { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px; border-radius: 50%; background: rgba(216,200,135,.55); box-shadow: 0 2px 8px rgba(0,0,0,.5); }
-  #tBtns { position: absolute; right: 18px; bottom: 96px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-  #tFire { width: 84px; height: 84px; border-radius: 50%; border: 2px solid rgba(226,58,42,.65); background: rgba(120,26,18,.5); color: #ffd9c9; font-size: 19px; letter-spacing: 2px; font-weight: bold; }
-  #tFire.on { background: rgba(190,40,26,.75); }
+  #tBtns { position: absolute; right: 18px; bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  #tFire, #tFireL { width: 84px; height: 84px; border-radius: 50%; border: 2px solid rgba(226,58,42,.65); background: rgba(120,26,18,.5); color: #ffd9c9; font-size: 19px; letter-spacing: 2px; font-weight: bold; }
+  #tFire.on, #tFireL.on { background: rgba(190,40,26,.75); }
+  #tFireL { position: absolute; left: 22px; bottom: 158px; width: 72px; height: 72px; font-size: 16px; }
   #tScope { width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(200,178,106,.5); background: rgba(14,16,11,.5); color: #d8c887; font-size: 14px; letter-spacing: 1px; }
-  #tFull { width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(200,178,106,.4); background: rgba(14,16,11,.5); color: #d8c887; font-size: 18px; }
+  #tFull { position: absolute; top: 16px; right: 328px; width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(200,178,106,.4); background: rgba(14,16,11,.5); color: #d8c887; font-size: 18px; }
   #tZoomBox { position: absolute; bottom: 108px; left: 50%; transform: translateX(-50%); width: min(62vw, 420px); text-align: center; display: none; pointer-events: auto; touch-action: none; }
   #tZoom { width: 100%; height: 30px; accent-color: #c8b26a; background: rgba(14,16,11,.5); border-radius: 15px; border: 1px solid rgba(200,178,106,.35); }
   #tZoomVal { color: #e8dcae; font-size: 13px; text-shadow: 0 1px 3px #000; margin-top: 2px; letter-spacing: 1px; }
@@ -178,20 +179,21 @@
   #shotDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -26px; border-left: 26px solid transparent; border-right: 26px solid transparent; border-top: 15px solid rgba(255,170,80,.9); }
   #hitDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -34px; border-left: 34px solid transparent; border-right: 34px solid transparent; border-top: 20px solid rgba(226,58,42,.85); border-radius: 8px; }
 
-  /* 底部状态 */
-  #bottomBar { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); width: 480px; padding: 10px 16px; }
-  #hpBar { height: 16px; background: #23261d; border-radius: 3px; overflow: hidden; border: 1px solid rgba(255,255,255,.15); }
+  /* 底部状态: WoT 式左下角玩家卡片(车型/血量/装填/弹夹/挡位速度/模块损伤 一张卡) */
+  #bottomBar { position: absolute; bottom: 16px; left: 16px; width: 320px; padding: 10px 12px 8px; }
+  #hpBar { height: 14px; background: #23261d; border-radius: 3px; overflow: hidden; border: 1px solid rgba(255,255,255,.15); }
   #hpFill { height: 100%; width: 100%; background: linear-gradient(90deg, #5d9e4e, #7fc468); transition: width .2s; }
-  #hpText { color: #cfd3c0; font-size: 12px; text-align: center; margin-top: 3px; }
-  #reloadBar { height: 6px; background: #23261d; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  #hpText { color: #cfd3c0; font-size: 12px; text-align: center; margin: 3px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #reloadBar { height: 6px; background: #23261d; border-radius: 3px; overflow: hidden; margin-top: 2px; }
   #reloadFill { height: 100%; width: 100%; background: #c8b26a; }
   #reloadFill.loading { background: repeating-linear-gradient(45deg, #6f6230 0 8px, #8a7a3e 8px 16px); }
-  #clipInfo { position: absolute; right: 16px; top: 14px; display: flex; gap: 4px; align-items: center; }
+  #cardRow { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; min-height: 20px; }
+  #clipInfo { display: flex; gap: 4px; align-items: center; }
   #clipInfo i { width: 9px; height: 9px; border-radius: 50%; background: rgba(200,178,106,.15); border: 1px solid rgba(200,178,106,.55); }
   #clipInfo i.full { background: #c8b26a; box-shadow: 0 0 4px rgba(200,178,106,.6); }
   #clipInfo em { font-style: normal; color: #c8b26a; font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
-  #speedText { position: absolute; right: 18px; bottom: 16px; min-width: 96px; padding: 8px 14px; color: #d8dbcc; font-size: 16px; text-align: center; font-variant-numeric: tabular-nums; }
-  #moduleTags { position: absolute; left: 14px; top: -26px; }
+  #speedText { color: #d8dbcc; font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+  #moduleTags { margin-top: 4px; min-height: 0; }
   .mod { background: rgba(160,50,40,.8); color: #ffd9d0; font-size: 12px; padding: 2px 8px; border-radius: 3px; margin-right: 6px; }
 
   /* 小地图 */
@@ -233,6 +235,12 @@
     #pvePanel { padding: 4px 10px; }
     #pvePanel .pveTitle { font-size: 12px; }
     #pvePanel .pveSum, #pvePanel .pveTitle span { font-size: 11px; }
+    /* 手机横屏: 左下玩家卡片压缩(给摇杆/视野让位) */
+    #bottomBar { width: 250px; padding: 7px 10px 5px; }
+    #hpBar { height: 11px; }
+    #hpText { font-size: 11px; margin: 2px 0 3px; }
+    #speedText { font-size: 12px; }
+    #tFireL { bottom: 138px; width: 64px; height: 64px; font-size: 14px; }
   }
   #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }
   #minimap { display: block; border-radius: 4px; }
@@ -284,13 +292,15 @@
   <div id="shotDir"></div>
   <div id="vcursor"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 2 L4 19 L9 14.6 L12.4 21.4 L15.3 19.9 L12 13.4 L19 13 Z"/></svg></div>
   <div id="bottomBar" class="panel">
-    <div id="hpBar"><div id="hpFill"></div></div>
     <div id="hpText">900 / 900</div>
+    <div id="hpBar"><div id="hpFill"></div></div>
     <div id="reloadBar"><div id="reloadFill"></div></div>
-    <div id="clipInfo"></div>
+    <div id="cardRow">
+      <div id="clipInfo"></div>
+      <div id="speedText">D 0 km/h</div>
+    </div>
     <div id="moduleTags"></div>
   </div>
-  <div id="speedText" class="panel">0 km/h</div>
   <div id="minimapBox" class="panel"><canvas id="minimap" width="180" height="180"></canvas><div class="cap">战场态势</div></div>
   <button id="btnExit" title="鹰眼模式: 虚拟光标点击; 其他模式: Esc 释放鼠标后点击">⏻ 退出</button>
   <div id="missionBar" class="panel"></div>
