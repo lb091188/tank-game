@@ -390,18 +390,134 @@ SF.Models = (() => {
     return { group: g, col };
   }
 
-  // 掩体系统: 网格组 + 碰撞列表(车体推开/挡弹/挡视线)
+  // 掩体系统: 网格合批 + 碰撞列表(车体推开/挡弹/挡视线)
+  // 渲染侧按"贴图×材质类型×挡弹与否×草丛"分桶, 把全部掩体网格烘焙(world 变换/UV repeat/颜色 tint)
+  // 合并成十几个静态网格 —— 一张图 180~341 个掩体原本 2000+ 独立网格单独提交, 是 draw call 的绝对大头;
+  // 碰撞/挡弹/通视本来就是解析计算(circle/OBB+高度), 不依赖网格, 所以合并只影响渲染。
+  // 草丛单独成桶: 开镜去遮挡要整体切半透明+关投影(见 setBushSeeThrough)。
+  const bushMatList = [], bushMeshList = [];
+  const texKeyCache = new Map();
+  function texKeyOf(map) {   // 按图源归桶: texMat 的 repeat 克隆共享 image, 同底图不同平铺可合并(UV 已烘)
+    const A = (SF.Assets && SF.Assets.textures) || {};
+    for (const k in A) if (A[k].image === map.image) return k;
+    let k = texKeyCache.get(map.image);
+    if (!k) texKeyCache.set(map.image, k = 'g' + texKeyCache.size);
+    return k;
+  }
+  function makeMergedMat(srcMat, texKey) {
+    const opts = { color: 0xffffff, vertexColors: true };   // tint 已烘进顶点色
+    if (texKey[0] !== 'F') {
+      const base = SF.Assets && SF.Assets.textures[texKey];
+      if (base) opts.map = base;              // 直接复用底图(1×1 平铺, UV 已烘; 保留各向异性), 不动共享实例
+      else {                                   // GLB 自带贴图: 克隆必须 needsUpdate, 否则纹理不上传 → 全黑
+        opts.map = srcMat.map.clone();
+        opts.map.repeat.set(1, 1); opts.map.offset.set(0, 0);
+        opts.map.needsUpdate = true;
+      }
+    }
+    // GLB(残骸)是 Standard 材质, 保留 roughness/metalness 观感; 程序化掩体全是 Lambert
+    return srcMat.type === 'MeshStandardMaterial'
+      ? new THREE.MeshStandardMaterial({ ...opts, roughness: srcMat.roughness, metalness: srcMat.metalness })
+      : new THREE.MeshLambertMaterial(opts);
+  }
+  const _WHITE = { r: 1, g: 1, b: 1 };
+  function bakeCover(group, c, col, buckets) {
+    group.updateMatrixWorld(true);
+    const solid = !!col.blocksShells, isBush = c.type === 'bush';
+    group.traverse(o => {
+      if (!o.isMesh || !o.visible) return;   // visible=false(如残骸 GLB 的瞄准轮廓)不参与合批
+      const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+      const geo = o.geometry.clone();
+      geo.applyMatrix4(o.matrixWorld);
+      const map = mat.map;
+      const uv = geo.attributes.uv;
+      if (map && uv) {   // 把贴图 repeat/offset 烘进顶点 → 合并后共用一张 1×1 平铺贴图
+        const rx = map.repeat.x, ry = map.repeat.y, ox = map.offset.x, oy = map.offset.y;
+        for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * rx + ox, uv.getY(i) * ry + oy);
+      }
+      // 材质 tint ×(原有顶点色, 若有) → 顶点色; 同色/异色实例从此共用白色材质
+      const posCount = geo.attributes.position.count;
+      const vcol = geo.attributes.color, tint = mat.color || _WHITE;
+      const colors = new Float32Array(posCount * 3);
+      for (let i = 0; i < posCount; i++) {
+        colors[i * 3] = tint.r * (vcol ? vcol.getX(i) : 1);
+        colors[i * 3 + 1] = tint.g * (vcol ? vcol.getY(i) : 1);
+        colors[i * 3 + 2] = tint.b * (vcol ? vcol.getZ(i) : 1);
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(posCount * 2), 2));
+      const key = (map ? 'T' + texKeyOf(map) : 'F') + '|' + mat.type + '|' + (solid ? 'S' : 'W') + (isBush ? 'B' : '');
+      let b = buckets.get(key);
+      if (!b) { b = { geos: [], bush: isBush, mat: makeMergedMat(mat, map ? texKeyOf(map) : 'F') }; buckets.set(key, b); }
+      b.geos.push(geo);
+    });
+  }
+  function mergeGeos(geos) {   // 统一布局(position/normal/uv/color) + 索引拼接
+    const list = geos.map(g => {
+      let idx = g.index;
+      if (!idx) {
+        const n = g.attributes.position.count;
+        const arr = new Uint32Array(n);
+        for (let i = 0; i < n; i++) arr[i] = i;
+        idx = new THREE.BufferAttribute(arr, 1);
+      }
+      return { g, idx };
+    });
+    let vTotal = 0, iTotal = 0;
+    for (const { g, idx } of list) { vTotal += g.attributes.position.count; iTotal += idx.count; }
+    const pos = new Float32Array(vTotal * 3), nor = new Float32Array(vTotal * 3),
+      uv = new Float32Array(vTotal * 2), col = new Float32Array(vTotal * 3);
+    const indices = vTotal < 65536 ? new Uint16Array(iTotal) : new Uint32Array(iTotal);
+    let vo = 0, io = 0;
+    for (const { g, idx } of list) {
+      const p = g.attributes.position, n2 = g.attributes.normal, u = g.attributes.uv, c = g.attributes.color;
+      for (let i = 0; i < p.count; i++) {
+        pos[(vo + i) * 3] = p.getX(i); pos[(vo + i) * 3 + 1] = p.getY(i); pos[(vo + i) * 3 + 2] = p.getZ(i);
+        nor[(vo + i) * 3] = n2 ? n2.getX(i) : 0; nor[(vo + i) * 3 + 1] = n2 ? n2.getY(i) : 1; nor[(vo + i) * 3 + 2] = n2 ? n2.getZ(i) : 0;
+        uv[(vo + i) * 2] = u ? u.getX(i) : 0; uv[(vo + i) * 2 + 1] = u ? u.getY(i) : 0;
+        col[(vo + i) * 3] = c.getX(i); col[(vo + i) * 3 + 1] = c.getY(i); col[(vo + i) * 3 + 2] = c.getZ(i);
+      }
+      for (let i = 0; i < idx.count; i++) indices[io + i] = idx.getX(i) + vo;
+      vo += p.count; io += idx.count;
+      g.dispose();
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(indices, 1));
+    geo.computeBoundingSphere();
+    return geo;
+  }
+  function applyBushSeeThrough() {
+    for (const m of bushMatList) {
+      m.opacity = bushSeeThrough ? 0.28 : 1;
+      m.transparent = bushSeeThrough;
+      m.depthWrite = !bushSeeThrough;          // 半透明堆叠免自遮挡
+    }
+    for (const mesh of bushMeshList) mesh.castShadow = !bushSeeThrough;
+  }
   class CoverField {
     constructor(mapJson, terrain, scene) {
       this.list = [];
       this.group = new THREE.Group();
-      this.solid = [];   // 挡弹掩体的网格组(瞄准 raycast 只查这些: 软质物挡视线不挡弹, 也不能挡准星/弹道)
+      const buckets = new Map();
       for (const c of mapJson.covers) {
         const { group, col } = buildCover(c, terrain);
-        this.group.add(group);
-        if (col.blocksShells) this.solid.push(group);
+        bakeCover(group, c, col, buckets);
         this.list.push(col);
       }
+      bushMatList.length = 0; bushMeshList.length = 0;
+      for (const b of buckets.values()) {
+        const mesh = new THREE.Mesh(mergeGeos(b.geos), b.mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.matrixAutoUpdate = false;
+        if (b.bush) { bushMeshList.push(mesh); bushMatList.push(b.mat); }
+        this.group.add(mesh);
+      }
+      applyBushSeeThrough();   // 重开战斗时按当前开镜状态摆正草丛透明/投影
       scene.add(this.group);
     }
     // 车体碰撞(圆形请求方): 圆 vs 圆/OBB 推出 —— 出生点避让等粗判用
@@ -466,26 +582,26 @@ SF.Models = (() => {
       }
       return [nx, nz];
     }
-    // 弹道/视线遮挡: 包围圆粗剔除 + 方形 rayObb / 圆形 rayCircle, 高度比较
+    // 弹道/视线遮挡: 包围圆粗剔除 + 方形 rayObb / 圆形 rayCircle, 高度比较; 返回沿射线的最近命中距离(无遮挡 -1)
     // spot(可选, 点亮专用): 额外计入草丛(不挡弹但挡视线); concealed=目标蹲草未开炮 → 目标脚下那丛加高吞掉整车
     blocked(ox, oz, oy, dx, dz, len, dy, spot) {
+      let best = -1;
       for (const c of this.list) {
         if (!(c.blocksShells || (spot && c.blocksSpot))) continue;
         const t0 = SF.Util.rayCircle(ox, oz, dx, dz, len, c.x, c.z, c.r);
         if (t0 < 0) continue;
         const t = c.shape === 'box' ? SF.Util.rayObb(ox, oz, dx, dz, len, c) : t0;
-        if (t >= 0) {
-          // WoT: 观察者身边 50m 内的软质草本(草丛/树篱/草垛)对视线透明 —— 视野里看得见就点得亮
-          if (spot && c.blocksSpot && !c.blocksShells && t < 50) continue;
-          let ch = c.h;
-          if (spot && c.blocksSpot && !c.blocksShells && spot.concealed
-            && Math.hypot(ox + dx * t - spot.tx, oz + dz * t - spot.tz) < 6)
-            ch += 1.8;                                    // 草丛把蹲入的整车连炮塔一起藏住
-          const h = oy + dy * t;
-          if (h < SF.Game.world.terrain.heightAt(ox + dx * t, oz + dz * t) + ch) return t;  // 命中掩体高度内
-        }
+        if (t < 0 || (best >= 0 && t >= best)) continue;
+        // WoT: 观察者身边 50m 内的软质草本(草丛/树篱/草垛)对视线透明 —— 视野里看得见就点得亮
+        if (spot && c.blocksSpot && !c.blocksShells && t < 50) continue;
+        let ch = c.h;
+        if (spot && c.blocksSpot && !c.blocksShells && spot.concealed
+          && Math.hypot(ox + dx * t - spot.tx, oz + dz * t - spot.tz) < 6)
+          ch += 1.8;                                    // 草丛把蹲入的整车连炮塔一起藏住
+        const h = oy + dy * t;
+        if (h < SF.Game.world.terrain.heightAt(ox + dx * t, oz + dz * t) + ch) best = t;  // 命中掩体高度内
       }
-      return -1;
+      return best;
     }
     // 找 a→b 方向最近的掩体(供 AI 找掩体用): 硬掩体(挡弹)或视觉掩体(挡视线)都算
     nearestCoverBetween(ax, az, bx, bz) {
@@ -501,5 +617,5 @@ SF.Models = (() => {
     }
   }
 
-  return { makeTank, CoverField, bushMats, setBushSeeThrough: (v) => { bushSeeThrough = v; } };
+  return { makeTank, CoverField, bushMats: () => bushMatList, setBushSeeThrough: (v) => { bushSeeThrough = v; applyBushSeeThrough(); } };
 })();

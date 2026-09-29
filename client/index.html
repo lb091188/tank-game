@@ -130,9 +130,11 @@
   .emark { position: absolute; width: 64px; transform: translate(-50%, -100%); text-align: center; }
   .emark b { display: block; font-size: 11px; font-weight: normal; color: #f0e9d0; text-shadow: 0 1px 3px #000, 0 0 4px #000; white-space: nowrap; margin-bottom: 2px; }
   .emark b { color: #ff6a58; }
+  .emark.locked { border: 1px solid rgba(255,255,255,.85); padding: 2px 3px; border-radius: 3px; }
+  .emark.locked b::before { content: '🎯 '; }
   .emark i { display: block; height: 5px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.4); }
   .emark u { display: block; font-size: 10px; line-height: 1.2; color: #ffd0c8; text-decoration: none; text-shadow: 0 1px 3px #000, 0 0 4px #000; margin-top: 1px; }
-  .emark i em { display: block; height: 100%; background: #e04a3a; font-style: normal; }
+  .emark i em { display: block; height: 100%; background: linear-gradient(90deg, #5d9e4e, #7fc468); font-style: normal; }   /* 绿条=剩余血量, 随损伤缩短 */
   #missionBar { position: absolute; left: 16px; top: 16px; padding: 8px 14px; color: #d8dbcc; font-size: 14px; letter-spacing: 1px; }
   #missionBar .sym { margin-right: 8px; }
   #missionDetail { position: absolute; left: 16px; top: 58px; width: 230px; padding: 12px 16px; display: none; color: #c9cdbb; font-size: 13px; line-height: 2; }

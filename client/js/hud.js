@@ -7,7 +7,16 @@ SF.HUD = (() => {
   let shotDirT = 0;         // 炮口来向箭头
   let shotMarks = [];       // 炮口位置(小地图, 3s 渐隐)
   let hitDirT = 0;
-  let minimapBase = null;   // 预渲染地形
+  let minimapBase = null;   // 预渲染地形(含静止掩体点)
+  let emarks = new Map();   // 敌车 → 名牌持久 DOM 节点
+  let keypadSpans = null;   // 按键指示器节点(缓存, 不每帧 querySelectorAll)
+
+  // 每帧 HUD 写入统一走脏检查: 值不变就不碰 DOM(此前多个 innerHTML 每帧重新赋值, 是无谓的主线程开销)
+  function setTxt(el, v) { if (el._v !== v) { el._v = v; el.textContent = v; } }
+  function setHtml(el, v) { if (el._h !== v) { el._h = v; el.innerHTML = v; } }
+  function setW(el, v) { if (el._w !== v) { el._w = v; el.style.width = v; } }
+  function setOp(el, v) { if (el._o !== v) { el._o = v; el.style.opacity = v; } }
+  function setDisp(el, v) { if (el._d !== v) { el._d = v; el.style.display = v; } }
 
   function init(world) {
     // 小地图地形预渲染(90×90 采样)
@@ -23,7 +32,23 @@ SF.HUD = (() => {
       octx.fillStyle = `rgb(${Math.round(PAL[0] + k * 55)},${Math.round(PAL[1] + k * 48)},${Math.round(PAL[2] + k * 42)})`;
       octx.fillRect(i / N * 180, j / N * 180, 180 / N + 1, 180 / N + 1);
     }
+    // 掩体点一并预渲染进底图(静止): 深灰=硬掩体(挡弹), 绿=隐蔽物(挡视线不挡弹, 可蹲入隐蔽)
+    octx.fillStyle = 'rgba(20,24,18,0.75)';
+    for (const c of world.covers.list) {
+      if (!c.blocksShells) continue;
+      const [mx, my] = worldToMap(c.x, c.z, T);
+      octx.fillRect(mx - 1, my - 1, 2.5, 2.5);
+    }
+    octx.fillStyle = 'rgba(74,132,52,0.85)';
+    for (const c of world.covers.list) {
+      if (!c.blocksSpot || c.blocksShells) continue;
+      const [mx, my] = worldToMap(c.x, c.z, T);
+      octx.fillRect(mx - 1, my - 1, 2, 2);
+    }
     minimapBase = off;
+    // 名牌节点池换场重置: 上一场的敌车节点全部移除
+    emarks.clear();
+    $('markers').innerHTML = '';
   }
 
   function project(pos) {
@@ -192,21 +217,21 @@ SF.HUD = (() => {
     const U = SF.Util;
 
     // 状态条
-    $('hpFill').style.width = (player.hp / player.spec.hp * 100) + '%';
-    $('hpText').innerHTML = `${SF.ClsIcon(player.spec.cls)} ${player.spec.name}　${Math.ceil(player.hp)} / ${player.spec.hp}`;
+    setW($('hpFill'), (player.hp / player.spec.hp * 100) + '%');
+    setHtml($('hpText'), `${SF.ClsIcon(player.spec.cls)} ${player.spec.name}　${Math.ceil(player.hp)} / ${player.spec.hp}`);
     const rlTotal = player.reloadTotal || player.spec.gun.reload;
     const rl = player.reloadT > 0 ? player.reloadT / rlTotal : 0;
-    $('reloadFill').style.width = ((1 - rl) * 100) + '%';
+    setW($('reloadFill'), ((1 - rl) * 100) + '%');
     $('reloadFill').classList.toggle('loading', rl > 0);
     // 弹夹余弹(连发炮): 底部状态条显示 ◉● 圆点
     const _al = player.spec.gun.autoloader;
-    $('clipInfo').innerHTML = _al
+    setHtml($('clipInfo'), _al
       ? Array.from({ length: _al.clip }, (_, i) => `<i class="${i < player.clipLeft ? 'full' : ''}"></i>`).join('') + `<em>${player.clipLeft}/${_al.clip}</em>`
-      : '';
-    $('speedText').textContent = Math.abs(Math.round(player.speed * 3.6)) + ' km/h';
-    $('moduleTags').innerHTML = ['track', 'engine', 'gun', 'ammo']
+      : '');
+    setTxt($('speedText'), Math.abs(Math.round(player.speed * 3.6)) + ' km/h');
+    setHtml($('moduleTags'), ['track', 'engine', 'gun', 'ammo']
       .filter(k => player.modules[k] > 0)
-      .map(k => `<span class="mod">${SF.CFG.armor.modules[k].text}</span>`).join('');
+      .map(k => `<span class="mod">${SF.CFG.armor.modules[k].text}</span>`).join(''));
 
     updateAimCircle(player, world, uiState);
     // 鹰眼(火炮俯视)无中心十字: 落点即准星(绿色散布椭圆), WoT 式
@@ -236,24 +261,24 @@ SF.HUD = (() => {
     // 装填环形读条(跟随准心) + 倒计时秒数
     const ring = $('reloadRing'), rctx = ring.getContext('2d');
     const rl2 = player.reloadT > 0 ? player.reloadT / rlTotal : 0;
-    rctx.clearRect(0, 0, 76, 76);
     const rt = $('reloadText');
     if (rl2 > 0) {
-      ring.style.display = rt.style.display = 'block';
+      rctx.clearRect(0, 0, 76, 76);
+      setDisp(ring, 'block'); setDisp(rt, 'block');
       rctx.lineWidth = 5;
       rctx.strokeStyle = 'rgba(10,12,8,.55)';
       rctx.beginPath(); rctx.arc(38, 38, 33, 0, Math.PI * 2); rctx.stroke();
       rctx.strokeStyle = '#c8b26a';
       rctx.beginPath(); rctx.arc(38, 38, 33, -Math.PI / 2, -Math.PI / 2 + (1 - rl2) * Math.PI * 2); rctx.stroke();
-      rt.textContent = player.reloadT.toFixed(1);
-    } else { ring.style.display = rt.style.display = 'none'; }
+      setTxt(rt, player.reloadT.toFixed(1));
+    } else { setDisp(ring, 'none'); setDisp(rt, 'none'); }
     // 炮口至瞄准点距离(WoT 式准星距离读数); 火炮显示 炮→落点 射程 + 弹道飞行时间
     const dEl = $('distText');
     if (player.spec.cls === 'SPG' && uiState.aimPoint)
-      dEl.textContent = Math.round(Math.hypot(uiState.aimPoint.pos.x - player.x, uiState.aimPoint.pos.z - player.z)) + ' m'
-        + (uiState.trajT > 0 ? ` · 飞行 ${uiState.trajT.toFixed(1)}s` : '');
+      setTxt(dEl, Math.round(Math.hypot(uiState.aimPoint.pos.x - player.x, uiState.aimPoint.pos.z - player.z)) + ' m'
+        + (uiState.trajT > 0 ? ` · 飞行 ${uiState.trajT.toFixed(1)}s` : ''));
     else
-      dEl.textContent = uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '';
+      setTxt(dEl, uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '');
     // 装甲等效指示(WoT 看甲): 瞄准敌人部位时显示 等效厚度/可否击穿/跳弹警告(含过穿与归一化)
     const ai = $('armorInfo');
     const ap = uiState.gunAim;   // 用炮口指向(实际弹道将命中的部位)
@@ -263,36 +288,23 @@ SF.HUD = (() => {
       const inc = Math.acos(SF.Util.clamp(-camDir.dot(ap.hit.normal), -1, 1));
       const armor = ap.hit.armor, cal = player.spec.gun.cal || 75;
       if (inc > SF.CFG.armor.ricochetAngle && !(cal > armor * 3)) {
-        ai.textContent = '大角度 · 会跳弹';
-        ai.style.color = '#9aa0a6';
+        setTxt(ai, '大角度 · 会跳弹');
+        if (ai._c !== '#9aa0a6') { ai._c = '#9aa0a6'; ai.style.color = '#9aa0a6'; }
       } else {
         let norm = 5 * Math.PI / 180;
         if (cal > armor * 2) norm *= 2;   // 2 倍口径: 归一化翻倍
         const eff = Math.round(armor / Math.max(Math.cos(Math.max(0, inc - norm)), 0.05));
         const pen = player.spec.gun.pen * 0.9;   // 按平均穿深(含浮动)估
         const ok = pen >= eff;
-        ai.textContent = `等效 ${eff}mm · ${ok ? '可击穿' : '难击穿'}`;
-        ai.style.color = ok ? '#9fe08a' : '#e07a6a';
+        setTxt(ai, `等效 ${eff}mm · ${ok ? '可击穿' : '难击穿'}`);
+        const c2 = ok ? '#9fe08a' : '#e07a6a';
+        if (ai._c !== c2) { ai._c = c2; ai.style.color = c2; }
       }
-    } else ai.textContent = '';
+    } else setTxt(ai, '');
 
-    // 小地图
+    // 小地图: 掩体点已预渲染进底图, 每帧只画动态要素
     const cv = $('minimap'), ctx = cv.getContext('2d');
     ctx.drawImage(minimapBase, 0, 0);
-    // 掩体点: 深灰=硬掩体(挡弹), 绿=隐蔽物(挡视线不挡弹, 可蹲入隐蔽)
-    ctx.fillStyle = 'rgba(20,24,18,0.75)';
-    for (const c of world.covers.list) {
-      if (!c.blocksShells) continue;
-      const [mx, my] = worldToMap(c.x, c.z, T);
-      ctx.fillRect(mx - 1, my - 1, 2.5, 2.5);
-    }
-    // 隐蔽物点(草丛/树篱/草垛/残骸)
-    ctx.fillStyle = 'rgba(74,132,52,0.85)';
-    for (const c of world.covers.list) {
-      if (!c.blocksSpot || c.blocksShells) continue;
-      const [mx, my] = worldToMap(c.x, c.z, T);
-      ctx.fillRect(mx - 1, my - 1, 2, 2);
-    }
     // 敌标(WoT 式): 点亮=实时红标; 开炮暴露=亮标; 丢亮点=停在最后已知位置的暗标
     for (const e of world.enemies) {
       if (!e.alive) continue;
@@ -362,27 +374,39 @@ SF.HUD = (() => {
       ctx.stroke();
     }
 
-    // 敌人名牌: 型号/PVE=坦克型号, 联机=玩家名 + 血条(可见时)
-    const marks = $('markers'); marks.innerHTML = '';
+    // 敌人名牌: 持久 DOM 节点(首次点亮时创建, 换场在 init 清空) —— 每帧只局部更新:
+    // 移动=改 left/top, 血量=改条宽/数字(脏检查), 不再每帧 innerHTML 重建整块(每帧几十次 DOM 创建是主线程负担)
+    // 高度锚 7.2m(底边锚定): 名牌整体悬在车体上方, 不遮挡坦克本体
     const mp = window.SF && SF.Game_mp && SF.Game_mp.mode !== 'sp' ? SF.Game_mp : null;
     const targets = mp ? [...mp.tanks.values()].filter(t => t.netId !== mp.myId && t.team !== world.player.team) : world.enemies;
     for (const e of targets) {
       if (!e.alive) continue;
-      const spotted = uiState.spotted.has(e) || world.time - (e.lastFireT || -99) < 5;
-      if (!spotted) continue;
-      const p = project(new THREE.Vector3(e.x, e.y + 5.6, e.z));
-      if (!p || p.x < 0 || p.x > innerWidth || p.y < 0 || p.y > innerHeight) continue;
-      const d = document.createElement('div');
-      d.className = 'emark';
-      d.style.left = p.x + 'px'; d.style.top = p.y + 'px';
+      if (!(uiState.spotted.has(e) || world.time - (e.lastFireT || -99) < 5)) continue;
+      let rec = emarks.get(e);
+      if (!rec) {
+        const el = document.createElement('div');
+        el.className = 'emark';
+        el.innerHTML = `${SF.ClsIcon(e.spec.cls, { color: '#ff7a68' })} <b></b><i><em></em></i><u></u>`;
+        $('markers').appendChild(el);
+        emarks.set(e, rec = { el, name: el.querySelector('b'), fill: el.querySelector('i em'), num: el.querySelector('u'), nameTxt: '', w: -1, hp: -1, seen: false });
+      }
+      const p = project(new THREE.Vector3(e.x, e.y + 7.2, e.z));
+      if (!p || p.x < 0 || p.x > innerWidth || p.y < 0 || p.y > innerHeight) continue;   // 出屏: 保持隐藏, 由下方 sweep 收起
+      rec.seen = true;
+      setDisp(rec.el, 'block');
+      rec.el.style.left = p.x + 'px'; rec.el.style.top = p.y + 'px';
       let name = e.spec.name;
       if (mp && e.netId) { const pl = mp.players.find(q => q.id === e.netId); if (pl) name = pl.name; }
-      const locked = e === uiState.autoTarget;
-      if (locked) name = '🎯 ' + name;
-      const hpPct = SF.Util.clamp(e.hp / e.spec.hp, 0, 1) * 100;
-      d.innerHTML = `${SF.ClsIcon(e.spec.cls, { color: '#ff7a68' })} <b>${name}</b><i><em style="width:${hpPct}%"></em></i><u>${Math.ceil(e.hp)}</u>`;
-      if (locked) { d.style.border = '1px solid rgba(255,255,255,.85)'; d.style.padding = '2px 3px'; d.style.borderRadius = '3px'; }
-      marks.appendChild(d);
+      if (rec.nameTxt !== name) { rec.nameTxt = name; rec.name.textContent = name; }
+      const hpPct = Math.round(SF.Util.clamp(e.hp / e.spec.hp, 0, 1) * 200) / 2;   // 0.5% 粒度, 减少无谓样式写入
+      if (rec.w !== hpPct) { rec.w = hpPct; rec.fill.style.width = hpPct + '%'; }   // 条=剩余血量(绿, 随损伤缩短)
+      const hpC = Math.ceil(e.hp);
+      if (rec.hp !== hpC) { rec.hp = hpC; rec.num.textContent = hpC; }
+      rec.el.classList.toggle('locked', e === uiState.autoTarget);
+    }
+    for (const rec of emarks.values()) {   // 收起本帧不可见/已阵亡的名牌
+      if (!rec.seen) setDisp(rec.el, 'none');
+      rec.seen = false;
     }
 
     // 任务进程(单机 PVE): 简略条 + Tab 详细面板
@@ -393,36 +417,38 @@ SF.HUD = (() => {
       for (const e of world.enemies) if (e.alive) { const c = clsOf(e); groups[c] = (groups[c] || 0) + 1; }
       const m = uiState.mission;
       const symLine = Object.entries(groups).map(([t, n]) => `<span class="sym">${SF.ClsIcon(t)} ×${n}</span>`).join('') || '<span class="sym" style="color:#8fd98f">已肃清</span>';
-      $('missionBar').style.display = 'block';
-      $('missionBar').innerHTML = `任务 ${m.idx + 1}/${m.total}　残敌 ${symLine}`;
+      setDisp($('missionBar'), 'block');
+      setHtml($('missionBar'), `任务 ${m.idx + 1}/${m.total}　残敌 ${symLine}`);
       const detail = $('missionDetail');
       if (detail.style.display === 'block') {
         const CLS_FULL = { MT: '中型坦克', HT: '重型坦克', TD: '歼击车', LT: '轻型坦克', SPG: '自行火炮' };
         const rows = Object.entries(groups).map(([c, n]) =>
           `<div class="row"><span>${SF.ClsIcon(c)} ${CLS_FULL[c] || '坦克'}</span><span>×${n}</span></div>`).join('');
-        detail.innerHTML = `<h4>${m.name}</h4>${rows || '<div style="color:#8fd98f">本波已肃清</div>'}<div class="k">已击毁 ${m.kills} / ${m.totalEnemies}　·　Tab 收起</div>`;
+        setHtml(detail, `<h4>${m.name}</h4>${rows || '<div style="color:#8fd98f">本波已肃清</div>'}<div class="k">已击毁 ${m.kills} / ${m.totalEnemies}　·　Tab 收起</div>`);
       }
     }
 
     // 狙击镜
-    $('sniperOverlay').style.display = uiState.sniper ? 'block' : 'none';
+    setDisp($('sniperOverlay'), uiState.sniper ? 'block' : 'none');
 
     // 点亮指示(被敌人发现): 灯泡
-    $('detectLamp').style.opacity = uiState.detected ? 1 : 0;
+    setOp($('detectLamp'), uiState.detected ? 1 : 0);
     // 隐蔽指示: 蹲入隐蔽物且未开炮=隐蔽生效; 蹲着但刚开炮=隐蔽失效(红色警告)
     const bt = $('bushTag'), bu = uiState.bush;
     if (bu && bu.inBush) {
-      bt.textContent = bu.concealed ? '🌿 隐蔽中' : '🌿 开炮 · 隐蔽失效';
-      bt.style.color = bu.concealed ? '#9fe08a' : '#e07a6a';
-      bt.style.opacity = 1;
-    } else bt.style.opacity = 0;
+      setTxt(bt, bu.concealed ? '🌿 隐蔽中' : '🌿 开炮 · 隐蔽失效');
+      const c2 = bu.concealed ? '#9fe08a' : '#e07a6a';
+      if (bt._c !== c2) { bt._c = c2; bt.style.color = c2; }
+      setOp(bt, 1);
+    } else setOp(bt, 0);
 
     // 大地图(M): 小地图内容放大绘制
     if ($('bigMap').style.display === 'block')
       $('bigMap').getContext('2d').drawImage($('minimap'), 0, 0, 430, 430);
 
     // 按键指示器(诊断用: 按下应点亮)
-    document.querySelectorAll('#keypad span').forEach(s =>
+    if (!keypadSpans) keypadSpans = document.querySelectorAll('#keypad span');
+    keypadSpans.forEach(s =>
       s.classList.toggle('on', !!(uiState.keys && uiState.keys[s.dataset.k])));
   }
 

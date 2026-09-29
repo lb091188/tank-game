@@ -328,11 +328,17 @@ SF.Main = (() => {
       }
       if (t > 500 && py > 160 && dir.y > 0) break;
     }
-    // 挡弹掩体与敌坦克(含残骸: 挡弹即挡瞄, 不出幽灵准星)
-    // 草丛/树篱/草垛/残骸等软质物挡视线不挡弹 → 准星与弹道预览同样直接穿过(WoT 隔草对射)
-    const objs = world.covers.solid.slice();
+    // 挡弹掩体: 解析遮挡(与炮弹判定同源, OBB/圆本来就是弹道的权威形状; 软质物直接穿过 → 准星与弹道预览一致)
+    // 掩体已合批成少量大网格, 逐三角形 raycast 又慢又不再必要
+    const coverT = world.covers.blocked(origin.x, origin.z, origin.y, dir.x, dir.z, Math.min(bestT, maxDist), dir.y);
+    if (coverT >= 0 && coverT < bestT) {
+      bestT = coverT;
+      best = new THREE.Vector3(origin.x + dir.x * coverT, origin.y + dir.y * coverT, origin.z + dir.z * coverT);
+    }
+    // 敌坦克部位网格(含残骸: 挡弹即挡瞄, 不出幽灵准星)
+    const objs = [];
     for (const e of world.enemies) objs.push(...e.parts.zones);
-    _ray.set(origin, dir); _ray.far = Math.min(bestT, maxDist);
+    _ray.set(origin, dir); _ray.far = bestT;
     const hits = _ray.intersectObjects(objs, true);
     let hitInfo = null;
     if (hits.length && hits[0].distance < bestT) {
@@ -451,17 +457,9 @@ SF.Main = (() => {
 
   // 开镜/鹰眼切换(键盘 Shift 与移动端开镜按钮共用)
   // WoT 式狙击镜去遮挡: 开镜时草丛变半透明且不再投影(WoT 移除 foliage); 退镜恢复
+  // (合批后草丛的材质透明与网格投影都由 SF.Models.setBushSeeThrough 统一处理)
   function setBushSeeThrough(on) {
     SF.Models.setBushSeeThrough(on);
-    if (!setBushSeeThrough.mats) setBushSeeThrough.mats = [];
-    if (on && !setBushSeeThrough.mats.length) {
-      for (const m of SF.Models.bushMats()) setBushSeeThrough.mats.push({ m });
-    }
-    for (const { m } of setBushSeeThrough.mats) {
-      m.opacity = on ? 0.28 : 1;
-      m.transparent = on;
-      m.depthWrite = !on;          // 半透明堆叠免自遮挡
-    }
   }
   function toggleSniper() {
     sniper = !sniper;
@@ -1514,6 +1512,7 @@ SF.Main = (() => {
   function resetBattleVars() {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairMsgText = ''; repairMsgOn = false; repairDone = false; spottedTimer = 0;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
+    SF.Models.setBushSeeThrough(false);   // models 侧的开镜草丛状态不随战斗变量重置, 显式归位
     vcx = innerWidth / 2; vcy = innerHeight / 2;
     spottedLast.clear(); spotStreak.clear(); spotLinger.clear(); lastKnown.clear(); lampT = 0;
     stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
