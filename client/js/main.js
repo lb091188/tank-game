@@ -1327,7 +1327,7 @@ SF.Main = (() => {
     computeAim();
     fx.update(dtReal);
     SF.Models.setFoliageFocus(world.player.x, world.player.z);   // 近距草本透明跟随玩家
-    SF.Audio.setEngine(Math.abs(world.player.speed) / world.player.spec.maxSpeed, keys.KeyW || keys.KeyS ? 1 : 0);
+    SF.Audio.setEngine(Math.abs(world.player.speed) / world.player.spec.maxSpeed, keys.KeyW || keys.KeyS ? 1 : 0, dtReal);
     SF.HUD.update(dtReal, world, SF.Game.uiState);
     if (AIW.on) {
       AIW.snapT -= dtReal;

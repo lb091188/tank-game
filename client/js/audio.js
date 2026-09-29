@@ -59,17 +59,18 @@ SF.Audio = (() => {
     engineSrc.connect(engineLP); engineLP.connect(engineGain); engineGain.connect(master);
     engineSrc.start();
   }
-  function setEngine(speedRatio, throttle) {
+  function setEngine(speedRatio, throttle, dt = 0.016) {
     if (!engineSrc) return;
     if (!SF.CFG.audio.engine) { engineGain.gain.value = 0; return; }
     const A = SF.CFG.audio;
-    const drive = Math.max(Math.min(Math.abs(throttle), 1), 0) * 0.65 + SF.Util.clamp(speedRatio, 0, 1) * 0.35; // 驾驶强度
-    const k = 1 - Math.exp(-0.25);   // 平滑系数(每帧)
+    // 音量以"车速"为主导(动起来就响, 巡航/滑行不再哑火), 油门做瞬时加成(起步轰鸣)
+    const drive = SF.Util.clamp(Math.min(Math.abs(throttle), 1) * 0.3 + SF.Util.clamp(speedRatio, 0, 1) * 0.75, 0, 1);
+    const k = 1 - Math.exp(-6 * dt);   // dt 基准平滑(不限帧率假设)
     engineRate += (A.idleRate + SF.Util.clamp(speedRatio, 0, 1) * (A.topRate - A.idleRate) - engineRate) * k;
     engineSrc.playbackRate.value = engineRate;
     const gTarget = A.idleGain + drive * (A.maxGain - A.idleGain);
-    engineGain.gain.value += (gTarget - engineGain.gain.value) * 0.06;
-    engineLP.frequency.value += (A.idleLP + drive * (A.topLP - A.idleLP) - engineLP.frequency.value) * 0.05;
+    engineGain.gain.value += (gTarget - engineGain.gain.value) * (1 - Math.exp(-8 * dt));
+    engineLP.frequency.value += (A.idleLP + drive * (A.topLP - A.idleLP) - engineLP.frequency.value) * (1 - Math.exp(-5 * dt));
   }
   function startAmbient() {
     if (ambientSrc) return;

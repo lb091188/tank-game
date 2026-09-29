@@ -552,7 +552,7 @@ SF.CFG = {
   audio: {
     engine: true,
     voice: true,                        // 中文战斗语音播报(击穿/跳弹/装填完毕等)
-    idleGain: 0.03, maxGain: 0.26,     // 怠速/全油门音量
+    idleGain: 0.03, maxGain: 0.30,     // 怠速/全油门音量(车速主导: 巡航滑行≈0.21 不再哑火)
     idleRate: 0.95, topRate: 1.62,     // 怠速/全速播放倍率
     idleLP: 500, topLP: 2200           // 怠速闷/全速亮的低通截止(Hz)
   }
