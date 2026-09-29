@@ -1,0 +1,14 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/http",
+  "moonbitlang/async/socket",
+  "moonbitlang/async/websocket",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/string",
+  "steel/server/server-core" @core,
+}
+
+supported_targets = "+native"
+
+pkgtype(kind: "executable")

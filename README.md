@@ -19,13 +19,17 @@
 - 在线版直接玩（上方链接）
 - 本地：双击 `启动游戏.sh`（或 `.bat`），或 `node server/dev-static.js 8341`
 
-联机（需要一位房主）：
+联机（需要一位房主，两种等价实现任选其一）：
 
 ```bash
+# MoonBit 原生版（推荐，release 构建仅 ~2MB 单文件，需 moon 工具链）
+./启动服务器-MoonBit.sh            # 自动构建并开服
+
+# Node 版（需 Node.js 18+）
 cd server && npm install && npm start
 ```
 
-控制台会打印内网 WS 地址 → 每位玩家浏览器打开游戏 → 点「⚔ 联机对战」→ 填该地址 → 房主「创建房间」，其他人凭房间号加入 → 房主选模式与地图开局。
+两版协议完全一致、可互为对照（同一套协议回放测试 28/28 双双通过），客户端无需任何改动。控制台会打印内网 WS 地址 → 每位玩家浏览器打开游戏 → 点「⚔ 联机对战」→ 填该地址 → 房主「创建房间」，其他人凭邀请码加入 → 房主选模式与地图开局。
 
 ## 操作
 
@@ -49,7 +53,8 @@ cd server && npm install && npm start
 ```
 tools/        资产生成器: build-models.js(坦克) build-map.js(地图) build-audio.js(备用音效)
 client/       游戏: assets/(模型/地图/音效文件) + js/(引擎)
-server/       联机: dev-static.js(开发静态) + server.js(对战服务) + 部署 CI 在 .github/workflows/
+server/       联机(Node 版): dev-static.js(开发静态) + server.js(对战服务) + 部署 CI 在 .github/workflows/
+moonbit/      联机(MoonBit 原生版): server-core/(房间/邀请码/路由纯逻辑, 含单测) + server/(async IO: 静态托管+WS)
 ```
 
 - **调参**：手感与数值在 `client/js/config.js`，关卡内容在 `client/assets/maps/*/map.json`（手改即生效）
