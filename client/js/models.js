@@ -391,11 +391,14 @@ SF.Models = (() => {
   }
 
   // 掩体系统: 网格合批 + 碰撞列表(车体推开/挡弹/挡视线)
-  // 渲染侧按"贴图×材质类型×挡弹与否×草丛"分桶, 把全部掩体网格烘焙(world 变换/UV repeat/颜色 tint)
+  // 渲染侧按"贴图×材质类型×挡弹与否×草本"分桶, 把全部掩体网格烘焙(world 变换/UV repeat/颜色 tint)
   // 合并成十几个静态网格 —— 一张图 180~341 个掩体原本 2000+ 独立网格单独提交, 是 draw call 的绝对大头;
   // 碰撞/挡弹/通视本来就是解析计算(circle/OBB+高度), 不依赖网格, 所以合并只影响渲染。
-  // 草丛单独成桶: 开镜去遮挡要整体切半透明+关投影(见 setBushSeeThrough)。
+  // 草本(草丛/树篱/草垛)单独成桶: WoT 式"近距草透明" —— 玩家 50m 内的草本逐顶点淡出(看得见才点得亮,
+  // 点亮了也要看得见), 开镜再整体切半透明+关投影(见 setBushSeeThrough)。
+  const FOLIAGE_TYPES = { bush: 1, hedge: 1, haystack: 1 };
   const bushMatList = [], bushMeshList = [];
+  const foliageUniforms = { uFocus: { value: { x: 1e6, z: 1e6 } } };   // 透明中心(玩家坐标), 1e6=无穷远=全不透明
   const texKeyCache = new Map();
   function texKeyOf(map) {   // 按图源归桶: texMat 的 repeat 克隆共享 image, 同底图不同平铺可合并(UV 已烘)
     const A = (SF.Assets && SF.Assets.textures) || {};
@@ -404,7 +407,7 @@ SF.Models = (() => {
     if (!k) texKeyCache.set(map.image, k = 'g' + texKeyCache.size);
     return k;
   }
-  function makeMergedMat(srcMat, texKey) {
+  function makeMergedMat(srcMat, texKey, foliage) {
     const opts = { color: 0xffffff, vertexColors: true };   // tint 已烘进顶点色
     if (texKey[0] !== 'F') {
       const base = SF.Assets && SF.Assets.textures[texKey];
@@ -416,14 +419,30 @@ SF.Models = (() => {
       }
     }
     // GLB(残骸)是 Standard 材质, 保留 roughness/metalness 观感; 程序化掩体全是 Lambert
-    return srcMat.type === 'MeshStandardMaterial'
+    const mat = srcMat.type === 'MeshStandardMaterial'
       ? new THREE.MeshStandardMaterial({ ...opts, roughness: srcMat.roughness, metalness: srcMat.metalness })
       : new THREE.MeshLambertMaterial(opts);
+    if (foliage) {
+      // 近距草透明: 顶点距透明中心(玩家) 50~62m 平滑淡出至 0.3。
+      // 合批网格的顶点坐标就是世界坐标(已烘焙), 直接在顶点着色器里算距离。
+      mat.transparent = true;
+      mat.depthWrite = false;                  // 半透明团簇免自遮挡(与开镜态同款设定)
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.uFocus = foliageUniforms.uFocus;
+        sh.vertexShader = sh.vertexShader
+          .replace('#include <common>', '#include <common>\nuniform vec2 uFocus; varying float vNear;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvNear = 1.0 - smoothstep(50.0, 62.0, distance(position.xz, uFocus));');
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nvarying float vNear;')
+          .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.a *= mix(1.0, 0.3, vNear);');
+      };
+    }
+    return mat;
   }
   const _WHITE = { r: 1, g: 1, b: 1 };
   function bakeCover(group, c, col, buckets) {
     group.updateMatrixWorld(true);
-    const solid = !!col.blocksShells, isBush = c.type === 'bush';
+    const solid = !!col.blocksShells, isBush = !!FOLIAGE_TYPES[c.type];
     group.traverse(o => {
       if (!o.isMesh || !o.visible) return;   // visible=false(如残骸 GLB 的瞄准轮廓)不参与合批
       const mat = Array.isArray(o.material) ? o.material[0] : o.material;
@@ -448,7 +467,7 @@ SF.Models = (() => {
       if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(posCount * 2), 2));
       const key = (map ? 'T' + texKeyOf(map) : 'F') + '|' + mat.type + '|' + (solid ? 'S' : 'W') + (isBush ? 'B' : '');
       let b = buckets.get(key);
-      if (!b) { b = { geos: [], bush: isBush, mat: makeMergedMat(mat, map ? texKeyOf(map) : 'F') }; buckets.set(key, b); }
+      if (!b) { b = { geos: [], bush: isBush, mat: makeMergedMat(mat, map ? texKeyOf(map) : 'F', isBush) }; buckets.set(key, b); }
       b.geos.push(geo);
     });
   }
@@ -491,11 +510,8 @@ SF.Models = (() => {
     return geo;
   }
   function applyBushSeeThrough() {
-    for (const m of bushMatList) {
-      m.opacity = bushSeeThrough ? 0.28 : 1;
-      m.transparent = bushSeeThrough;
-      m.depthWrite = !bushSeeThrough;          // 半透明堆叠免自遮挡
-    }
+    // 草本材质常态 transparent(近距淡出着色器需要), 开镜只再乘一层整体 opacity + 关投影
+    for (const m of bushMatList) m.opacity = bushSeeThrough ? 0.28 : 1;
     for (const mesh of bushMeshList) mesh.castShadow = !bushSeeThrough;
   }
   class CoverField {
@@ -593,5 +609,11 @@ SF.Models = (() => {
     }
   }
 
-  return { makeTank, CoverField, bushMats: () => bushMatList, setBushSeeThrough: (v) => { bushSeeThrough = v; applyBushSeeThrough(); } };
+  return {
+    makeTank, CoverField,
+    bushMats: () => bushMatList,
+    setBushSeeThrough: (v) => { bushSeeThrough = v; applyBushSeeThrough(); },
+    // 近距草透明的中心(玩家坐标), 每帧更新; 传 null 恢复全不透明
+    setFoliageFocus: (x, z) => { foliageUniforms.uFocus.value.x = (x === null) ? 1e6 : x; foliageUniforms.uFocus.value.z = (z === null) ? 1e6 : z; }
+  };
 })();

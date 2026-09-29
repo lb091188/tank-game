@@ -26,6 +26,7 @@ SF.Tank = class {
     this.pitch = 0; this.roll = 0; this.y = 0;
 
     this.hp = this.spec.hp; this.alive = true;
+    this.gear = 'D'; this.shiftT = 0;   // 自动挡: D 前进 / R 倒车 / N 换挡中(0.35s 一拍, WoT 换向手感)
     this.velX = 0; this.velZ = 0;   // 供 AI 预判提前量
     this.trackOffset = 0;           // 履带纹理滚动相位
     this.reloadT = 0.5;
@@ -67,18 +68,31 @@ SF.Tank = class {
       this.speed = U.moveToward(this.speed, 0, 6 * dt);             // 断带: 瘫痪
     } else if (Math.abs(slope) > SF.CFG.sim.maxSlope && uphill) {
       this.speed = U.moveToward(this.speed, 0, 8 * dt);             // 陡坡爬不上去
-    } else if (input.throttle > 0) {
-      if (this.speed < -0.3) this.speed = U.moveToward(this.speed, 0, S.brake * dt); // 前进档踩刹车
-      else {
-        const target = maxF * input.throttle;
-        const a = S.accel * (uphill ? slopeK : 1) * U.clamp(1.15 - Math.abs(this.speed) / (maxF + 0.01) * 0.5, 0.4, 1);
-        this.speed = Math.min(target, this.speed + a * dt);
-      }
-    } else if (input.throttle < 0) {
-      if (this.speed > 0.3) this.speed = U.moveToward(this.speed, 0, S.brake * dt); // 倒车档先刹车(滑行感)
-      else this.speed = Math.max(maxR * input.throttle, this.speed - S.accel * dt);
     } else {
-      this.speed = U.moveToward(this.speed, 0, S.coastDrag * dt);   // 松手滑行
+      /* --- 自动挡(WoT 换向手感): D/R 两挡 + 换向一拍空挡 ---
+         踩反向键 = 先刹车; 近乎停稳才换挡(空挡 0.35s), 踩住不放自动续入新挡位继续走;
+         未停稳前反向键只当刹车用, 不会边前进边吃倒车动力 */
+      const want = input.throttle > 0.05 ? 'D' : input.throttle < -0.05 ? 'R' : this.gear;
+      if (this.gear !== 'N' && want !== this.gear && Math.abs(this.speed) < 0.4) {
+        this.gear = 'N'; this.shiftT = 0.35;
+      }
+      if (this.gear === 'N') {
+        this.shiftT -= dt;
+        this.speed = U.moveToward(this.speed, 0, S.brake * dt);     // 空挡带刹滑停
+        if (this.shiftT <= 0) this.gear = want === 'R' ? 'R' : 'D';
+      } else if (input.throttle > 0) {
+        if (this.gear !== 'D' || this.speed < -0.3) this.speed = U.moveToward(this.speed, 0, S.brake * dt); // 非前进挡: 先刹
+        else {
+          const target = maxF * input.throttle;
+          const a = S.accel * (uphill ? slopeK : 1) * U.clamp(1.15 - Math.abs(this.speed) / (maxF + 0.01) * 0.5, 0.4, 1);
+          this.speed = Math.min(target, this.speed + a * dt);
+        }
+      } else if (input.throttle < 0) {
+        if (this.gear !== 'R' || this.speed > 0.3) this.speed = U.moveToward(this.speed, 0, S.brake * dt);   // 非倒挡: 先刹
+        else this.speed = Math.max(maxR * input.throttle, this.speed - S.accel * dt);
+      } else {
+        this.speed = U.moveToward(this.speed, 0, S.coastDrag * dt); // 松手滑行
+      }
     }
 
     /* --- 车体回转(可原地转向; 断带严重削弱) --- */
@@ -247,6 +261,7 @@ SF.Tank = class {
     this.group = this.parts.root;
     this.x = keep.x; this.z = keep.z; this.yaw = keep.yaw; this.netId = keep.netId; this.isPlayer = keep.isPlayer; this.team = keep.team;
     this.speed = 0; this.turretYaw = this.yaw; this.gunPitch = 0;
+    this.gear = 'D'; this.shiftT = 0;
     this.pitch = 0; this.roll = 0; this.y = 0; this._yInit = false;
     this.hp = this.spec.hp; this.alive = true; this.reloadT = 1; this.reloadTotal = 1;
     if (this.spec.gun.autoloader) { this.clipLeft = this.spec.gun.autoloader.clip; this.clipPhase = 'intra'; }

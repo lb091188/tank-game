@@ -228,7 +228,9 @@ SF.HUD = (() => {
     setHtml($('clipInfo'), _al
       ? Array.from({ length: _al.clip }, (_, i) => `<i class="${i < player.clipLeft ? 'full' : ''}"></i>`).join('') + `<em>${player.clipLeft}/${_al.clip}</em>`
       : '');
-    setTxt($('speedText'), Math.abs(Math.round(player.speed * 3.6)) + ' km/h');
+    // 挡位 + 速度(WoT 自动挡: D 前进 / N 换挡中 / R 倒车)
+    const g = player.gear || 'D';
+    setTxt($('speedText'), g + ' ' + Math.abs(Math.round(player.speed * 3.6)) + ' km/h');
     setHtml($('moduleTags'), ['track', 'engine', 'gun', 'ammo']
       .filter(k => player.modules[k] > 0)
       .map(k => `<span class="mod">${SF.CFG.armor.modules[k].text}</span>`).join(''));

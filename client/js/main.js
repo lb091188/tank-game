@@ -1323,6 +1323,7 @@ SF.Main = (() => {
     updateCamera(dtReal);
     computeAim();
     fx.update(dtReal);
+    SF.Models.setFoliageFocus(world.player.x, world.player.z);   // 近距草本透明跟随玩家
     SF.Audio.setEngine(Math.abs(world.player.speed) / world.player.spec.maxSpeed, keys.KeyW || keys.KeyS ? 1 : 0);
     SF.HUD.update(dtReal, world, SF.Game.uiState);
     if (AIW.on) {
@@ -1691,6 +1692,7 @@ SF.Main = (() => {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairMsgText = ''; repairMsgOn = false; repairDone = false; spottedTimer = 0;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
     SF.Models.setBushSeeThrough(false);   // models 侧的开镜草丛状态不随战斗变量重置, 显式归位
+    SF.Models.setFoliageFocus(null, null);   // 近距草透明焦点也归位(车库预览无玩家)
     AIW.overSent = false; AIW.byId.clear();
     vcx = innerWidth / 2; vcy = innerHeight / 2;
     spottedLast.clear(); spotStreak.clear(); spotLinger.clear(); lastKnown.clear(); lampT = 0;
