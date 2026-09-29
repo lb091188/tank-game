@@ -501,6 +501,7 @@ SF.Models = (() => {
   class CoverField {
     constructor(mapJson, terrain, scene) {
       this.list = [];
+      this.heightAt = terrain.heightAt;   // 遮挡计算注入地形采样(simcore, 与 worker 同源)
       this.group = new THREE.Group();
       const buckets = new Map();
       for (const c of mapJson.covers) {
@@ -582,38 +583,13 @@ SF.Models = (() => {
       }
       return [nx, nz];
     }
-    // 弹道/视线遮挡: 包围圆粗剔除 + 方形 rayObb / 圆形 rayCircle, 高度比较; 返回沿射线的最近命中距离(无遮挡 -1)
-    // spot(可选, 点亮专用): 额外计入草丛(不挡弹但挡视线); concealed=目标蹲草未开炮 → 目标脚下那丛加高吞掉整车
+    // 弹道/视线遮挡: 委托 simcore(主线程/Worker 同一实现); 返回沿射线最近命中距离(-1 无)
     blocked(ox, oz, oy, dx, dz, len, dy, spot) {
-      let best = -1;
-      for (const c of this.list) {
-        if (!(c.blocksShells || (spot && c.blocksSpot))) continue;
-        const t0 = SF.Util.rayCircle(ox, oz, dx, dz, len, c.x, c.z, c.r);
-        if (t0 < 0) continue;
-        const t = c.shape === 'box' ? SF.Util.rayObb(ox, oz, dx, dz, len, c) : t0;
-        if (t < 0 || (best >= 0 && t >= best)) continue;
-        // WoT: 观察者身边 50m 内的软质草本(草丛/树篱/草垛)对视线透明 —— 视野里看得见就点得亮
-        if (spot && c.blocksSpot && !c.blocksShells && t < 50) continue;
-        let ch = c.h;
-        if (spot && c.blocksSpot && !c.blocksShells && spot.concealed
-          && Math.hypot(ox + dx * t - spot.tx, oz + dz * t - spot.tz) < 6)
-          ch += 1.8;                                    // 草丛把蹲入的整车连炮塔一起藏住
-        const h = oy + dy * t;
-        if (h < SF.Game.world.terrain.heightAt(ox + dx * t, oz + dz * t) + ch) best = t;  // 命中掩体高度内
-      }
-      return best;
+      return SF.Sim.coversBlocked(this.list, this.heightAt, ox, oz, oy, dx, dz, len, dy, spot);
     }
     // 找 a→b 方向最近的掩体(供 AI 找掩体用): 硬掩体(挡弹)或视觉掩体(挡视线)都算
     nearestCoverBetween(ax, az, bx, bz) {
-      let best = null, bestT = 1e9;
-      const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
-      if (len < 1) return null;
-      for (const c of this.list) {
-        if (!c.blocksShells && !c.blocksSpot) continue;
-        const t = SF.Util.rayCircle(ax, az, dx / len, dz / len, len, c.x, c.z, c.r);
-        if (t >= 0 && t < bestT) { bestT = t; best = c; }
-      }
-      return best;
+      return SF.Sim.nearestCoverBetween(this.list, ax, az, bx, bz);
     }
   }
 

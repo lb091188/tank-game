@@ -1,5 +1,7 @@
 // ai.js — 敌方 AI: FSM(巡逻/警戒/交战/撤退) + 三种车型性格 + 感知(视距/遮挡/反应延迟/听觉/记忆)
 // 关键设计: AI 与玩家走同一 Tank.update 接口, 同样受缩圈/回转/装填规则约束
+// 本文件在主线程与 Worker(ai-worker.js) 各跑一份: 只依赖 world 注入接口
+// (time/terrain.heightAt/covers.blocked/list/enemies/player/mpTargets), 不直接摸 THREE。
 window.SF = window.SF || {};
 
 // 通用通视检查(玩家 spotting 与 AI 共用): 地形 + 掩体遮挡, 眼高 2m
@@ -13,7 +15,7 @@ SF.losClear = function (world, ax, az, bx, bz) {
 
 // 多点通视(点亮用): WoT 双视口(车体 2.0m / 塔顶 3.0m) × 目标三点(车体 1.2m / 塔心 2.0m / 炮塔顶 2.8m),
 // 任一组合通视即算可见 —— 卖头、半坡露体、贴着小土脊/远处草丛边缘都不再"明明看得见却不点亮"
-// (观察者 50m 内的草丛直接透明, 见 CoverField.blocked)
+// (观察者 50m 内的草丛直接透明, 见 simcore.coversBlocked)
 // concealed=目标蹲草未开炮: 草丛算遮挡且把目标连炮塔一起吞掉
 SF.losClearAny = function (world, ax, az, bx, bz, concealed) {
   const ay0 = world.terrain.heightAt(ax, az), by0 = world.terrain.heightAt(bx, bz);
@@ -30,26 +32,12 @@ SF.losClearAny = function (world, ax, az, bx, bz, concealed) {
   return false;
 };
 
-// 隐蔽物状态(WoT): 草丛/树篱/草垛/残骸 = 挡视线的软质物; 身处其半径内 = inBush;
-// 开炮后 4s "失效"(不挡点亮也不加隐蔽) —— 吹倒草丛
+// 隐蔽物状态/隐蔽值: 委托 simcore(参数化 coversList + time, 主线程与 worker 同一实现)
 SF.bushState = function (t, world) {
-  const bushes = world.covers.bushes || (world.covers.bushes = world.covers.list.filter(b => b.blocksSpot && !b.blocksShells));
-  let inBush = false;
-  for (const b of bushes)
-    if (Math.hypot(b.x - t.x, b.z - t.z) < b.r + 3.5) { inBush = true; break; }
-  return { inBush, concealed: inBush && world.time - (t.lastFireT || -99) >= 4 };
+  return SF.Sim.bushState(world.covers.list, t, world.time);
 };
-
-// 隐蔽值(WoT camo): 基础值按车型; 移动减半; 蹲草丛 +0.25 且挡点亮视线(见 bushState);
-// 开炮后 4s 隐蔽近乎清零、草丛同时失效(吹倒草丛)
-// 实际点亮距离 = 视距 × (1 - 隐蔽值)
 SF.camoOf = function (t, world) {
-  const c0 = (t.spec && t.spec.camo !== undefined) ? t.spec.camo : 0.12;
-  let c = c0;
-  if (Math.abs(t.speed) > 1.2 || Math.abs(t.lastYawRate || 0) > 0.08) c *= 0.5;
-  if (SF.bushState(t, world).inBush) c += 0.25;
-  if (world.time - (t.lastFireT || -99) < 4) c = Math.min(c, c0 * 0.1);
-  return Math.min(c, 0.8);
+  return SF.Sim.camoOf(world.covers.list, t, world.time);
 };
 
 // AI 目标选择: 合作模式多名玩家 → 锁定最近存活者; 单机 → world.player

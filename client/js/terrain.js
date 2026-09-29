@@ -1,46 +1,14 @@
 // terrain.js — 地形: 由高程图构建渲染网格 + 物理采样(渲染与物理同源)
+// 采样逻辑在 simcore.js(主线程/Worker 共用), 此类是渲染侧封装
 window.SF = window.SF || {};
 
 SF.Terrain = class {
   constructor(heights, terrainCfg) {
-    this.h = heights;
-    this.res = terrainCfg.resolution;
-    this.size = terrainCfg.size;
-    this.maxHeight = terrainCfg.maxHeight;
-    this.half = this.size / 2;
-    this.cell = this.size / (this.res - 1);
-  }
-
-  // 双线性采样高程
-  heightAt(x, z) {
-    const U = SF.Util;
-    const fi = U.clamp((x + this.half) / this.size, 0, 1) * (this.res - 1);
-    const fj = U.clamp((z + this.half) / this.size, 0, 1) * (this.res - 1);
-    const i = Math.min(this.res - 2, Math.floor(fi)), j = Math.min(this.res - 2, Math.floor(fj));
-    const tx = fi - i, tz = fj - j;
-    const a = this.h[j * this.res + i], b = this.h[j * this.res + i + 1];
-    const c = this.h[(j + 1) * this.res + i], d = this.h[(j + 1) * this.res + i + 1];
-    return a + (b - a) * tx + (c - a + (a - b - c + d) * tx) * tz;
-  }
-
-  // 沿朝向的坡度(正=上坡), 用于爬坡阻力
-  slopeAhead(x, z, yaw, dist) {
-    const s = Math.sin(yaw), c = Math.cos(yaw);
-    const h0 = this.heightAt(x, z), h1 = this.heightAt(x + s * dist, z + c * dist);
-    return Math.atan2(h1 - h0, dist);
-  }
-
-  // 地形通视: 两点(含眼高)之间地形是否遮挡
-  losBlocked(ax, az, ay, bx, bz, by) {
-    const d = Math.hypot(bx - ax, bz - az);
-    const steps = Math.max(2, Math.ceil(d / 6));
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      const hTerrain = this.heightAt(ax + (bx - ax) * t, az + (bz - az) * t) + 1.6; // 地形 + 弹道高
-      const hLine = ay + (by - ay) * t;
-      if (hTerrain > hLine) return true;
-    }
-    return false;
+    const s = SF.Sim.makeTerrain(heights, terrainCfg);
+    this.h = s.h; this.res = s.res; this.size = s.size; this.half = s.half; this.cell = s.cell;
+    this.heightAt = s.heightAt;
+    this.losBlocked = s.losBlocked;
+    this.slopeAhead = s.slopeAhead;
   }
 
   // 构建渲染网格: 顶点色按 theme(草原/城市/山岩) + 高度/坡度

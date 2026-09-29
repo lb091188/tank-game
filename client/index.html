@@ -43,6 +43,18 @@
   #pvePanel .pveRow { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
   #pvePanel .pveRow label { color: #a8ad99; font-size: 12px; width: 96px; }
   #pvePanel select { background: #23261c; color: #d8c887; border: 1px solid #5c6244; border-radius: 3px; font-size: 12px; padding: 2px 4px; cursor: pointer; }
+  /* 画质面板: 复用 pvePanel 的标题/行样式 */
+  #gfxPanel { padding: 6px 12px; text-align: left; align-self: flex-start; }
+  #gfxPanel .pveTitle { color: #8b9080; font-size: 13px; margin-bottom: 4px; cursor: pointer; white-space: nowrap; }
+  #gfxPanel .pveTitle b { color: #e8dcae; font-size: 13px; letter-spacing: 1px; }
+  #gfxPanel .pveTitle span { color: #767b6b; font-size: 11px; margin-left: 6px; }
+  #gfxPanel .pveTitle::after { content: ' ▾'; color: #8b9080; }
+  #gfxPanel.collapsed .pveTitle::after { content: ' ▸'; }
+  #gfxPanel.collapsed .pveBody { display: none; }
+  #gfxPanel .pveRow { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+  #gfxPanel .pveRow label { color: #a8ad99; font-size: 12px; width: 96px; }
+  #gfxPanel select { background: #23261c; color: #d8c887; border: 1px solid #5c6244; border-radius: 3px; font-size: 12px; padding: 2px 4px; cursor: pointer; }
+  #gfxPanel .pveNote { color: #767b6b; font-size: 11px; }
 
   /* 触屏操控(仅 TOUCH 设备由 JS 挂载): 左半屏摇杆 / 右半屏瞄准 / 右下开炮·开镜 */
   #touchUI { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
@@ -121,6 +133,7 @@
   .panel { background: rgba(14, 16, 11, 0.55); border: 1px solid rgba(200,178,106,.25); border-radius: 5px; }
 
   #msg { position: absolute; top: 14%; width: 100%; text-align: center; color: #e8dcae; font-size: 24px; letter-spacing: 4px; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .4s; }
+  #fpsMeter { position: fixed; left: 10px; top: 8px; font: 12px/1.5 monospace; color: #9fe08a; text-shadow: 0 1px 2px #000; display: none; z-index: 60; pointer-events: none; }
   #keypad { position: absolute; left: 18px; bottom: 16px; display: flex; gap: 6px; }
   #keypad span { width: 26px; height: 26px; line-height: 26px; text-align: center; font-size: 13px; color: #6a6f5e; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.25); border-radius: 5px; }
   #keypad span.on { color: #14160f; background: #c8b26a; border-color: #c8b26a; }
@@ -251,6 +264,7 @@
 
 <div id="hud">
   <div id="msg"></div>
+  <div id="fpsMeter"></div>
   <div id="log"></div>
   <div id="keypad"><span data-k="KeyW">W</span><span data-k="KeyA">A</span><span data-k="KeyS">S</span><span data-k="KeyD">D</span></div>
   <div id="dmgLayer"></div>
@@ -348,6 +362,17 @@
       <div id="dockRow">
         <div id="garageStats" class="panel"></div>
         <div id="pvePanel" class="panel"></div>
+        <div id="gfxPanel" class="panel">
+          <div class="pveTitle"><b>画质</b><span>帧率不够就降档 · F3 看帧率</span></div>
+          <div class="pveBody"><div class="pveRow">
+            <label>画质档位</label>
+            <select id="gfxSel">
+              <option value="high">高 · 原画质</option>
+              <option value="mid">中 · 均衡</option>
+              <option value="low">低 · 核显流畅</option>
+            </select>
+          </div><div class="pveRow" id="gfxNote"></div></div>
+        </div>
         <div id="tipOnTitle"></div>
         <div id="btnRow">
           <button id="btnStart">出 击</button>
@@ -364,6 +389,7 @@
 <script src="js/vendor/three.min.js"></script>
 <script src="js/vendor/GLTFLoader.js"></script>
 <script src="js/config.js"></script>
+<script src="js/simcore.js"></script>
 <script src="js/assets.js"></script>
 <script src="js/terrain.js"></script>
 <script src="js/models.js"></script>

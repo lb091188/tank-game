@@ -32,6 +32,9 @@ SF.Main = (() => {
     artyZ = U.clamp((cy - r.top) / r.height * T.size - T.half, -470, 470);
   }
   let artyX = 0, artyZ = 0;   // 火炮鹰眼: 俯视视野中心(世界坐标)
+  // 阴影按需更新状态(见 updateCamera 尾部)
+  let shadowCell = null, shadowNeed = true, shadowLastT = -99;
+  const shadowTankPos = new Map();
   const ARTY_H = [40, 70, 110, 160, 220];   // 鹰眼高度档位(视场范围)
   let artyH = ARTY_H[2], artyHIdx = 2;
   let sniperFov = SF.CFG.camera.sniperFovMax;   // 当前狙镜视场(滚轮镜内变焦)
@@ -48,6 +51,96 @@ SF.Main = (() => {
   let lastSpottedT = -99, wasDetected = false;   // 点亮机制(2s 宽限)
   const bushUi = { inBush: false, concealed: false };   // 草丛隐蔽状态(HUD 指示)
   let deathMark = null;                          // 上次阵亡位置(小地图 ✕ 标记)
+
+  /* ---------- AI Worker: 感知/决策在独立线程按真实时钟运行 ----------
+     主线程再卡(渲染/GC/掉帧), worker 照常每 33ms 思考 —— AI 不会因为掉帧变傻。
+     失败降级: Worker 构造/运行出错 → 回退主线程逐帧 ai.update(与旧版一致)。 */
+  const AIW = { worker: null, on: false, failed: false, snapT: 0, nextId: 100, byId: new Map() };
+  window.SF_AIW = AIW;   // 诊断句柄(控制台可查 worker 状态/消息)
+  async function initAIWorker() {
+    if (AIW.failed) return;
+    if (AIW.worker) { AIW.on = true; return; }   // 重开战斗复用
+    try {
+      const base = new URL('js/', location.href).href;
+      const src = await (await fetch('js/ai-worker.js?v=' + (window.SF_BUILD || Date.now()))).text();
+      AIW.worker = new Worker(URL.createObjectURL(new Blob(['self.BASE_URL=' + JSON.stringify(base) + ';\n' + src], { type: 'text/javascript' })));
+      AIW.worker.onerror = (e) => {
+        console.warn('AI worker 异常, 退回主线程:', e.message || e);
+        AIW.on = false; AIW.failed = true;
+      };
+      AIW.worker.onmessage = (e) => {
+        const m = e.data;
+        if (m.t !== 'in') return;
+        for (const a of m.list) {
+          const tk = AIW.byId.get(a[0]);
+          if (!tk) continue;
+          tk._aiIn = { throttle: a[1], steer: a[2], aimYaw: a[3], aimPitch: a[4], fire: !!a[5] };
+          tk._aiSeen = !!a[6]; tk._aiTarget = a[7] || 0;
+        }
+      };
+      AIW.on = true;
+    } catch (err) {
+      console.warn('AI worker 不可用, 主线程运行:', err);
+      AIW.failed = true;
+    }
+  }
+  // 战斗世界注入 worker(地形高程/掩体碰撞表; 每场一次, 高程表约 330KB 克隆)
+  function syncAIWorld(terrain, mapJson, covers) {
+    if (!AIW.on) return;
+    AIW.worker.postMessage({ t: 'init', heights: terrain.h, terrainCfg: mapJson.terrain, covers: covers.list });
+  }
+  // 10Hz 状态快照: 位置/战斗状态喂给 worker 的复制品世界(行布局见 ai-worker.js)
+  function sendAISnap() {
+    if (!AIW.on || !world) return;
+    const R = (v, n = 2) => +Number(v || 0).toFixed(n);   // 远端坦克个别字段可能未初始化, 兜 0
+    const enemies = world.enemies.map(e => [e._aiId, R(e.x), R(e.z), R(e.y), R(e.yaw, 3), R(e.speed),
+      R(e.velX), R(e.velZ), Math.round(e.hp), R(e.disp, 4), R(e.reloadT), R(e.turretYaw, 3), e.lastFireT || -99, e.alive ? 1 : 0, R(e.lastYawRate || 0, 3)]);
+    const players = (MP.mode === 'host' && MP.gameMode === 'coop')
+      ? [...MP.tanks.values()].filter(t => t.netId < 100 && t.alive !== undefined)
+        .map(t => [t.netId, R(t.x), R(t.z), R(t.y), R(t.yaw, 3), R(t.speed), R(t.velX), R(t.velZ), Math.round(t.hp), t.lastFireT || -99, t.alive ? 1 : 0])
+      : [[0, R(world.player.x), R(world.player.z), R(world.player.y), R(world.player.yaw, 3), R(world.player.speed),
+          R(world.player.velX), R(world.player.velZ), Math.round(world.player.hp), world.player.lastFireT || -99, world.player.alive ? 1 : 0]];
+    AIW.worker.postMessage({ t: 'snap', time: world.time, intel: world.intel, enemies, players });
+  }
+  // AI 输入/感知读取: worker 模式取回传结果, 降级模式走主线程 ai 实例
+  // worker 中途挂掉时, 现场为代理桩补建主线程 AI(携带出生时的定义), 游戏不中断
+  function aiStep(e, dt, w) {
+    if (AIW.on) { const inp = e._aiIn; return inp || IDLE_INPUT(e); }
+    if (e._aiId !== undefined && (!e.ai || !e.ai.update)) {
+      e.ai = new SF.AI(e, e._aiDef || {});
+      e.ai.flankSlot = e._aiFlank || 0;
+      delete e._aiId;
+    }
+    return e.ai.update(dt, w);
+  }
+  function aiSeen(e) { return AIW.on ? !!e._aiSeen : !!(e.ai && e.ai.seenNow); }
+  function aiTargetId(e) { return AIW.on ? (e._aiTarget || 0) : ((e.ai && e.ai.lastTargetId) || 0); }
+
+  /* ---------- 画质分档: 高(默认, 与旧版一致)/中/低; 分辨率与阴影可实时切换, MSAA 需重开战斗 ---------- */
+  const GFX = (() => {
+    const PRESETS = {
+      high: { dpr: 2, msaa: true, shadowRes: 2048, shadowHz: 30 },
+      mid: { dpr: 1.5, msaa: true, shadowRes: 1024, shadowHz: 24 },
+      low: { dpr: 1.25, msaa: false, shadowRes: 1024, shadowHz: 15 }
+    };
+    let preset = 'high';
+    try { const s = JSON.parse(localStorage.getItem('sf_gfx') || '{}'); if (PRESETS[s.preset]) preset = s.preset; } catch (e) { }
+    function apply() {   // 实时生效: 分辨率 + 阴影贴图(MSAA 在 buildScene 创建渲染器时读取)
+      if (!renderer) return;
+      renderer.setPixelRatio(Math.min(devicePixelRatio, PRESETS[preset].dpr));
+      const sun = sunLight && sunLight.light;
+      if (sun && sun.shadow.mapSize.x !== PRESETS[preset].shadowRes) {
+        sun.shadow.mapSize.set(PRESETS[preset].shadowRes, PRESETS[preset].shadowRes);
+        if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }   // 触发重建
+      }
+      shadowCell = null;   // 强制下帧重绘阴影
+    }
+    return {
+      get preset() { return preset; },
+      set(v) { if (!PRESETS[v]) return; preset = v; try { localStorage.setItem('sf_gfx', JSON.stringify({ preset: v })); } catch (e) { } apply(); },
+      cfg() { return PRESETS[preset]; }
+    };
+  })();
   // 联机死斗(主机权威): mode=host 房主跑模拟; client 幽灵插值; sp 单机
   const MP = SF.Game_mp = {
     mode: 'sp', gameMode: 'dm', myId: 0, mapId: 'l01', players: [],   // [{id,name,tank,host}]
@@ -70,10 +163,10 @@ SF.Main = (() => {
 
   /* ---------- 场景 ---------- */
   function buildScene() {
-    const map = SF.Assets.maps[selMap].json, L = map.lighting;
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    const map = SF.Assets.maps[selMap].json, L = map.lighting, G = GFX.cfg();
+    renderer = new THREE.WebGLRenderer({ antialias: G.msaa, powerPreference: 'high-performance', stencil: false });
     renderer.setSize(innerWidth, innerHeight);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(devicePixelRatio, G.dpr));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game').appendChild(renderer.domElement);
@@ -105,7 +198,7 @@ SF.Main = (() => {
     // 光照
     const sun = new THREE.DirectionalLight(new THREE.Color(...L.sunColor), L.sunIntensity);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(G.shadowRes, G.shadowRes);
     sun.shadow.camera.left = sun.shadow.camera.bottom = -95;
     sun.shadow.camera.right = sun.shadow.camera.top = 95;
     sun.shadow.camera.far = 700;
@@ -119,6 +212,7 @@ SF.Main = (() => {
     const terrain = new SF.Terrain(SF.Assets.maps[selMap].heights, map.terrain);
     scene.add(terrain.buildMesh(map.theme || 'grass'));
     const covers = new SF.Models.CoverField(map, terrain, scene);
+    syncAIWorld(terrain, map, covers);   // worker 模式: 先注入世界, 后面 spawnWave 才能下发 AI
 
     // 玩家(PVE 修改器: 克隆 spec 应用配件倍率, 不污染全局配置; 联机不生效)
     const [sx, sz, syaw] = map.player.spawn;
@@ -176,10 +270,16 @@ SF.Main = (() => {
   }
 
   /* ---------- 波次 ---------- */
+  function aiSpec(s) {   // AI 需要的 spec 子集(纯数据, 发给 worker)
+    return { view: s.view, camo: s.camo, cls: s.cls, hp: s.hp, name: s.name,
+             gun: { speed: s.gun.speed }, dispersion: { base: s.dispersion.base, max: s.dispersion.max },
+             gunDepression: s.gunDepression, gunElevation: s.gunElevation };
+  }
   function spawnWave(i) {
     const wave = world.map.waves[i];
     if (!wave) return;
     const aiSpawned = [];
+    const aiSpawnDefs = [];
     let pt = TIER_NUM[(SF.CFG.vehicles[selTank] || {}).tier] || 5;
     if (MP.mode !== 'sp')
       for (const pl of MP.players) pt = Math.max(pt, TIER_NUM[(SF.CFG.vehicles[pl.tank] || {}).tier] || 5);
@@ -211,15 +311,27 @@ SF.Main = (() => {
       const def2 = { ...def, patrol: (def.patrol || []).map(w => [
         U.clamp(w[0] + (ex - def.pos[0]) + (Math.random() - 0.5) * 50, -430, 430),
         U.clamp(w[1] + (ez - def.pos[1]) + (Math.random() - 0.5) * 50, -430, 430)]) };
-      t.ai = new SF.AI(t, def2);
       // 合围扇区: 全波均匀分布(+抖动), 围攻时各车从自己的方向接近, 形成合围而非排队送
-      t.ai.flankSlot = wi / n * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
+      const flankSlot = wi / n * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
+      if (AIW.on) {
+        // worker 模式: 主线程只留 onHurt 转发桩, 决策在 worker 的复制品世界按真实时钟跑
+        t._aiId = AIW.nextId++;
+        AIW.byId.set(t._aiId, t);
+        t._aiDef = def2; t._aiFlank = flankSlot;   // worker 挂掉时 aiStep 现场重建用
+        t.ai = { onHurt(shooter) { AIW.worker.postMessage({ t: 'hurt', id: t._aiId, x: shooter.x, z: shooter.z }); } };
+        aiSpawnDefs.push({ id: t._aiId, x: t.x, z: t.z, yaw: t.yaw, netId: t.netId || 0, noTurret: !!t.parts.noTurret,
+                           flankSlot, spec: aiSpec(t.spec), def: { personality: def2.personality, patrol: def2.patrol, hold: def2.hold } });
+      } else {
+        t.ai = new SF.AI(t, def2);
+        t.ai.flankSlot = flankSlot;
+      }
       scene.add(t.group);
       world.tanks.push(t);
       if (MP.mode !== 'sp') { t.netId = MP.aiId++; t.team = 1; t._isAI = true; MP.tanks.set(t.netId, t); aiSpawned.push({ id: t.netId, type }); }
       return t;
     });
     world.enemies = waveEnemies;
+    if (AIW.on) AIW.worker.postMessage({ t: 'spawn', list: aiSpawnDefs });
     if (MP.mode !== 'sp') SF.Net.send({ t: 'ev', k: 'aiWave', d: { list: aiSpawned } });
     stats.total += waveEnemies.length;
     SF.HUD.showMsg(`第 ${i + 1} 波 · ${wave.name}` + (MP.mode === 'sp' && PVE.enemyMul > 1 ? ` · 敌军 ×${waveEnemies.length}` : ''), 3);
@@ -303,9 +415,29 @@ SF.Main = (() => {
       camera.position.y += (Math.random() - 0.5) * s;
     }
     camera.updateProjectionMatrix();
-    // 阴影跟随
-    sunLight.light.position.set(world.player.x + sunLight.dir.x * 300, sunLight.dir.y * 300, world.player.z + sunLight.dir.z * 300);
-    sunLight.light.target.position.set(world.player.x, 0, world.player.z);
+    // 阴影按需更新: 太阳方向静止, 阴影盒锚定玩家(2m 量化, 消除亚米级游移);
+    // 只有跨格或有坦克移出 0.8m(按画质档限频)才重绘阴影图 —— 静止场景阴影开销归零
+    const cellX = Math.round(world.player.x / 2), cellZ = Math.round(world.player.z / 2);
+    if (!shadowCell || cellX !== shadowCell[0] || cellZ !== shadowCell[1]) {
+      shadowCell = [cellX, cellZ];
+      shadowNeed = true;
+    }
+    const qx = cellX * 2, qz = cellZ * 2;   // 量化后的光位(跨格才跳, 稳定不闪)
+    sunLight.light.position.set(qx + sunLight.dir.x * 300, sunLight.dir.y * 300, qz + sunLight.dir.z * 300);
+    sunLight.light.target.position.set(qx, 0, qz);
+    const sm = renderer.shadowMap;
+    sm.autoUpdate = false;
+    if (!shadowNeed && world.time - shadowLastT >= 1 / GFX.cfg().shadowHz) {
+      for (const t of world.tanks) {
+        const prev = shadowTankPos.get(t);
+        if (!prev || Math.abs(prev[0] - t.x) + Math.abs(prev[1] - t.z) > 0.8) { shadowNeed = true; break; }
+      }
+    }
+    if (shadowNeed) {
+      shadowNeed = false; shadowLastT = world.time;
+      for (const t of world.tanks) shadowTankPos.set(t, [t.x, t.z]);
+      sm.needsUpdate = true;
+    }
     SF.Audio.setListener(camera.position.x, camera.position.z, camYaw);
   }
 
@@ -750,6 +882,7 @@ SF.Main = (() => {
     // 键盘: window 捕获阶段监听(最先收到, 不被其他处理器截断)
     window.addEventListener('keydown', (e) => {
       if (e.code === 'AltLeft' || e.code === 'AltRight') { e.preventDefault(); altHeld = true; return; }
+      if (e.code === 'F3') { e.preventDefault(); if (!e.repeat) toggleFpsMeter(); return; }   // 帧率/绘制角标
       const k = keyOf(e);
       if (!k) return;
       keySeen = true;
@@ -932,6 +1065,8 @@ SF.Main = (() => {
   function bindBus() {
     SF.Bus.on('fire', (e) => {
       e.tank.lastFireT = world.time;
+      if (AIW.on && (e.tank.isPlayer || e.tank.team === world.player.team))   // worker 模式: 炮声转发给 AI
+        AIW.worker.postMessage({ t: 'fire', x: e.tank.x, z: e.tank.z, player: !!e.tank.isPlayer });
       if (e.tank.isPlayer) stats.shots++;
       if (e.tank.team !== world.player.team) { SF.HUD.shotFrom(e.pos, false); lastKnown.set(e.tank, { x: e.tank.x, z: e.tank.z }); }   // 敌方炮口小地图标记
       // 玩家(或友军)开炮: 炮声全图可闻 → 上报全队情报(误差随距离增大, 远处只知个大概)
@@ -1018,6 +1153,24 @@ SF.Main = (() => {
   }
 
   /* ---------- 主循环 ---------- */
+  // F3 帧率角标: 实测性能用(fps / draw calls / 三角形)
+  let fpsShow = false, fpsN = 0, fpsT = 0;
+  function toggleFpsMeter() {
+    fpsShow = !fpsShow;
+    const el = document.getElementById('fpsMeter');
+    if (el) el.style.display = fpsShow ? 'block' : 'none';
+  }
+  function updateFpsMeter(dtReal) {
+    if (!fpsShow) return;
+    fpsN++; fpsT += dtReal;
+    if (fpsT >= 0.5) {
+      const r = renderer.info.render;
+      const el = document.getElementById('fpsMeter');
+      if (el) el.textContent = `${Math.round(fpsN / fpsT)} fps · ${r.calls} calls · ${(r.triangles / 1000 | 0)}k tris`;
+      fpsN = 0; fpsT = 0;
+    }
+  }
+
   // 敌车是否应显示模型(单一权威判定): 点亮残留期内, 或 5s 内开过炮(炮口焰暴露, 与小地图/名牌同款)
   // 之前模型只认 spotted, 而红点/名牌还认开炮暴露 → 出现"小地图有红点、屏幕上却没车"的分裂
   function spotDisplay(e) {
@@ -1062,13 +1215,13 @@ SF.Main = (() => {
         }
       }
       MP.respawn = MP.respawn.filter(r => r.t > 0);
-      if (MP.gameMode === 'coop') for (const e of world.enemies) e.update(gameOver ? IDLE_INPUT(e) : e.ai.update(dt, world), dt, world);
+      if (MP.gameMode === 'coop') for (const e of world.enemies) e.update(gameOver ? IDLE_INPUT(e) : aiStep(e, dt, world), dt, world);
       MP.timeLeft -= dt;
       if (MP.timeLeft <= 0 && !gameOver) endMatch();
     } else {
       // 结算后敌人熄火滑停(不再绕圈搜索/扫炮), 在飞炮弹与特效照常结算
       for (const e of world.enemies) {
-        const inp = gameOver ? IDLE_INPUT(e) : e.ai.update(dt, world);
+        const inp = gameOver ? IDLE_INPUT(e) : aiStep(e, dt, world);
         e.update(inp, dt, world);   // 死亡车辆也要更新(残骸沉降/冒烟), update 内部分支处理
       }
     }
@@ -1139,7 +1292,7 @@ SF.Main = (() => {
     let enemySeesMe = false;
     if (MP.mode === 'host') {
       if (MP.gameMode === 'coop') {
-        for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow && e.ai.lastTargetId === p.netId) { enemySeesMe = true; break; }
+        for (const e of world.enemies) if (e.alive && e.ai && aiSeen(e) && aiTargetId(e) === p.netId) { enemySeesMe = true; break; }
       } else {
         for (const [id, t] of MP.tanks) {
           if (id === MP.myId || !t.alive) continue;
@@ -1149,7 +1302,7 @@ SF.Main = (() => {
         }
       }
     } else {
-      for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow) { enemySeesMe = true; break; }
+      for (const e of world.enemies) if (e.alive && e.ai && aiSeen(e)) { enemySeesMe = true; break; }
     }
     // 草丛隐蔽状态刷新(HUD 指示): 蹲入且 4s 未开炮 = 隐蔽生效
     const bs = SF.bushState(p, world);
@@ -1172,6 +1325,12 @@ SF.Main = (() => {
     fx.update(dtReal);
     SF.Audio.setEngine(Math.abs(world.player.speed) / world.player.spec.maxSpeed, keys.KeyW || keys.KeyS ? 1 : 0);
     SF.HUD.update(dtReal, world, SF.Game.uiState);
+    if (AIW.on) {
+      AIW.snapT -= dtReal;
+      if (AIW.snapT <= 0) { AIW.snapT = 0.1; sendAISnap(); }
+      if (gameOver && !AIW.overSent) { AIW.overSent = true; AIW.worker.postMessage({ t: 'over' }); }
+    }
+    updateFpsMeter(dtReal);
     if (MP.mode === 'host') {
       hostSnapshot(dtReal);
       updateMpHud();
@@ -1274,6 +1433,7 @@ SF.Main = (() => {
     buildGaragePreview();
     buildPicker();
     buildPve();
+    buildGfxPanel();
     bindHScroll();          // 地图/坦克卡行: 滚轮横向滚动
     // 触屏: 车库全屏按钮(首触自动全屏失败/被冷却拒绝时的手动兜底)
     if (NATIVE_TOUCH) {
@@ -1507,18 +1667,38 @@ SF.Main = (() => {
     refresh();
   }
 
+  // 画质选择(车库): 高/中/低 三档; 分辨率与阴影实时生效, MSAA 需重开战斗(下次出击读取)
+  function buildGfxPanel() {
+    const el = document.getElementById('gfxPanel');
+    const sel = document.getElementById('gfxSel');
+    const note = document.getElementById('gfxNote');
+    const NOTES = {
+      high: '渲染分辨率 100% · MSAA 抗锯齿 · 2K 阴影',
+      mid: '渲染分辨率 75% · MSAA 抗锯齿 · 1K 阴影',
+      low: '渲染分辨率 62% · 关抗锯齿 · 1K 阴影低频更新'
+    };
+    sel.value = GFX.preset;
+    note.textContent = NOTES[GFX.preset] + (GFX.preset !== 'high' ? ' · 抗锯齿变更下次出击生效' : '');
+    sel.onchange = () => { GFX.set(sel.value); note.textContent = NOTES[GFX.preset] + (GFX.preset !== 'high' ? ' · 抗锯齿变更下次出击生效' : ''); };
+    const title = el.querySelector('.pveTitle');
+    title.onclick = () => el.classList.toggle('collapsed');
+    if (innerWidth < 960) el.classList.add('collapsed');
+  }
+
   /* ---------- 战斗生命周期: 开战 / 退出回车库 / 再战 ---------- */
   let battleBound = false;   // 输入与事件总线只绑一次(重开战斗不重复绑定)
   function resetBattleVars() {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairMsgText = ''; repairMsgOn = false; repairDone = false; spottedTimer = 0;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
     SF.Models.setBushSeeThrough(false);   // models 侧的开镜草丛状态不随战斗变量重置, 显式归位
+    AIW.overSent = false; AIW.byId.clear();
     vcx = innerWidth / 2; vcy = innerHeight / 2;
     spottedLast.clear(); spotStreak.clear(); spotLinger.clear(); lastKnown.clear(); lampT = 0;
     stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   }
   function leaveBattle() {
     running = false;                              // 停主循环(看门狗检测 running 也会停)
+    if (AIW.on) AIW.worker.postMessage({ t: 'clear' });   // worker 停算上一场的 AI(线程保留复用)
     if (timerId) { clearInterval(timerId); timerId = null; }   // 降级定时器一并停, 否则退出后仍在空跑旧战场
     try { if (document.exitPointerLock) document.exitPointerLock(); } catch (e) { }
     // 释放上一场战斗的画布与 GL 上下文: 残留 canvas 会把新画布顶出屏幕(重开后画面像冻结), 上下文累积也会耗尽 WebGL 配额
@@ -1557,6 +1737,7 @@ SF.Main = (() => {
     }
     leaveBattle();
     resetBattleVars();
+    await initAIWorker();   // worker 模式决策在独立线程; 失败自动降级主线程
     document.getElementById('titleScreen').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
     SF.Audio.init();
@@ -1604,7 +1785,7 @@ SF.Main = (() => {
         [...MP.scores.entries()].filter(([id]) => id < 100).reduce((s2, [, k]) => s2 + k, 0), stats.total];
       const dtMap = {};
       for (const [id] of MP.tanks) if (id < 100)
-        for (const e of world.enemies) if (e.alive && e.ai && e.ai.seenNow && e.ai.lastTargetId === id) { dtMap[id] = 1; break; }
+        for (const e of world.enemies) if (e.alive && e.ai && aiSeen(e) && aiTargetId(e) === id) { dtMap[id] = 1; break; }
       msg.dt = dtMap;
       if (repairT > 0) msg.rp = Math.ceil(repairT);   // 波间维修倒计时: 客户端同样有提示
     }
@@ -1783,6 +1964,7 @@ SF.Main = (() => {
 
     // 场景: coop 主机保留波次流程(主机跑 AI), 其余关闭单机流程
     if (!(MP.gameMode === 'coop' && role === 'host')) { spawnWave = () => { }; checkWave = () => { }; }
+    await initAIWorker();   // coop 主机的 AI 决策也走 worker(失败降级主线程)
     buildScene();
 
     // 死斗出生池: 地图中心外围 8 点
