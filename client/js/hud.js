@@ -24,7 +24,7 @@ SF.HUD = (() => {
     const off = document.createElement('canvas'); off.width = off.height = 180;
     const octx = off.getContext('2d');
     const T = world.terrain, N = 90;
-    const PAL = world.map.theme === 'city' ? [52, 52, 54] : world.map.theme === 'rock' ? [78, 76, 68] : [38, 62, 34];
+    const PAL = world.map.theme === 'city' ? [52, 52, 54] : world.map.theme === 'rock' ? [78, 76, 68] : world.map.theme === 'sand' ? [148, 128, 92] : [38, 62, 34];
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = -T.half + (i / N) * T.size, z = -T.half + (j / N) * T.size;
       const h = T.heightAt(x, z);

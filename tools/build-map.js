@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// build-map.js — 生成三张地图资产（零 npm 依赖）
-// 用法: node tools/build-map.js [l01|l02|l03|all]
+// build-map.js — 生成五张地图资产（零 npm 依赖）
+// 用法: node tools/build-map.js [l01|l02|l03|l04|l05|all]
 //   l01 诺曼底遭遇战(树篱田野) / l02 城市巷战(废墟街区) / l03 山川高地(峡谷隘口)
+//   l04 东线平原(开阔炮战+反坦克壕) / l05 荒漠机场(跑道机堡+断续沙脊)
 // 输出: client/assets/maps/<dir>/{heightmap.png, map.json} —— 手改 json 即改关卡
 'use strict';
 const fs = require('fs');
@@ -41,6 +42,10 @@ const fbm = (x, z) => n1(x, z) * 0.55 + n2(x, z) * 0.3 + n3(x, z) * 0.15;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const gauss = (d, w) => Math.exp(-(d * d) / (2 * w * w));
+// 不可攀陡壁剖面(平顶台地/mesa): 边缘梯度 ≈2.7×h/w, 经两次 3×3 网格平滑后仍远超 爬坡极限×1.25
+// → 车辆梯度判定视为墙(vehicle._steepWallAhead), 之字迂回/斜向逼近都上不去; h 取负 = 陡壁深沟
+const cliffBump = (d, w, h) => { const t = clamp((w - d) / (w * 0.55) + 0.5, 0, 1); return t * t * (3 - 2 * t) * h; };
+const cliffSeg = (x, z, ax, az, bx, bz, w, h) => cliffBump(distSeg(x, z, ax, az, bx, bz), w, h);
 function distSeg(px, pz, ax, az, bx, bz) {
   const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
   const t = clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1);
@@ -107,6 +112,9 @@ function terrainL01(x, z) {
   h -= gauss(distSeg(x, z, 40, 150, 150, 60), 8) * 1.8;
   const gap = Math.min(ss(60, 100, Math.abs(Math.abs(x) - 100)), 1);
   h += gauss(z + 230, 42) * 20 * (1 - gap * 0.85) * ss(320, 220, -z - 0);
+  // 不可攀陡壁(可玩性摆位): 东侧双岩封锁东进路(只留东栅门), 西北两岩夹出通往北坡的窄谷门
+  for (const [cx3, cz3, w, hh] of [[152, -30, 9, 16], [172, 10, 7, 13], [-95, -185, 9, 16], [-48, -212, 7, 13]])
+    h += cliffBump(Math.hypot(x - cx3, z - cz3), w, hh);
   for (const c of CRATERS1) h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d;
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 335));
   h = h * (1 - spawnFlat) + 6.5 * spawnFlat;
@@ -176,6 +184,9 @@ function terrainL02(x, z) {
   for (const c of CRATERS2) h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d;
   h += (n5((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 2.0 * ss(180, 240, Math.abs(x));
   for (const [mx, mz, mw, mh] of [[-215, 140, 36, 4], [222, -20, 34, 3.5], [-190, -70, 32, 3]]) h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
+  // 不可攀废墟巨堆(可玩性摆位): 封三条侧街死路, 逼主力走中央大道与两翼主街
+  for (const [cx3, cz3, w, hh] of [[-160, 32, 8, 14], [158, -78, 8, 14], [36, 168, 7, 14]])
+    h += cliffBump(Math.hypot(x - cx3, z - cz3), w, hh);
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 330));
   h = h * (1 - spawnFlat) + 6 * spawnFlat;
   const bx = Math.max(Math.abs(x) - (352 + 18 * n4(0.2, (z + 400) / SIZE)), 0);
@@ -253,6 +264,9 @@ function terrainL03(x, z) {
   h = h * (1 - vil * 0.5) + (h + 0.8) * vil * 0.5;
   // 南麓滚丘(出击通道起伏)
   for (const [mx, mz, mw, mh] of [[-65, 215, 30, 3.5], [50, 240, 26, 4], [-8, 150, 32, 3]]) h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
+  // 不可攀石塔(可玩性摆位): 鞍部谷口侧各一(封堵绕脊位, 鞍口仍是唯一通道), 谷心一座把干河床分成双车道
+  for (const [cx3, cz3, w, hh] of [[-98, 138, 7.5, 13.5], [100, -88, 7.5, 13.5], [0, -80, 8, 14]])
+    h += cliffBump(Math.hypot(x - cx3, z - cz3), w, hh);
   const bx = Math.max(Math.abs(x) - (350 + 26 * n4((x + 400) / SIZE, 0.5)), 0);
   const bz = Math.max(Math.abs(z) - (350 + 26 * n4(0.5, (z + 400) / SIZE)), 0);
   h += ss(0, 42, Math.hypot(bx, bz)) * 60;
@@ -283,6 +297,97 @@ function coversL03(add, rng) {
   add('wreck', -30, 140, 2.9); add('wreck', 34, -40, 0.4);
   // 南侧出身掩护
   for (const [rx, rz] of [[-36, 268], [30, 276]]) add('rock', rx, rz, rng() * 6, 1.4);
+}
+
+/* ============ l04 东线平原(开阔炮战) ============ */
+function terrainL04(x, z) {
+  let h = 6 + fbm((x + 400) / SIZE, (z + 400) / SIZE) * 2.4;   // 极缓起伏: 大视野远距炮战
+  // 大波长麦浪垛台(远距卖头微地形): 缓到可全图通行, 只提供 1-2m 的车体遮蔽
+  h += gauss(z - 120, 90) * 2.2 * (1 - ss(150, 260, Math.abs(x)));
+  h += gauss(z + 60, 110) * 1.8;
+  // 反坦克壕(东西横贯 z≈-30): 陡壁不可攀(壁内坠落会摔伤), 只留 x=-90 / x=110 两处 30m 缺口通道
+  const ditchD = distSeg(x, z, -330, -32, 330, -8);
+  const gates = Math.min(ss(30, 9, Math.abs(x + 90)), ss(30, 9, Math.abs(x - 110)));
+  h -= cliffBump(ditchD, 6, 12) * (1 - gates);   // 窄而深: 11m 深 6m 半宽, 壁面不可攀
+  // 中野独岩两座(平原仅有的硬遮蔽点, 争夺焦点) + 壕北废墟台地
+  for (const [cx3, cz3, w, hh] of [[58, 42, 8, 14], [-142, -66, 8, 14]])
+    h += cliffBump(Math.hypot(x - cx3, z - cz3), w, hh);
+  h += gauss(Math.hypot(x + 60, z + 148), 55) * 1.6;
+  const spawnFlat = ss(115, 72, Math.hypot(x, z - 335));
+  h = h * (1 - spawnFlat) + 6.5 * spawnFlat;
+  const bx = Math.max(Math.abs(x) - (352 + 20 * n4((x + 400) / SIZE, 0.3)), 0);
+  const bz = Math.max(Math.abs(z) - (352 + 20 * n4(0.7, (z + 400) / SIZE)), 0);
+  h += ss(0, 45, Math.hypot(bx, bz)) * 55;
+  return h;
+}
+function coversL04(add, rng) {
+  // 三处农庄(平原仅有的建筑群): 南二北一
+  add('barn', -185, 148, 0.1); add('house', -158, 132, 0.4, 0.9); add('wall', -172, 160, rng() * 3, 1);
+  add('barn', 142, 96, 1.6); add('house', 165, 84, 2.2, 0.95); add('haystack', 128, 118, 0, 1.1);
+  add('barn', -62, -176, 0.05, 1.05); add('ruin', -36, -190, 0.8); add('ruin', -84, -198, 2.4);
+  add('wall', -50, -208, 0.2, 1.2);
+  // 反坦克壕沿: 树线与残骸(视觉上标出壕的走向) + 缺口两侧拒马
+  for (let t = -320; t <= 320; t += 26) {
+    if (Math.abs(t + 90) < 34 || Math.abs(t - 110) < 34) continue;   // 缺口不挡
+    add(rng() < 0.55 ? 'tree' : 'bush', t + (rng() - 0.5) * 10, -34 + Math.sin(t * 0.05) * 14 + (rng() - 0.5) * 8, rng() * 6, 0.8 + rng() * 0.5);
+  }
+  add('trap', -118, -40, rng() * 3); add('trap', -66, -36, rng() * 3);
+  add('trap', 86, -26, rng() * 3); add('trap', 138, -32, rng() * 3);
+  add('wreck', -6, -28, 1.9); add('wreck', 34, -44, 0.7);
+  // 独岩顶巨石(可见的不可攀标记)
+  for (const [rx, rz] of [[58, 42], [-142, -66]]) add('rock', rx + (rng() - 0.5) * 8, rz + (rng() - 0.5) * 8, rng() * 6, 1.5);
+  // 麦田零散草垛/草丛(平原稀缺隐蔽) + 田埂树列
+  for (let i = 0; i < 8; i++) add('haystack', -240 + rng() * 480, 60 + rng() * 200, 0, 0.9 + rng() * 0.4);
+  for (const [cx2, cz2] of [[-90, 210], [110, 170], [-30, 30], [180, -60], [-210, -20], [60, -120]]) bushPatch(add, rng, cx2, cz2, 3);
+  for (let x2 = -300; x2 <= 300; x2 += 40) add('tree', x2 + (rng() - 0.5) * 14, 236 + (rng() - 0.5) * 18, rng() * 6, 0.85 + rng() * 0.4);
+  // 北坡阵地工事
+  for (let x3 = -44; x3 <= 44; x3 += 18) add('trap', x3, -242, rng() * 3);
+  add('wall', -56, -252, 0.15, 1.2); add('wall', 54, -250, -0.1, 1.2);
+  add('wreck', -22, -262, 0.9); add('wreck', 28, -258, 2.2);
+}
+
+/* ============ l05 荒漠机场(快节奏冲锋) ============ */
+function terrainL05(x, z) {
+  let h = 6 + fbm((x + 400) / SIZE, (z + 400) / SIZE) * 1.8;   // 平缓沙地: 快节奏
+  // 主跑道(南北贯穿, x=-20): 微抬硬地; 东西滑行道(z=80) 连西机堡区
+  h += ss(18, 10, Math.abs(x + 20)) * 0.5;
+  h += ss(14, 8, Math.abs(z - 80)) * 0.35 * (1 - ss(120, 200, Math.abs(x + 20)));
+  // 两侧断续沙脊(不可攀): 各两段, 脊间缺口=冲锋通道
+  h += cliffSeg(x, z, -185, 250, -160, 120, 8, 14) + cliffSeg(x, z, -210, 20, -175, -120, 8, 14);
+  h += cliffSeg(x, z, 175, 200, 150, 60, 8, 14) + cliffSeg(x, z, 190, -60, 160, -190, 8, 14);
+  // 机堡土丘(可攀缓丘, 顶上硬掩体位) + 塔台台地
+  for (const [mx, mz, mw, mh] of [[-90, 40, 20, 4.5], [-100, -60, 20, 4.5], [90, -20, 20, 4.5], [100, -140, 20, 4], [20, 140, 16, 3.5]])
+    h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
+  // 散沙坑(弹坑感) + 微沙纹
+  { const r = mulberry32(20261015); for (let i = 0; i < 10; i++) { const c = { x: -220 + r() * 440, z: -180 + r() * 380, r: 4 + r() * 3, d: 0.8 + r() * 0.6 }; h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d; } }
+  h += (n5((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 1.2;
+  const spawnFlat = ss(115, 72, Math.hypot(x, z - 335));
+  h = h * (1 - spawnFlat) + 6.5 * spawnFlat;
+  const bx = Math.max(Math.abs(x) - (352 + 20 * n4((x + 400) / SIZE, 0.55)), 0);
+  const bz = Math.max(Math.abs(z) - (352 + 20 * n4(0.45, (z + 400) / SIZE)), 0);
+  h += ss(0, 45, Math.hypot(bx, bz)) * 55;
+  return h;
+}
+function coversL05(add, rng) {
+  // 西机堡区(沿滑行道) + 东检修场
+  add('barn', -90, 40, 0.05, 1.6); add('barn', -100, -60, 0.05, 1.6);
+  add('barn', 90, -20, Math.PI / 2, 1.5); add('barn', 100, -140, Math.PI / 2, 1.5);
+  // 塔台与跑道设施: 塔台房/油料库/混凝土隔离墩列
+  add('house', 20, 140, 0.3, 1.25); add('house', 34, 158, 1.2, 0.95); add('wall', 8, 150, 0.1, 1.1);
+  for (let z2 = 220; z2 > -220; z2 -= 44) { add('wall', -44, z2, Math.PI / 2, 1); add('trap', 6, z2 + 18, rng() * 3); }
+  // 沙脊顶巨石标记 + 缺口拒马
+  add('rock', -172, 185, rng() * 6, 1.4); add('rock', -192, -50, rng() * 6, 1.4);
+  add('rock', 162, 130, rng() * 6, 1.4); add('rock', 175, -125, rng() * 6, 1.4);
+  add('trap', -150, 190, rng() * 3); add('trap', 165, 30, rng() * 3);
+  // 跑道残骸(击毁运输机/油车) + 散岩 + 稀疏荒漠灌丛
+  add('wreck', -20, 210, 1.1); add('wreck', -14, 60, 2.6); add('wreck', -26, -110, 0.4); add('wreck', -18, -210, 1.8);
+  add('wreck', 60, 90, 3.0); add('wreck', -70, 130, 0.9);
+  for (let i = 0; i < 14; i++) add('rock', -240 + rng() * 480, -220 + rng() * 460, rng() * 6, 0.8 + rng() * 0.7);
+  for (const [cx2, cz2] of [[-60, 220], [70, 180], [-160, -100], [150, 100], [30, -60], [-40, -180]]) bushPatch(add, rng, cx2, cz2, 2);
+  // 北端机堡阵地工事
+  for (let x3 = -40; x3 <= 40; x3 += 18) add('trap', x3, -238, rng() * 3);
+  add('wall', -52, -248, 0.15, 1.2); add('wall', 50, -246, -0.1, 1.2);
+  add('wreck', -18, -258, 0.7); add('wreck', 24, -254, 2.1);
 }
 
 /* ============ 地图定义 ============ */
@@ -335,6 +440,41 @@ const MAPS = {
         { type: 'su100', pos: [-140, 10], yaw: 1.35, personality: 'sniper', hold: true },
         { type: 'm36', pos: [140, -190], yaw: -1.2, personality: 'sniper', hold: true },
         { type: 'is2', pos: [0, -258], yaw: 3.14, personality: 'hold', hold: true } ] }
+    ]
+  },
+  l04: {
+    theme: 'grass',
+    dir: 'l04-steppe', name: '东线 · 平原炮战', seed: 20261011,
+    briefing: '一望无际的麦田与反坦克壕。视野开阔、遮蔽稀少，先敌发现先敌开火；过壕只有两处缺口。',
+    terrain: terrainL04, covers: coversL04,
+    lighting: { sunDir: [-0.35, 0.7, 0.45], sunColor: [1.0, 0.93, 0.8], sunIntensity: 1.1, ambient: 0.55, ambientColor: [0.65, 0.68, 0.78], fogColor: [0.82, 0.85, 0.88], fogDensity: 0.0011, skyTop: [0.4, 0.56, 0.82], skyBottom: [0.88, 0.9, 0.9] },
+    player: { spawn: [0, 335, Math.PI] },
+    waves: [
+      { name: '远距炮击组', enemies: [
+        { type: 'su100', pos: [-46, -232], yaw: 3.05, personality: 'sniper', hold: true },
+        { type: 'stug3', pos: [148, -198], yaw: -2.9, personality: 'sniper', hold: true } ] },
+      { name: '装甲突击队', enemies: [
+        { type: 'tiger1', pos: [-30, -268], yaw: 3.14, personality: 'hold', hold: true },
+        { type: 'pz4', pos: [96, -140], yaw: -2.4, personality: 'flanker', patrol: [[96, -140], [150, -60], [60, -110]] },
+        { type: 'pz4', pos: [-110, -120], yaw: 2.5, personality: 'flanker', patrol: [[-110, -120], [-170, -40], [-80, -90]] } ] }
+    ]
+  },
+  l05: {
+    theme: 'sand',
+    dir: 'l05-airfield', name: '荒漠 · 机场争夺', seed: 20261012,
+    briefing: '沙漠前线机场。跑道直通北端机堡阵地，两侧断续沙脊是仅有的遮蔽——快速穿插，别在跑道上停留。',
+    terrain: terrainL05, covers: coversL05,
+    lighting: { sunDir: [0.4, 0.8, -0.3], sunColor: [1.0, 0.95, 0.82], sunIntensity: 1.3, ambient: 0.5, ambientColor: [0.72, 0.66, 0.55], fogColor: [0.9, 0.84, 0.7], fogDensity: 0.0012, skyTop: [0.45, 0.58, 0.75], skyBottom: [0.92, 0.86, 0.72] },
+    player: { spawn: [0, 335, Math.PI] },
+    waves: [
+      { name: '快速反应组', enemies: [
+        { type: 'cromwell', pos: [-80, -40], yaw: 2.9, personality: 'flanker', patrol: [[-80, -40], [-160, 60], [-90, 100]] },
+        { type: 'cromwell', pos: [70, -60], yaw: -2.9, personality: 'flanker', patrol: [[70, -60], [150, 40], [90, -130]] },
+        { type: 't34', pos: [-20, -120], yaw: 3.14, personality: 'flanker', patrol: [[-20, -120], [-80, -160], [40, -170]] } ] },
+      { name: '机堡守军', enemies: [
+        { type: 'tiger1', pos: [0, -236], yaw: 3.14, personality: 'hold', hold: true },
+        { type: 'churchill7', pos: [-72, -210], yaw: 2.6, personality: 'hold', hold: true },
+        { type: 'su100', pos: [88, -196], yaw: -2.5, personality: 'sniper', hold: true } ] }
     ]
   }
 };

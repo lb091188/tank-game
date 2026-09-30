@@ -49,6 +49,14 @@ SF.Tank = class {
     return m;
   }
 
+  // 前方地面是否为不可攀陡壁(地图陡岩/边界山体): 用梯度模而非车头方向坡度,
+  // 斜向迂回(之字爬坡)骗不过 —— 梯度超过爬坡极限×容差的区域视为墙, 任何朝向都进不去
+  _steepWallAhead(T) {
+    if (!T.gradAt) return false;
+    const g = T.gradAt(this.x + Math.sin(this.yaw) * 3.5, this.z + Math.cos(this.yaw) * 3.5);
+    return g > Math.tan(SF.CFG.sim.maxSlope) * 1.25;
+  }
+
   update(input, dt, world) {
     const U = SF.Util, S = this.spec, T = world.terrain;
     if (!this.alive) { this._deathFx(dt); this._syncNode(); return; }
@@ -66,7 +74,7 @@ SF.Tank = class {
 
     if (trackBroken) {
       this.speed = U.moveToward(this.speed, 0, 6 * dt);             // 断带: 瘫痪
-    } else if (Math.abs(slope) > SF.CFG.sim.maxSlope && uphill) {
+    } else if ((Math.abs(slope) > SF.CFG.sim.maxSlope || this._steepWallAhead(T)) && uphill) {
       this.speed = U.moveToward(this.speed, 0, 8 * dt);             // 陡坡爬不上去
     } else {
       /* --- 自动挡(WoT 换向手感): D/R 两挡 + 换向一拍空挡 ---
@@ -157,7 +165,26 @@ SF.Tank = class {
     const tPitch = Math.atan2(hF - hB, 2 * SL), tRoll = Math.atan2(hL - hR, 2 * SW);
     if (!this._yInit) { this._yInit = true; this.y = targetY; this.pitch = tPitch; this.roll = tRoll; }  // 出生直接贴地, 不从地里升起
     const sm = 1 - Math.exp(-12 * dt);
-    this.y = U.lerp(this.y, targetY, sm);
+    /* --- 坠落(WoT 坠崖): 地面离脚 >1.2m(冲出坡沿/陡壁) → 自由落体替代贴地平滑,
+       落地按冲击速度摔伤; 阈值 1.2m 让最快车速下最大坡的贴地滞后(~1m)不误判悬空 --- */
+    const gap = this.y - targetY;
+    if (gap > 1.2) {
+      this._fallV = (this._fallV || 0) + 9.8 * 2 * dt;   // 重力(2× 补贴: 半拍落地手感, 不做真弹跳)
+      this.y -= this._fallV * dt;
+      this.pitch = U.lerp(this.pitch, -Math.min(0.5, this._fallV * 0.06), sm);   // 车头下扎
+      if (this.y <= targetY) {   // 落地结算
+        const v = this._fallV;
+        this.y = targetY; this._fallV = 0;
+        const F = SF.CFG.sim.fall;
+        if (v > F.safeV && this.alive) {
+          const dmg = Math.round((v - F.safeV) * (v - F.safeV) * F.k);
+          this.modules.track = Math.max(this.modules.track, F.trackV > 0 && v > F.trackV && Math.random() < F.trackChance ? 6 : 0);   // 重摔可能断带
+          this.hp -= dmg;
+          if (this.hp <= 0) { this.hp = 0; this.alive = false; SF.Bus.emit('destroyed', { tank: this, shooter: null }); }
+          SF.Bus.emit('hit', { target: this, shooter: null, point: new THREE.Vector3(this.x, this.y + 1, this.z), zone: 'fall', dmg, kind: 'fall', module: v > F.trackV ? 'track' : null });
+        }
+      }
+    } else { this._fallV = 0; this.y = U.lerp(this.y, targetY, sm); }
     this.pitch = U.lerp(this.pitch, tPitch, sm); this.roll = U.lerp(this.roll, tRoll, sm);
 
     this.animateTracks(dt);

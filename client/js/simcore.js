@@ -37,7 +37,15 @@ SF.Sim = (() => {
       const h0 = heightAt(x, z), h1 = heightAt(x + s * dist, z + c * dist);
       return Math.atan2(h1 - h0, dist);
     }
-    return { h: heights, res, size, half, cell, heightAt, losBlocked, slopeAhead };
+    // 梯度模(最陡方向的坡度正切): 不可攀判定用 —— 方向坡度可被斜向迂回(之字爬坡)绕过,
+    // 站在过陡地面上无论朝向都上不去, 陡壁=墙
+    function gradAt(x, z) {
+      const e = 2.5;
+      const gx = (heightAt(x + e, z) - heightAt(x - e, z)) / (2 * e);
+      const gz = (heightAt(x, z + e) - heightAt(x, z - e)) / (2 * e);
+      return Math.hypot(gx, gz);
+    }
+    return { h: heights, res, size, half, cell, heightAt, losBlocked, slopeAhead, gradAt };
   }
 
   /* ---------- 掩体遮挡: 包围圆粗剔除 + OBB/圆精确 + 高度比较; 返回沿射线最近命中(-1 无) ----------

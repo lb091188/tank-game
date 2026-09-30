@@ -1061,8 +1061,8 @@ SF.Main = (() => {
   }
 
   /* ---------- 事件接线(模拟 → 表现) ---------- */
-  const HIT_TEXT = { pen: '击穿', bounce: '跳弹', nopen: '未击穿', gun: '火炮损伤', splash: '命中', absorb: '履带吸收', ram: '撞击' };
-  const HIT_COLOR = { pen: '#ffb35c', bounce: '#f2f2f2', nopen: '#9aa0a6', gun: '#ffd97a', splash: '#ffb35c', absorb: '#9fd0ff', ram: '#ffb35c' };
+  const HIT_TEXT = { pen: '击穿', bounce: '跳弹', nopen: '未击穿', gun: '火炮损伤', splash: '命中', absorb: '履带吸收', ram: '撞击', fall: '坠落摔伤' };
+  const HIT_COLOR = { pen: '#ffb35c', bounce: '#f2f2f2', nopen: '#9aa0a6', gun: '#ffd97a', splash: '#ffb35c', absorb: '#9fd0ff', ram: '#ffb35c', fall: '#e8c977' };
   const MODULE_TAG = { track: '·履带', engine: '·发动机', ammo: '·弹药架', gun: '' };
 
   function bindBus() {
@@ -1094,13 +1094,14 @@ SF.Main = (() => {
         stats.hits++; if (r.kind === 'pen') stats.pens++;
         stats.dmg += r.dmg;
       }
-      const text = { pen: `-${r.dmg}`, bounce: '跳弹', nopen: '未击穿', gun: '火炮受损', absorb: '履带吸收', ram: `-${r.dmg}`,
+      const text = { pen: `-${r.dmg}`, bounce: '跳弹', nopen: '未击穿', gun: '火炮受损', absorb: '履带吸收', ram: `-${r.dmg}`, fall: `摔伤 -${r.dmg}`,
                      splash: r.dmg > 0 ? `-${r.dmg}` : '未击穿' }[r.kind] || '';
       SF.HUD.dmgNumber(r.point, text, HIT_COLOR[r.kind] || '#fff');
       const snd = r.kind === 'pen' ? 'pen' : r.kind === 'bounce' ? 'bounce' : 'nopen';
       // 音量: 自己挨打最响; 自己打中的反馈音用慢衰减(atten 大)保证清晰
-      if (r.kind !== 'splash')   // HE 溅射的爆炸声已在弹着点播过
+      if (r.kind !== 'splash' && r.kind !== 'fall')   // HE 溅射在弹着点已播爆炸声; 坠落播撞击闷响
         SF.Audio.play(snd, target.isPlayer ? null : r.point, { gain: target.isPlayer ? 1.7 : 1.0, atten: 140 });
+      if (r.kind === 'fall' && target.isPlayer) SF.Audio.play('track', null, { gain: 1.5 });
       // 归属分明的提示: 我打出去的 → 准星下方; 我挨打的 → 顶部红色警报 (文字+语音, 语音多变体随机)
       if (shooter && shooter.isPlayer) {
         SF.HUD.hitFeedback(HIT_TEXT[r.kind] + (r.module && r.kind !== 'absorb' ? MODULE_TAG[r.module] : ''), HIT_COLOR[r.kind]);
@@ -1114,6 +1115,7 @@ SF.Main = (() => {
         }
         else if (r.kind === 'absorb') { SF.HUD.alarm('履带被打断 · 伤害被吸收'); SF.Audio.playVoice('v_track', true); }
         else if (r.kind === 'ram') { SF.HUD.alarm(`被撞击 -${r.dmg}`); SF.Audio.playVoice('v_rammed', true); }
+        else if (r.kind === 'fall') { SF.HUD.alarm(`坠落摔伤 -${r.dmg}` + (r.module === 'track' ? ' · 履带受损' : '')); }
         else if (r.kind === 'bounce') SF.HUD.hitFeedback('跳弹', '#9fd0ff');
         else if (r.kind === 'splash') { SF.HUD.alarm(r.dmg > 0 ? `被炮击 -${r.dmg}` : '炮击被装甲吸收'); SF.Audio.playVoice('v_splash', true); }
       }
@@ -1862,6 +1864,7 @@ SF.Main = (() => {
 
   /* ---------- 联机事件中继: 主机转发 Bus 事件, 客户端还原成本地事件 ---------- */
   function proxyTank(id) {
+    if (!id) return null;   // 无射手事件(坠落摔伤等)
     const t = MP.tanks.get(id);
     const fake = { isPlayer: id === MP.myId, x: t ? t.x : 0, z: t ? t.z : 0, pos3: t ? t.pos3 : new THREE.Vector3(), spec: { name: t ? t.spec.name : '?' } };
     return fake;
@@ -1871,7 +1874,7 @@ SF.Main = (() => {
     SF.Bus.on('fire', (e) => { if (MP.mode !== 'host') return; SF.Net.send({ t: 'ev', k: 'fire', d: { id: e.tank.netId, p: [e.pos.x, e.pos.y, e.pos.z] } }); });
     SF.Bus.on('hit', (r) => {
       if (MP.mode !== 'host') return;
-      SF.Net.send({ t: 'ev', k: 'hit', d: { s: r.shooter.netId, g: r.target.netId, kind: r.kind, dmg: r.dmg, module: r.module || 0, p: [r.point.x, r.point.y, r.point.z] } });
+        SF.Net.send({ t: 'ev', k: 'hit', d: { s: r.shooter ? r.shooter.netId : 0, g: r.target.netId, kind: r.kind, dmg: r.dmg, module: r.module || 0, p: [r.point.x, r.point.y, r.point.z] } });
     });
     SF.Bus.on('destroyed', (e) => {
       if (MP.mode !== 'host') return;

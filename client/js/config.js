@@ -6,7 +6,8 @@ SF.CFG = {
   sim: {
     dt: 1 / 60,            // 固定模拟步长
     shellGravity: 3.2,     // 炮弹重力(WoT 风格弱下坠, 300m 外可感知)
-      maxSlope: 0.63          // ~36° 超过则无法爬坡
+      maxSlope: 0.63,         // ~36° 超过则无法爬坡(梯度模超 tan×1.25 视为不可攀陡壁)
+      fall: { safeV: 9, k: 4, trackV: 11.5, trackChance: 0.5 }   // 坠落: 落地冲击 >9m/s(≈4m)开始摔伤, 伤害=(v-9)²×4; >11.5m/s 半数断带
   },
 
   // 车辆参数 —— 手感核心, 改这里就是改手感
@@ -545,7 +546,9 @@ SF.CFG = {
   maps: [
     { id: 'l01', dir: 'l01-encounter', name: '诺曼底 · 遭遇战', desc: '树篱田野与村庄, 三路推进' },
     { id: 'l02', dir: 'l02-city', name: '废墟 · 城市巷战', desc: '街区废墟, 近距肉搏' },
-    { id: 'l03', dir: 'l03-highland', name: '山川 · 高地争夺', desc: '峡谷隘口, 制高点对决' }
+    { id: 'l03', dir: 'l03-highland', name: '山川 · 高地争夺', desc: '峡谷隘口, 制高点对决' },
+    { id: 'l04', dir: 'l04-steppe', name: '东线 · 平原炮战', desc: '开阔麦田与反坦克壕, 远距对决' },
+    { id: 'l05', dir: 'l05-airfield', name: '荒漠 · 机场争夺', desc: '沙地跑道与机堡, 快节奏冲锋' }
   ],
 
   // 音效: 引擎音量曲线(怠速近乎无声 → 全速渐强), engine:false 可完全关闭引擎音
