@@ -1,14 +1,8 @@
 @echo off
-rem 一键开服(联机主机用): 启动对战服务器(含邀请码系统)
-cd /d "%~dp0"
-set PORT=8342
-start "" http://127.0.0.1:%PORT%/
-echo ==================== 开服成功 ====================
-echo   1. 浏览器已打开游戏页面(自己用)
-echo   2. 联机对战: 创建房间 → 把『邀请码』发给朋友
-echo   3. 朋友: 同一页面地址打开 → 凭邀请码加入
-echo   注意: Windows 防火墙首次会弹窗, 请选"允许访问"
-echo   关闭本窗口即停服
-echo ==================================================
-node server\server.js %PORT%
+rem 一键开服: 同源托管客户端+联机服务; 管理页 http://127.0.0.1:8343 (铸钥匙/战绩)
+cd /d %~dp0
+start "steel-front-server" /min cmd /c "cd server && npm install && node server.js 8342"
+timeout /t 2 >nul
+start http://127.0.0.1:8342/
+echo 朋友: 浏览器打开 http://<你的IP>:8342/   管理: http://127.0.0.1:8343/
 pause

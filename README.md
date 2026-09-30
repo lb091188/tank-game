@@ -10,26 +10,48 @@
 - **49 辆坦克**：德/苏/美/英/法/日/中七个国家，III-VIII 级（虎王、黑豹、IS-3、T-34-85、59 式、WZ-111、地狱猫……），含弹夹连发车（AMX 13 75/AMX 50 100/洛林 40t）与自行火炮（黄蜂/野蜂/M7 牧师/SU-26），史实轮廓特征 + 参数化建模
 - **3 张 1000×1000m 地图**：诺曼底树篱田野 / 废墟城市巷战 / 山川高地峡谷
 - **单机闯关**：波次制遭遇战，敌军等级随你的车型动态匹配，出生点每局随机，AI 会无线电呼叫支援
-- **内网联机**：死斗（3 分钟计分）与合作闯关，2-8 人，主机权威判定
+- **联机**：死斗（3 分钟计分）与合作闯关，2-8 人，主机权威判定；对战服务器同源托管客户端，打开即玩无需填地址
 
 ## 运行
 
 单机（二选一）：
 
-- 在线版直接玩（上方链接）
+- 在线 PvE 版直接玩（上方链接，GitHub Pages 部署，不含联机入口）
 - 本地：双击 `启动游戏.sh`（或 `.bat`），或 `node server/dev-static.js 8341`
 
-联机（需要一位房主，两种等价实现任选其一）：
+联机开服（Node.js 18+，同源托管客户端——朋友浏览器打开页面即玩，无需安装任何东西）：
 
 ```bash
-# MoonBit 原生版（推荐，release 构建仅 ~2MB 单文件，需 moon 工具链）
-./启动服务器-MoonBit.sh            # 自动构建并开服
-
-# Node 版（需 Node.js 18+）
-cd server && npm install && npm start
+./启动服务器.sh                    # 一键开服 (或 cd server && npm install && npm start)
 ```
 
-两版协议完全一致、可互为对照（同一套协议回放测试 28/28 双双通过），客户端无需任何改动。控制台会打印内网 WS 地址 → 每位玩家浏览器打开游戏 → 点「⚔ 联机对战」→ 填该地址 → 房主「创建房间」，其他人凭邀请码加入 → 房主选模式与地图开局。
+开服后玩家流程：浏览器打开 `http://<你的IP>:8342` → 点「⚔ 联机对战」→ 地址留空（自动连本服）→ 房主兑换钥匙后「创建房间」（可设房间密码）→ 把房间号+密码发给朋友 → 房主选模式与地图开局。
+
+## 准入模型（钥匙 / 通行令牌 / 房间密码）
+
+- **建房需通行令牌**：管理员铸造一次性钥匙（按次数+有效期），玩家在联机面板兑换成通行令牌（存本浏览器，30 天）
+- **进房凭房间号+密码**：密码建房时选填，按需设置
+- **战绩按昵称归档**：无账号体系，管理页按昵称汇总场次/击杀/合作胜场
+- 局域网自由模式：`STEEL_OPEN=1 node server/server.js` 关闭建房门禁
+
+## 管理（curl 友好，全部需头 `-H 'X-Steel-Admin: 1'`）
+
+管理端点只听 `127.0.0.1:<游戏端口+1>`；浏览器直接开 `http://127.0.0.1:8343/` 也有内置管理页。
+
+```bash
+# 铸钥匙 (默认 5 次 / 24 小时) → 输出 JSON 里的 key 发进团队群
+curl -X POST -H 'X-Steel-Admin: 1' 'http://127.0.0.1:8343/admin/key?uses=5&ttl=86400'
+
+curl -H 'X-Steel-Admin: 1' http://127.0.0.1:8343/admin/status    # 房间/玩家/记录概况
+curl -H 'X-Steel-Admin: 1' http://127.0.0.1:8343/admin/keys      # 在役钥匙与令牌
+curl -X POST -H 'X-Steel-Admin: 1' 'http://127.0.0.1:8343/admin/revoke?token=<令牌>'   # 吊销
+curl -H 'X-Steel-Admin: 1' 'http://127.0.0.1:8343/admin/records?limit=50'              # 最近对局
+curl -H 'X-Steel-Admin: 1' http://127.0.0.1:8343/admin/players   # 按昵称汇总档案
+```
+
+VPS 无浏览器：`ssh -L 8343:127.0.0.1:8343 你的vps` 后本地打开管理页，或直接在服务器上 curl（配合网页终端工具拿 JSON 输出）。
+
+公网部署（可选）：任意反代终止 TLS 即可（Caddy 三行），页面与 WS 同源走 `wss://`，玩家地址填域名或留空同源自动连接。战斗记录落盘 `server/records/battles.jsonl`（JSONL，备份即复制）。协议回归测试：`node tools/steel-ws-test.js [端口] [管理端口]`（31 项）。
 
 ## 操作
 
@@ -51,10 +73,10 @@ cd server && npm install && npm start
 ## 项目结构
 
 ```
-tools/        资产生成器: build-models.js(坦克) build-map.js(地图) build-audio.js(备用音效)
+tools/        资产生成器: build-models.js(坦克) build-map.js(地图) build-audio.js(备用音效) + steel-ws-test.js(协议回归)
 client/       游戏: assets/(模型/地图/音效文件) + js/(引擎)
-server/       联机(Node 版): dev-static.js(开发静态) + server.js(对战服务) + 部署 CI 在 .github/workflows/
-moonbit/      联机(MoonBit 原生版): server-core/(房间/邀请码/路由纯逻辑, 含单测) + server/(async IO: 静态托管+WS)
+server/       对战服务: server.js(同源托管+房间+钥匙门禁+战斗记录+admin) + dev-static.js(开发静态) + records/(战绩JSONL)
+.github/      Pages 部署 CI (PvE 版标记 + 版本戳)
 ```
 
 - **调参**：手感与数值在 `client/js/config.js`，关卡内容在 `client/assets/maps/*/map.json`（手改即生效）

@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 version.txt
 dist/
+server/records/
+steel-launcher.json
+steel-server.log
