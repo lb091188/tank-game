@@ -13,12 +13,16 @@ SF.Net = (() => {
   function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
   let curAddr = '';
-  // 地址归一: 192.168.1.5 / 192.168.1.5:8342 / ws://… / http://… → ws://IP:端口(默认 8342)
+  // 地址归一: 留空=同源自动连接; 支持裸host:port / ws:// / wss:// / http:// / https://
+  // wss/https 保留安全协议且不补端口(默认443), 其余补 :8342
   function normalizeAddr(raw) {
-    let a = String(raw || '').trim().replace(/^ws(s?):\/\//, '').replace(/^http(s?):\/\//, '').replace(/\/$/, '');
+    let a = String(raw || '').trim(), secure = false;
+    a = a.replace(/^wss:\/\//, () => { secure = true; return ''; })
+      .replace(/^https:\/\//, () => { secure = true; return ''; })
+      .replace(/^ws:\/\//, '').replace(/^http:\/\//, '').replace(/\/$/, '');
     if (!a) return '';
-    if (!/:\d+$/.test(a)) a += ':8342';
-    return 'ws://' + a;
+    if (!secure && !/:\d+$/.test(a)) a += ':8342';
+    return (secure ? 'wss://' : 'ws://') + a;
   }
   function connect(addr) {
     const url = normalizeAddr(addr || (location.protocol.startsWith('http') ? location.host : ''));
@@ -39,10 +43,20 @@ SF.Net = (() => {
     });
   }
 
-  // 大厅操作
-  const createRoom = (name, tank) => send({ t: 'create', name, tank });
-  const joinRoom = (invite, name, tank) => send({ t: 'join', invite: String(invite).trim(), name, tank });
-  const newInvite = () => send({ t: 'invite' });
+  // 大厅操作 (建房带通行令牌+可选密码; 进房凭房间号+密码)
+  const getToken = () => localStorage.getItem('sf_token') || '';
+  const createRoom = (name, tank, pass) => send({ t: 'create', name, tank, pass: pass || undefined, token: getToken() || undefined });
+  const joinRoom = (room, pass, name, tank) => send({ t: 'join', room: String(room).trim(), pass: pass || undefined, name, tank });
+  // 钥匙兑换: POST 到 WS 同源的 HTTP 端点 (ws://x:8342 → http://x:8342)
+  async function redeemKey(key) {
+    const base = curAddr.replace(/^ws/, 'http');
+    const r = await fetch(base + '/key/redeem', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: String(key || '').trim() })
+    }).then(r => r.json()).catch(() => ({ ok: false, error: '网络错误' }));
+    if (r.ok) localStorage.setItem('sf_token', r.token);
+    return r;
+  }
   const setReady = (v, tank) => send({ t: 'ready', v, tank });
   const startMatch = (map, mode) => send({ t: 'start', map, mode: mode || 'dm' });
 
@@ -90,5 +104,5 @@ SF.Net = (() => {
     if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { } ws = null; }
   }
 
-  return { connect, normalizeAddr, createRoom, joinRoom, newInvite, setReady, startMatch, startInputLoop, stopInputLoop, interpolate, resetSnaps, on, send, close, get socket() { return ws; }, get address() { return curAddr; } };
+  return { connect, normalizeAddr, createRoom, joinRoom, redeemKey, getToken, setReady, startMatch, startInputLoop, stopInputLoop, interpolate, resetSnaps, on, send, close, get socket() { return ws; }, get address() { return curAddr; } };
 })();

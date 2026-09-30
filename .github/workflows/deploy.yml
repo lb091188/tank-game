@@ -17,6 +17,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: PvE edition marker (Pages 版不提供联机入口)
+        run: echo "window.SF_EDITION='pve';" > client/edition.js
+
       - name: Stamp version (commit time, seconds precision)
         run: |
           git log -1 --format=%cI > client/version.txt

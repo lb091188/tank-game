@@ -312,14 +312,17 @@
 <div id="lobbyScreen">
   <div id="lobbyBox" class="panel">
     <h3>联 机 对 战</h3>
-    <div id="srvTip">房主运行 server 后控制台会打印 WS 地址，填到下面即可（任意来源打开的客户端均可加入）</div>
-    <div class="row"><label>服务器</label><input id="srvInput" placeholder="例如 192.168.1.5:8342"></div>
+    <div id="srvTip">同源部署留空即可自动连接 · 手填支持 ws:// 与 wss:// 地址</div>
+    <div class="row"><label>服务器</label><input id="srvInput" placeholder="留空=自动连接本站"></div>
     <div class="row"><label>昵称</label><input id="mpName" maxlength="12" placeholder="车长名"></div>
+    <div class="row"><label>钥匙</label><input id="keyInput" placeholder="管理员发的钥匙(选填)" maxlength="10" style="text-transform:uppercase"><button id="btnRedeem" class="mbtn">兑换通行证</button><span id="keyState" style="font-size:11px;color:#6a6f5e"></span></div>
     <div id="lobbyTip">填好地址后创建或加入房间 · 出击界面选的坦克即联机用车</div>
     <div class="row" id="joinBox">
       <button id="btnCreate" class="mbtn gold">创建房间（成为主机）</button>
-      <input id="roomInput" placeholder="邀请码" maxlength="10" style="max-width:120px; text-transform:uppercase">
-      <button id="btnJoin" class="mbtn">凭邀请码加入</button>
+      <input id="roomPassInput" placeholder="房间密码(选填)" maxlength="24" style="max-width:110px">
+      <input id="roomInput" placeholder="房间号" maxlength="4" style="max-width:70px">
+      <input id="joinPassInput" placeholder="密码" maxlength="24" style="max-width:90px">
+      <button id="btnJoin" class="mbtn">加入</button>
     </div>
     <div id="roomCodeShow"></div>
     <div id="inviteShow" style="color:#ffd97a; font-size:16px; text-align:center; letter-spacing:3px; margin:4px 0;"></div>
@@ -327,7 +330,6 @@
     <div id="hostPanel">
       <div class="row"><label>模式</label><select id="mpMode"><option value="dm">死斗 · 互殴 3分钟</option><option value="coop">合作 · 组队闯关</option></select></div>
       <div class="row"><label>地图</label><select id="mpMap"></select></div>
-      <div class="row" style="justify-content:center"><button id="btnInvite" class="mbtn">生成新邀请码（一次性）</button></div>
       <div class="row" style="justify-content:center"><button id="btnMpStart" class="mbtn gold">开 始 对 战</button></div>
     </div>
     <div class="row" style="justify-content:center;margin-top:14px">
@@ -398,7 +400,8 @@
 
 <script src="js/vendor/three.min.js"></script>
 <script src="js/vendor/GLTFLoader.js"></script>
-<script src="js/config.js"></script>
+<script src="edition.js" onerror="window.SF_EDITION='full'"></script>
+  <script src="js/config.js"></script>
 <script src="js/simcore.js"></script>
 <script src="js/assets.js"></script>
 <script src="js/terrain.js"></script>
