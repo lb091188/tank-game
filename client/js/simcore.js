@@ -53,6 +53,10 @@ SF.Sim = (() => {
       if (t < 0 || (best >= 0 && t >= best)) continue;
       // WoT: 观察者身边 50m 内的软质草本(草丛/树篱/草垛)对视线透明 —— 视野里看得见就点得亮
       if (spot && c.blocksSpot && !c.blocksShells && t < 50) continue;
+      // WoT 15m 规: 目标开炮后 4s 内, 它 15m 内的草本不再遮蔽它(贴草蹲射必暴露);
+      // 离草 ≥15m 开炮(草后狙击)照常隐蔽
+      if (spot && spot.fired && c.blocksSpot && !c.blocksShells
+        && Math.hypot(c.x - spot.tx, c.z - spot.tz) < 15) continue;
       let ch = c.h;
       if (spot && c.blocksSpot && !c.blocksShells && spot.concealed
         && Math.hypot(ox + dx * t - spot.tx, oz + dz * t - spot.tz) < 6)
@@ -85,7 +89,8 @@ SF.Sim = (() => {
     let inBush = false;
     for (const b of bushes)
       if (Math.hypot(b.x - t.x, b.z - t.z) < b.r + 3.5) { inBush = true; break; }
-    return { inBush, concealed: inBush && time - (t.lastFireT || -99) >= 4 };
+    const fired = time - (t.lastFireT || -99) < 4;   // 开炮后 4s 隐蔽失效窗口(近 15m 草丛也失效, 见 coversBlocked)
+    return { inBush, fired, concealed: inBush && !fired };
   }
   // 隐蔽值(WoT camo): 移动减半; 蹲草 +0.25; 开炮后 4s 近乎清零
   function camoOf(list, t, time) {

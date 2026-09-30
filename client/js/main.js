@@ -243,7 +243,7 @@ SF.Main = (() => {
     buildTrajLine();
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
-      aimPoint, gunAim, sniper, spotted, lastKnown, keys, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT, trajLand, bush: bushUi,
+      aimPoint, gunAim, sniper, spotted, lastKnown, keys, camYaw, detected: wasDetected, deathMark, autoTarget, cruise, trajT: trajFlightT, trajLand, bush: bushUi,
       // 鹰眼俯视视野足迹(小地图绿框): 中心=artyX/Z, w/h=当前 fov 与高度下的地面可视范围
       arty: (() => {
         if (!(sniper && world && world.player && world.player.spec.cls === 'SPG')) return null;
@@ -1255,7 +1255,7 @@ SF.Main = (() => {
       };
       const lit = (e) => {
         const d = U.dist2d(p.x, p.z, e.x, e.z);
-        return d < 50 || (d < vr * (1 - SF.camoOf(e, world)) && SF.losClearAny(world, p.x, p.z, e.x, e.z, SF.bushState(e, world).concealed));
+        return d < 50 || (d < vr * (1 - SF.camoOf(e, world)) && SF.losClearAny(world, p.x, p.z, e.x, e.z, SF.bushState(e, world)));
       };
       for (const e of world.enemies) {
         if (!e.alive) { spottedLast.delete(e); spotStreak.delete(e); spotLinger.delete(e); continue; }
@@ -1280,7 +1280,7 @@ SF.Main = (() => {
           if (id === MP.myId) continue;
           if (!t.alive) { spottedLast.delete(t); spotStreak.delete(t); spotLinger.delete(t); continue; }
           const d = U.dist2d(p.x, p.z, t.x, t.z);
-          const vis = d < 50 || (d < vr * (1 - SF.camoOf(t, world)) && SF.losClearAny(world, p.x, p.z, t.x, t.z));
+          const vis = d < 50 || (d < vr * (1 - SF.camoOf(t, world)) && SF.losClearAny(world, p.x, p.z, t.x, t.z, SF.bushState(t, world)));
           if (vis) { if (!spotStreak.has(t)) spotStreak.set(t, world.time); spottedLast.set(t, world.time); }
           else if (spotStreak.has(t)) { spotLinger.set(t, U.clamp(5 + (world.time - spotStreak.get(t)) * 0.5, 5, 10)); spotStreak.delete(t); }
         }
@@ -1301,7 +1301,7 @@ SF.Main = (() => {
           if (id === MP.myId || !t.alive) continue;
           const d = U.dist2d(p.x, p.z, t.x, t.z);
           const vr = t.spec.view || SF.CFG.player.viewRange;   // 对方的视距 × 我的隐蔽
-          if (d < 50 || (d < vr * (1 - SF.camoOf(p, world)) && SF.losClearAny(world, t.x, t.z, p.x, p.z, SF.bushState(p, world).concealed))) { enemySeesMe = true; break; }
+          if (d < 50 || (d < vr * (1 - SF.camoOf(p, world)) && SF.losClearAny(world, t.x, t.z, p.x, p.z, SF.bushState(p, world)))) { enemySeesMe = true; break; }
         }
       }
     } else {

@@ -9,7 +9,7 @@ SF.HUD = (() => {
   let hitDirT = 0;
   let minimapBase = null;   // 预渲染地形(含静止掩体点)
   let emarks = new Map();   // 敌车 → 名牌持久 DOM 节点
-  let keypadSpans = null;   // 按键指示器节点(缓存, 不每帧 querySelectorAll)
+  let gearEls = null;       // 挡位灯节点(缓存)
 
   // 每帧 HUD 写入统一走脏检查: 值不变就不碰 DOM(此前多个 innerHTML 每帧重新赋值, 是无谓的主线程开销)
   function setTxt(el, v) { if (el._v !== v) { el._v = v; el.textContent = v; } }
@@ -212,6 +212,52 @@ SF.HUD = (() => {
     }
   }
 
+  // 指向仪(WoT 式): 罗盘圈上车体剪影 + 炮塔炮管, 屏幕上方=镜头方向 —— 车体回转/炮塔滞后一眼可读
+  function drawDirWidget(player, uiState) {
+    const cv = $('dirWidget'), ctx = cv.getContext('2d');
+    ctx.setTransform(2, 0, 0, 2, 0, 0);   // 192×192 物理像素 → 96×96 逻辑坐标(高清屏不糊)
+    ctx.clearRect(0, 0, 96, 96);
+    if (!uiState.camYaw && uiState.camYaw !== 0) return;
+    const cx = 48, cy = 48, R = 40;
+    const U = SF.Util;
+    ctx.globalAlpha = player.alive ? 1 : 0.35;
+    // 罗盘圈 + 四向刻度
+    ctx.strokeStyle = 'rgba(200,178,106,.45)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.sin(a) * (R - 4), cy - Math.cos(a) * (R - 4));
+      ctx.lineTo(cx + Math.sin(a) * R, cy - Math.cos(a) * R);
+      ctx.stroke();
+    }
+    // 车体(先画, 灰绿): 履带×2 + 楔形首上车体, 屏幕上方=镜头前方
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(-U.angDiff(uiState.camYaw, player.yaw));
+    ctx.fillStyle = 'rgba(150,158,146,.8)';
+    ctx.fillRect(-15, -17, 6, 34); ctx.fillRect(9, -17, 6, 34);      // 履带
+    ctx.fillStyle = '#7f8a76';
+    ctx.beginPath();                                                  // 车体(前端收楔)
+    ctx.moveTo(-9, -8); ctx.lineTo(-5, -18); ctx.lineTo(5, -18); ctx.lineTo(9, -8);
+    ctx.lineTo(9, 16); ctx.lineTo(-9, 16); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    // 炮塔 + 炮管(后画, 金色): 炮塔回转滞后于瞄准时, 与车体的夹角直观可见
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(-U.angDiff(uiState.camYaw, player.turretYaw));
+    ctx.strokeStyle = '#c8b26a'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, -(R - 2)); ctx.stroke();   // 炮管
+    ctx.fillStyle = '#c8b26a';
+    ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    // 挡位灯: D 前进(绿) / N 换挡中(黄) / R 倒车(红)
+    // 联机客户端挡位不在快照里: 行驶中按速度符号推断(本地 N 拍在低速时保留原挡显示)
+    if (!gearEls) gearEls = document.querySelectorAll('#gearRow span');
+    let g = player.gear || 'D';
+    if (Math.abs(player.speed) > 0.5) g = player.speed > 0 ? 'D' : 'R';
+    gearEls.forEach(s => s.classList.toggle('on', s.dataset.g === g));
+  }
+
   function update(dt, world, uiState) {
     const player = world.player, T = world.terrain;
     const U = SF.Util;
@@ -228,14 +274,14 @@ SF.HUD = (() => {
     setHtml($('clipInfo'), _al
       ? Array.from({ length: _al.clip }, (_, i) => `<i class="${i < player.clipLeft ? 'full' : ''}"></i>`).join('') + `<em>${player.clipLeft}/${_al.clip}</em>`
       : '');
-    // 挡位 + 速度(WoT 自动挡: D 前进 / N 换挡中 / R 倒车)
-    const g = player.gear || 'D';
-    setTxt($('speedText'), g + ' ' + Math.abs(Math.round(player.speed * 3.6)) + ' km/h');
+    // 挡位 + 速度: 挡位由左下指向仪的 D/N/R 灯指示, 速度条只报速度
+    setTxt($('speedText'), Math.abs(Math.round(player.speed * 3.6)) + ' km/h');
     setHtml($('moduleTags'), ['track', 'engine', 'gun', 'ammo']
       .filter(k => player.modules[k] > 0)
       .map(k => `<span class="mod">${SF.CFG.armor.modules[k].text}</span>`).join(''));
 
     updateAimCircle(player, world, uiState);
+    drawDirWidget(player, uiState);
     // 鹰眼(火炮俯视)无中心十字: 落点即准星(绿色散布椭圆), WoT 式
     $('crosshair').style.display = (uiState.sniper && player.spec.cls === 'SPG') ? 'none' : 'block';
 
@@ -307,6 +353,16 @@ SF.HUD = (() => {
     // 小地图: 掩体点已预渲染进底图, 每帧只画动态要素
     const cv = $('minimap'), ctx = cv.getContext('2d');
     ctx.drawImage(minimapBase, 0, 0);
+    // 玩家位置 + WoT 式双圈: 视距圈(淡绿, 圈内才可能点亮) + 50m 强制点亮圈(亮绿)
+    const [px, py] = worldToMap(player.x, player.z, T);
+    if (player.alive) {
+      const sc = 180 / T.size, vr = player.spec.view || SF.CFG.player.viewRange;
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(127,214,127,.35)';
+      ctx.beginPath(); ctx.arc(px, py, vr * sc, 0, 7); ctx.stroke();
+      ctx.strokeStyle = 'rgba(127,214,127,.8)';
+      ctx.beginPath(); ctx.arc(px, py, 50 * sc, 0, 7); ctx.stroke();
+    }
     // 敌标(WoT 式): 点亮=实时红标; 开炮暴露=亮标; 丢亮点=停在最后已知位置的暗标
     for (const e of world.enemies) {
       if (!e.alive) continue;
@@ -325,7 +381,6 @@ SF.HUD = (() => {
       }
     }
     // 玩家箭头
-    const [px, py] = worldToMap(player.x, player.z, T);
     ctx.save();
     ctx.translate(px, py); ctx.rotate(Math.PI - player.yaw);   // 箭头形朝上, 而 yaw=0 车头指向世界+z(画布下方): 先翻 180°, 画布顺时针为正与 yaw 相反
     ctx.fillStyle = '#7fd67f';
@@ -435,10 +490,10 @@ SF.HUD = (() => {
 
     // 点亮指示(被敌人发现): 灯泡
     setOp($('detectLamp'), uiState.detected ? 1 : 0);
-    // 隐蔽指示: 蹲入隐蔽物且未开炮=隐蔽生效; 蹲着但刚开炮=隐蔽失效(红色警告)
+    // 隐蔽指示: 蹲入隐蔽物且未开炮=隐蔽生效; 蹲着开炮=15m 内草本失效必暴露(WoT 15m 规)
     const bt = $('bushTag'), bu = uiState.bush;
     if (bu && bu.inBush) {
-      setTxt(bt, bu.concealed ? '🌿 隐蔽中' : '🌿 开炮 · 隐蔽失效');
+      setTxt(bt, bu.concealed ? '🌿 隐蔽中' : '🌿 开炮 · 近草失效');
       const c2 = bu.concealed ? '#9fe08a' : '#e07a6a';
       if (bt._c !== c2) { bt._c = c2; bt.style.color = c2; }
       setOp(bt, 1);
@@ -447,11 +502,6 @@ SF.HUD = (() => {
     // 大地图(M): 小地图内容放大绘制
     if ($('bigMap').style.display === 'block')
       $('bigMap').getContext('2d').drawImage($('minimap'), 0, 0, 430, 430);
-
-    // 按键指示器(诊断用: 按下应点亮)
-    if (!keypadSpans) keypadSpans = document.querySelectorAll('#keypad span');
-    keypadSpans.forEach(s =>
-      s.classList.toggle('on', !!(uiState.keys && uiState.keys[s.dataset.k])));
   }
 
   // 结算屏入场: 先 display 再强制回流后挂 .on, 让渐暗+上浮动画每次都完整播放;
