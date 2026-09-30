@@ -1418,7 +1418,7 @@ SF.Main = (() => {
         tip.textContent = `加载资源 ${done}/${total}`;
       });
     } catch (err) {
-      tip.innerHTML = `<span style="color:#e06c5a">${err.message}</span><br>请通过 HTTP 访问(运行项目根目录的 启动游戏.sh / .bat)`;
+      tip.innerHTML = `<span style="color:#e06c5a">${err.message}</span><br>请通过 HTTP 访问(运行 node server/dev-static.js 8341 后浏览器打开 http://127.0.0.1:8341)`;
       return;
     }
     document.getElementById('loading').style.display = 'none';

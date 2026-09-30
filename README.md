@@ -17,12 +17,12 @@
 单机（二选一）：
 
 - 在线 PvE 版直接玩（上方链接，GitHub Pages 部署，不含联机入口）
-- 本地：双击 `启动游戏.sh`（或 `.bat`），或 `node server/dev-static.js 8341`
+- 本地：`node server/dev-static.js 8341`
 
 联机开服（Node.js 18+，同源托管客户端——朋友浏览器打开页面即玩，无需安装任何东西）：
 
 ```bash
-./启动服务器.sh                    # 一键开服 (或 cd server && npm install && npm start)
+cd server && npm install && npm start
 ```
 
 开服后玩家流程：浏览器打开 `http://<你的IP>:8342` → 点「⚔ 联机对战」→ 地址留空（自动连本服）→ 房主兑换钥匙后「创建房间」（可设房间密码）→ 把房间号+密码发给朋友 → 房主选模式与地图开局。
