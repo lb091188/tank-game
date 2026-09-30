@@ -43,9 +43,37 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const gauss = (d, w) => Math.exp(-(d * d) / (2 * w * w));
 // 不可攀陡壁剖面(平顶台地/mesa): 边缘梯度 ≈2.7×h/w, 经两次 3×3 网格平滑后仍远超 爬坡极限×1.25
-// → 车辆梯度判定视为墙(vehicle._steepWallAhead), 之字迂回/斜向逼近都上不去; h 取负 = 陡壁深沟
+// → 车辆梯度判定视为墙, 之字迂回/斜向逼近都上不去; h 取负 = 陡壁深沟
 const cliffBump = (d, w, h) => { const t = clamp((w - d) / (w * 0.55) + 0.5, 0, 1); return t * t * (3 - 2 * t) * h; };
 const cliffSeg = (x, z, ax, az, bx, bz, w, h) => cliffBump(distSeg(x, z, ax, az, bx, bz), w, h);
+// 陡壁山(可玩性基本件, 替代对称笋尖): 一侧悬崖(不可攀, 但站上去可沿坡慢慢滑下), 对侧缓环坡可开车上顶;
+// 平顶=卖头/俯瞰位。phi=缓坡开口方位角(atan2 系, 东=π/2 南=0 西=-π/2 北=π), 反侧即悬崖。
+// 坡面做旧: 等高线低频蜿蜒(不是规整几何体) + 缓坡中途两道浅垄(卖头小平台, 打断一坡到顶)
+function cliffHill(x, z, cx, cz, H, phi, wCliff, wRamp) {
+  const dx = x - cx, dz = z - cz, d0 = Math.hypot(dx, dz);
+  if (d0 > wRamp * 1.34) return 0;
+  const wob = 1 + (n2((x + 400) / 400, (z + 400) / 400) - 0.5) * 0.14;   // 等高线蜿蜒 ±7%
+  const d = d0 * wob;
+  let k = (Math.cos(Math.atan2(dx, dz) - phi) + 1) / 2;   // 1=缓坡侧, 0=悬崖侧
+  k = ss(0.18, 0.82, k);                                   // 收窄过渡带: 悬崖弧与环坡弧各占大半
+  let h = cliffBump(d, wCliff + (wRamp - wCliff) * k, H);
+  if (h > 0.5 && h < H - 1) {                              // 只在坡面(非顶非麓)叠浅垄
+    const rx = Math.sin(phi), rz = Math.cos(phi);
+    for (const t of [0.42, 0.72])
+      h += gauss(Math.hypot((x - (cx + rx * wRamp * t)) * 0.8, z - (cz + rz * wRamp * t)), 8) * 0.9;
+  }
+  return h;
+}
+// 陡壁山配套掩体: 崖顶缘巨石(视觉上标出悬崖边) + 环坡两簇灌木(爬坡掩蔽) + 顶面孤石/孤树(urban=城郊废墟山用残骸代树)
+function hillCovers(add, rng, cx, cz, phi, wRamp, urban) {
+  const rx = Math.sin(phi), rz = Math.cos(phi), px = -rz, pz = rx;
+  add('rock', cx - rx * 9 + (rng() - 0.5) * 6, cz - rz * 9 + (rng() - 0.5) * 6, rng() * 6, 1.4 + rng() * 0.4);
+  add('rock', cx - rx * 7 - px * 9, cz - rz * 7 - pz * 9, rng() * 6, 1.2 + rng() * 0.4);
+  bushPatch(add, rng, cx + rx * wRamp * 0.5, cz + rz * wRamp * 0.5, 3);
+  bushPatch(add, rng, cx + rx * wRamp * 0.78 + px * 11, cz + rz * wRamp * 0.78 + pz * 11, 3);
+  add('rock', cx + rx * 5 + px * 5, cz + rz * 5 + pz * 5, rng() * 6, 1.1 + rng() * 0.3);
+  add(urban ? 'wreck' : 'tree', cx - rx * 3 - px * 7, cz - rz * 3 - pz * 7, rng() * 6, urban ? 1 : 0.9 + rng() * 0.3);
+}
 function distSeg(px, pz, ax, az, bx, bz) {
   const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
   const t = clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1);
@@ -112,9 +140,9 @@ function terrainL01(x, z) {
   h -= gauss(distSeg(x, z, 40, 150, 150, 60), 8) * 1.8;
   const gap = Math.min(ss(60, 100, Math.abs(Math.abs(x) - 100)), 1);
   h += gauss(z + 230, 42) * 20 * (1 - gap * 0.85) * ss(320, 220, -z - 0);
-  // 不可攀陡壁(可玩性摆位): 东侧双岩封锁东进路(只留东栅门), 西北两岩夹出通往北坡的窄谷门
-  for (const [cx3, cz3, w, hh] of [[152, -30, 9, 16], [172, 10, 7, 13], [-95, -185, 9, 16], [-48, -212, 7, 13]])
-    h += cliffBump(Math.hypot(x - cx3, z - cz3), w, hh);
+  // 陡壁山×2: 东山悬崖朝西堵村庄东路(东坡缓上顶卖头), 西北山东崖堵直进(西坡绕上, 迂回敌阵侧后)
+  h += cliffHill(x, z, 150, -28, 13, Math.PI / 2, 7.5, 44);
+  h += cliffHill(x, z, -92, -192, 12, -Math.PI / 2, 7, 44);   // 西坡绕上(避开北坡主山体), 东崖堵村庄直进
   for (const c of CRATERS1) h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d;
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 335));
   h = h * (1 - spawnFlat) + 6.5 * spawnFlat;
@@ -167,6 +195,8 @@ function coversL01(add, rng) {
   add('wall', -70, -196, 0.1, 1.2); add('wall', 62, -198, -0.1, 1.2);
   add('wreck', -18, -206, 0.9); add('wreck', 30, -212, 2.2);
   for (let i = 0; i < 26; i++) { const side = rng() < 0.5 ? -1 : 1; add('tree', side * (315 + rng() * 55), 320 - rng() * 640, rng() * 6, 0.9 + rng() * 0.6); }
+  hillCovers(add, rng, 150, -28, Math.PI / 2, 44);        // 东陡壁山
+  hillCovers(add, rng, -92, -192, -Math.PI / 2, 44);      // 西北陡壁山
 }
 
 /* ============ l02 城市巷战 ============ */
@@ -184,9 +214,10 @@ function terrainL02(x, z) {
   for (const c of CRATERS2) h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d;
   h += (n5((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 2.0 * ss(180, 240, Math.abs(x));
   for (const [mx, mz, mw, mh] of [[-215, 140, 36, 4], [222, -20, 34, 3.5], [-190, -70, 32, 3]]) h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
-  // 不可攀废墟巨堆(可玩性摆位): 封三条侧街死路, 逼主力走中央大道与两翼主街
-  for (const [cx3, cz3, w, hh] of [[-160, 32, 8, 14], [158, -78, 8, 14], [36, 168, 7, 14]])
-    h += cliffBump(Math.hypot(x - cx3, z - cz3), w, hh);
+  // 陡壁废墟山×3(封侧街死路但各留一侧缓坡可上): 缓坡开口对着保留的街道
+  h += cliffHill(x, z, -160, 32, 12, 0, 7, 36);            // 南坡上, 北崖堵北向侧街
+  h += cliffHill(x, z, 158, -78, 13, Math.PI, 7, 38);      // 北坡上(敌纵深), 南崖堵出击直路
+  h += cliffHill(x, z, 36, 168, 12, -Math.PI / 2, 6, 40); // 西坡上, 东崖堵东侧巷
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 330));
   h = h * (1 - spawnFlat) + 6 * spawnFlat;
   const bx = Math.max(Math.abs(x) - (352 + 18 * n4(0.2, (z + 400) / SIZE)), 0);
@@ -233,6 +264,9 @@ function coversL02(add, rng) {
   }
   for (let i = 0; i < 26; i++) add('rock', -250 + rng() * 500, -80 + rng() * 320, rng() * 6, 0.8 + rng() * 0.7);
   for (let i = 0; i < 12; i++) add('wreck', -220 + rng() * 440, -60 + rng() * 300, rng() * 3);
+  hillCovers(add, rng, -160, 32, 0, 36, true);            // 三座废墟山(残骸代树)
+  hillCovers(add, rng, 158, -78, Math.PI, 38, true);
+  hillCovers(add, rng, 36, 168, -Math.PI / 2, 32, true);
 }
 
 /* ============ l03 山川高地 ============ */
@@ -264,9 +298,10 @@ function terrainL03(x, z) {
   h = h * (1 - vil * 0.5) + (h + 0.8) * vil * 0.5;
   // 南麓滚丘(出击通道起伏)
   for (const [mx, mz, mw, mh] of [[-65, 215, 30, 3.5], [50, 240, 26, 4], [-8, 150, 32, 3]]) h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
-  // 不可攀石塔(可玩性摆位): 鞍部谷口侧各一(封堵绕脊位, 鞍口仍是唯一通道), 谷心一座把干河床分成双车道
-  for (const [cx3, cz3, w, hh] of [[-98, 138, 7.5, 13.5], [100, -88, 7.5, 13.5], [0, -80, 8, 14]])
-    h += cliffBump(Math.hypot(x - cx3, z - cz3), w, hh);
+  // 陡壁山×3: 鞍口侧各一(南崖堵绕脊直进, 北坡上顶接鞍口), 谷心一座南崖把干河床分成双车道
+  h += cliffHill(x, z, -98, 138, 12, Math.PI, 7, 38);
+  h += cliffHill(x, z, 100, -88, 12, Math.PI, 7, 38);
+  h += cliffHill(x, z, 0, -80, 13, Math.PI, 7.5, 42);   // 谷心: 南崖堵谷道直进(分双车道), 北坡绕上
   const bx = Math.max(Math.abs(x) - (350 + 26 * n4((x + 400) / SIZE, 0.5)), 0);
   const bz = Math.max(Math.abs(z) - (350 + 26 * n4(0.5, (z + 400) / SIZE)), 0);
   h += ss(0, 42, Math.hypot(bx, bz)) * 60;
@@ -297,6 +332,9 @@ function coversL03(add, rng) {
   add('wreck', -30, 140, 2.9); add('wreck', 34, -40, 0.4);
   // 南侧出身掩护
   for (const [rx, rz] of [[-36, 268], [30, 276]]) add('rock', rx, rz, rng() * 6, 1.4);
+  hillCovers(add, rng, -98, 138, Math.PI, 38);            // 西鞍口山
+  hillCovers(add, rng, 100, -88, Math.PI, 38);            // 东鞍口山
+  hillCovers(add, rng, 0, -80, Math.PI, 42);              // 谷心山
 }
 
 /* ============ l04 东线平原(开阔炮战) ============ */
@@ -309,9 +347,9 @@ function terrainL04(x, z) {
   const ditchD = distSeg(x, z, -330, -32, 330, -8);
   const gates = Math.min(ss(30, 9, Math.abs(x + 90)), ss(30, 9, Math.abs(x - 110)));
   h -= cliffBump(ditchD, 6, 12) * (1 - gates);   // 窄而深: 11m 深 6m 半宽, 壁面不可攀
-  // 中野独岩两座(平原仅有的硬遮蔽点, 争夺焦点) + 壕北废墟台地
-  for (const [cx3, cz3, w, hh] of [[58, 42, 8, 14], [-142, -66, 8, 14]])
-    h += cliffBump(Math.hypot(x - cx3, z - cz3), w, hh);
+  // 中野陡壁山两座(平原仅有的硬遮蔽与制高点, 争夺焦点): 东山可东坡上/西崖俯瞰麦田, 西山南坡上/北崖(北移避开反坦克壕)
+  h += cliffHill(x, z, 58, 42, 13, Math.PI / 2, 7.5, 47);
+  h += cliffHill(x, z, -142, -108, 13, 0, 7.5, 42);
   h += gauss(Math.hypot(x + 60, z + 148), 55) * 1.6;
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 335));
   h = h * (1 - spawnFlat) + 6.5 * spawnFlat;
@@ -344,6 +382,8 @@ function coversL04(add, rng) {
   for (let x3 = -44; x3 <= 44; x3 += 18) add('trap', x3, -242, rng() * 3);
   add('wall', -56, -252, 0.15, 1.2); add('wall', 54, -250, -0.1, 1.2);
   add('wreck', -22, -262, 0.9); add('wreck', 28, -258, 2.2);
+  hillCovers(add, rng, 58, 42, Math.PI / 2, 42);          // 中野东山
+  hillCovers(add, rng, -142, -108, 0, 42);                // 中野西山
 }
 
 /* ============ l05 荒漠机场(快节奏冲锋) ============ */

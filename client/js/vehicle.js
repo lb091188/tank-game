@@ -49,12 +49,13 @@ SF.Tank = class {
     return m;
   }
 
-  // 前方地面是否为不可攀陡壁(地图陡岩/边界山体): 用梯度模而非车头方向坡度,
-  // 斜向迂回(之字爬坡)骗不过 —— 梯度超过爬坡极限×容差的区域视为墙, 任何朝向都进不去
-  _steepWallAhead(T) {
+  // 行进方向(油门意向; 无油门按当前速度符号)前方 3.5m 的地面是否为"向高处去的不可攀陡壁":
+  // 梯度模判定(之字迂回骗不过), 但只挡【往高处开】—— 倒车脱离/顺坡向下永远放行(否则车头抵崖会卡死)
+  _steepWallAhead(T, mv) {
     if (!T.gradAt) return false;
-    const g = T.gradAt(this.x + Math.sin(this.yaw) * 3.5, this.z + Math.cos(this.yaw) * 3.5);
-    return g > Math.tan(SF.CFG.sim.maxSlope) * 1.25;
+    const ax = this.x + Math.sin(this.yaw) * 3.5 * mv, az = this.z + Math.cos(this.yaw) * 3.5 * mv;
+    if (T.heightAt(ax, az) <= T.heightAt(this.x, this.z) + 0.15) return false;   // 前方更低/持平: 是下坡不是墙
+    return T.gradAt(ax, az) > Math.tan(SF.CFG.sim.maxSlope) * 1.25;
   }
 
   update(input, dt, world) {
@@ -74,9 +75,16 @@ SF.Tank = class {
 
     if (trackBroken) {
       this.speed = U.moveToward(this.speed, 0, 6 * dt);             // 断带: 瘫痪
-    } else if ((Math.abs(slope) > SF.CFG.sim.maxSlope || this._steepWallAhead(T)) && uphill) {
-      this.speed = U.moveToward(this.speed, 0, 8 * dt);             // 陡坡爬不上去
     } else {
+      // 只挡"沿行进方向往高处去"且超极限: 陡壁墙(梯度模) 或 连续陡坡(方向坡度);
+      // 倒车脱离/顺坡向下永远放行 —— 否则车头抵崖会上不去也退不出(卡死)
+      let blocked = false;
+      if (uphill) {
+        const mv = input.throttle > 0 ? 1 : -1;
+        blocked = this._steepWallAhead(T, mv) || slope * mv > SF.CFG.sim.maxSlope;
+      }
+      if (blocked) this.speed = U.moveToward(this.speed, 0, 8 * dt);   // 陡坡/陡壁爬不上去
+      else {
       /* --- 自动变速箱(实车手感): 前进 D1/D2/D3 + 倒车 R1/R2 + 换向空挡 N ---
          每挡限速(D1≈42% / D2≈72% / D3=100% 极速; 倒挡 R1≈58%), 低挡扭力大;
          踩住油门逐级升挡(升挡 0.15s 扭矩中断的顿挫感), 减速/刹停自动回落(升/降阈值留滞回带防拉锯);
@@ -115,6 +123,7 @@ SF.Tank = class {
         }
       } else {
         this.speed = U.moveToward(this.speed, 0, S.coastDrag * dt); // 松手滑行
+      }
       }
     }
 
@@ -168,6 +177,25 @@ SF.Tank = class {
       }
     }
     this.x = me.x; this.z = me.z;
+
+    /* --- 陡坡滑落(悬崖手感): 站在超过爬坡极限的坡面上履带抓不住 ---
+       沿下坡方向缓慢滑移(越陡越快, 封顶 ~4.5m/s, "上不去但滑得下来"), 滑坡中动力卸载;
+       高速冲出崖沿则进入坠落(见下段), 贴着陡壁再也不会上不去下不来 */
+    if (T.gradAt && this.y - T.heightAt(this.x, this.z) < 1) {
+      const gLim = Math.tan(SF.CFG.sim.maxSlope) * 1.02;
+      const gHere = T.gradAt(this.x, this.z);
+      if (gHere > gLim) {
+        const e2 = 2;
+        const gx = (T.heightAt(this.x + e2, this.z) - T.heightAt(this.x - e2, this.z)) / (2 * e2);
+        const gz = (T.heightAt(this.x, this.z + e2) - T.heightAt(this.x, this.z - e2)) / (2 * e2);
+        const gl = Math.hypot(gx, gz) || 1;
+        const slide = Math.min(4.5, (gHere - gLim) * 5.5) * dt;
+        this.x -= gx / gl * slide; this.z -= gz / gl * slide;
+        this.x = U.clamp(this.x, -T.half + 16, T.half - 16);
+        this.z = U.clamp(this.z, -T.half + 16, T.half - 16);
+        this.speed *= Math.max(0, 1 - dt * 2.2);
+      }
+    }
 
     /* --- 地形贴合(履带四角采样 → 俯仰/侧倾/高度; 全部平滑防颠簸) ---
        车体局部系: 前进+Z, 左舷+X(经 yaw 旋转后: 左舷方向 = (cos yaw, -sin yaw)) */
