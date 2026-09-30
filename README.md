@@ -91,4 +91,14 @@ node tools/build-map.js      # 重建三张地图
 node tools/build-audio.js    # 备用合成音效(输出到 synth/, 不覆盖开源音源)
 ```
 
+## 部署
+
+根目录 `deploy.config.json` 配合 deploy CLI（服务器列表在 `~/.mindbase/deploy.json`）：
+
+```bash
+deploy    # 仓库根目录运行: 选服务器 → 选 tank-game 项目 → 上传 server/ + client/ → 远端 npm install → pm2 启动/重启
+```
+
+远端布局与本地一致（`server.js` 的静态目录固定为同级 `client/`）：静态文件与联机同一端口（默认 8342），部署完浏览器打开 `http://<服务器IP>:8342`。
+
 里程碑推进：每阶段一个 git commit；联机架构为「主机权威 + 快照同步」（输入 30Hz 上行 / 快照 20Hz 下行 / 120ms 插值），服务器只做转发与托管。

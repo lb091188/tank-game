@@ -1,0 +1,15 @@
+{
+  "name": "tank-game",
+  "localDir": "./",
+  "remoteDir": "/application/tank-game",
+  "steps": [
+    { "type": "log", "message": "部署 tank-game" },
+    { "type": "remote", "cmd": "mkdir -p ${remoteDir}/server" },
+    { "type": "uploadFile", "local": "${localDir}/server/server.js", "remote": "${remoteDir}/server/server.js" },
+    { "type": "uploadFile", "local": "${localDir}/server/package.json", "remote": "${remoteDir}/server/package.json" },
+    { "type": "uploadDir", "local": "${localDir}/client", "remote": "${remoteDir}/client" },
+    { "type": "remote", "cmd": "cd ${remoteDir}/server && rm -f package-lock.json && npm install" },
+    { "type": "remote", "cmd": "cd ${remoteDir}/server && pm2 restart tank-game 2>/dev/null || pm2 start server.js --name tank-game" },
+    { "type": "log", "message": "完成: 浏览器打开 http://game.liuziheng.top:17820" }
+  ]
+}
