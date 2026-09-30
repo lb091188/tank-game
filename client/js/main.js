@@ -1658,10 +1658,10 @@ SF.Main = (() => {
         '</select></div>';
     html += '</div>';
     el.innerHTML = html;
-    // 标题点击折叠/展开(窄屏默认折叠, 给车库预览让位)
+    // 标题点击折叠/展开(窄屏/矮屏默认折叠, 给车库预览让位; 左栏竖排后矮屏也容易顶出屏)
     const title = el.querySelector('.pveTitle');
     title.onclick = () => el.classList.toggle('collapsed');
-    if (innerWidth < 960) el.classList.add('collapsed');
+    if (innerWidth < 960 || innerHeight < 620) el.classList.add('collapsed');
     for (const sel of el.querySelectorAll('select'))
       sel.onchange = () => {
         PVE[sel.dataset.k] = parseFloat(sel.value);
@@ -1686,7 +1686,7 @@ SF.Main = (() => {
     sel.onchange = () => { GFX.set(sel.value); note.textContent = NOTES[GFX.preset] + (GFX.preset !== 'high' ? ' · 抗锯齿变更下次出击生效' : ''); };
     const title = el.querySelector('.pveTitle');
     title.onclick = () => el.classList.toggle('collapsed');
-    if (innerWidth < 960) el.classList.add('collapsed');
+    if (innerWidth < 960 || innerHeight < 620) el.classList.add('collapsed');
   }
 
   /* ---------- 战斗生命周期: 开战 / 退出回车库 / 再战 ---------- */

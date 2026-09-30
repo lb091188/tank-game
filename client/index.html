@@ -26,6 +26,8 @@
   #garageUI { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
   #garageUI #titleTop, #garageUI #bottomDock { pointer-events: auto; }
   #titleTop { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 30px 0; gap: 20px; }
+  /* 左栏: 标题 + PVE修改器 + 画质 竖排(给底部与坦克展示区让位) */
+  #titleLeft { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 340px; }
   #titleBrand h1 { color: #d8c887; font-size: 34px; letter-spacing: 10px; margin-bottom: 2px; text-shadow: 0 2px 10px #000; }
   #titleBrand h2 { color: #9aa08a; font-weight: normal; letter-spacing: 3px; font-size: 14px; text-shadow: 0 1px 6px #000; }
   #garageStats { padding: 8px 14px; text-align: left; width: max-content; max-width: 42vw; }
@@ -237,6 +239,7 @@
     .card em { font-size: 11px; }
     #mapRow .card, #garageRow .card { width: 150px; padding: 5px 9px; }
     #dockRow { gap: 12px; padding-bottom: 4px; }
+    #titleLeft { gap: 8px; }
     #pvePanel { padding: 4px 10px; }
     #pvePanel .pveTitle { font-size: 12px; }
     #pvePanel .pveSum, #pvePanel .pveTitle span { font-size: 11px; }
@@ -371,20 +374,13 @@
   <div id="garageView"></div>
   <div id="garageUI">
     <div id="titleTop">
-      <div id="titleBrand">
-        <h1>钢 铁 前 沿</h1>
-        <h2>单机战役 · 选择你的坦克与战场</h2>
-        <div id="verStamp"></div>
-        <button id="btnMp">⚔ 联机对战</button>
-      </div>
-      <div id="mapPick">
-        <div class="pickLabel">战 场</div>
-        <div id="mapRow" class="cards hscroll"></div>
-      </div>
-    </div>
-    <div id="bottomDock">
-      <div id="dockRow">
-        <div id="garageStats" class="panel"></div>
+      <div id="titleLeft">
+        <div id="titleBrand">
+          <h1>钢 铁 前 沿</h1>
+          <h2>单机战役 · 选择你的坦克与战场</h2>
+          <div id="verStamp"></div>
+          <button id="btnMp">⚔ 联机对战</button>
+        </div>
         <div id="pvePanel" class="panel"></div>
         <div id="gfxPanel" class="panel">
           <div class="pveTitle"><b>画质</b><span>帧率不够就降档 · F3 看帧率</span></div>
@@ -397,6 +393,15 @@
             </select>
           </div><div class="pveRow" id="gfxNote"></div></div>
         </div>
+      </div>
+      <div id="mapPick">
+        <div class="pickLabel">战 场</div>
+        <div id="mapRow" class="cards hscroll"></div>
+      </div>
+    </div>
+    <div id="bottomDock">
+      <div id="dockRow">
+        <div id="garageStats" class="panel"></div>
         <div id="tipOnTitle"></div>
         <div id="btnRow">
           <button id="btnStart">出 击</button>
