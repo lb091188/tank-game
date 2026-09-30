@@ -250,11 +250,20 @@ SF.HUD = (() => {
     ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.fill();
     ctx.restore();
     ctx.globalAlpha = 1;
-    // 挡位灯: D 前进(绿) / N 换挡中(黄) / R 倒车(红)
-    // 联机客户端挡位不在快照里: 行驶中按速度符号推断(本地 N 拍在低速时保留原挡显示)
+    // 挡位灯: D1-D3 前进(绿) / N 空挡(黄) / R1-R2 倒车(红)
+    // 联机客户端挡位不在快照里: 行驶中按速度符号+大小推断挡位(阈值与换挡滞回带一致)
     if (!gearEls) gearEls = document.querySelectorAll('#gearRow span');
-    let g = player.gear || 'D';
-    if (Math.abs(player.speed) > 0.5) g = player.speed > 0 ? 'D' : 'R';
+    let g = player.gear || 'D1';
+    const v = Math.abs(player.speed);
+    if (v > 0.5) {
+      const GB = SF.CFG.sim.gearbox;
+      const fwd = player.speed > 0;
+      const caps = fwd ? GB.fwd : GB.rev;
+      const top = player.spec.maxSpeed * (fwd ? 1 : (player.spec.reverseRatio || 0.42));
+      let idx = 0;
+      for (let i = 0; i < caps.length; i++) if (v > top * caps[i] * 0.93) idx = i;
+      g = (fwd ? 'D' : 'R') + (idx + 1);
+    }
     gearEls.forEach(s => s.classList.toggle('on', s.dataset.g === g));
   }
 

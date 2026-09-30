@@ -183,11 +183,11 @@
   #cardCol { width: 212px; }
   /* 指向仪(WoT 式): 罗盘上车体剪影+炮塔炮管, 屏幕上方=镜头方向; 下方挡位灯 */
   #dirWidget { width: 96px; height: 96px; display: block; }
-  #gearRow { display: flex; gap: 5px; justify-content: center; margin-top: 4px; }
-  #gearRow span { width: 24px; line-height: 18px; text-align: center; font-size: 12px; font-weight: bold; color: #5b6052; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.25); border-radius: 4px; }
-  #gearRow span.on[data-g="D"] { color: #14160f; background: #7fc468; border-color: #7fc468; }
+  #gearRow { display: flex; gap: 2px; justify-content: center; margin-top: 4px; }
+  #gearRow span { width: 15px; line-height: 17px; text-align: center; font-size: 10px; font-weight: bold; color: #5b6052; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.25); border-radius: 3px; }
+  #gearRow span.on[data-g^="D"] { color: #14160f; background: #7fc468; border-color: #7fc468; }
   #gearRow span.on[data-g="N"] { color: #14160f; background: #e8c977; border-color: #e8c977; }
-  #gearRow span.on[data-g="R"] { color: #14160f; background: #e07a6a; border-color: #e07a6a; }
+  #gearRow span.on[data-g^="R"] { color: #14160f; background: #e07a6a; border-color: #e07a6a; }
   #hpBar { height: 14px; background: #23261d; border-radius: 3px; overflow: hidden; border: 1px solid rgba(255,255,255,.15); }
   #hpFill { height: 100%; width: 100%; background: linear-gradient(90deg, #5d9e4e, #7fc468); transition: width .2s; }
   #hpText { color: #cfd3c0; font-size: 12px; text-align: center; margin: 3px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -246,7 +246,7 @@
     /* 手机横屏: 左下玩家卡片压缩(给摇杆/视野让位) */
     #bottomBar { padding: 7px 10px 5px; gap: 8px; }
     #dirWidget { width: 74px; height: 74px; }
-    #gearRow span { width: 20px; line-height: 16px; font-size: 11px; }
+    #gearRow span { width: 12px; line-height: 14px; font-size: 8px; border-radius: 2px; }
     #hpBar { height: 11px; }
     #hpText { font-size: 11px; margin: 2px 0 3px; }
     #speedText { font-size: 12px; }
@@ -303,7 +303,7 @@
   <div id="bottomBar" class="panel">
     <div id="dirBox">
       <canvas id="dirWidget" width="192" height="192"></canvas>
-      <div id="gearRow"><span data-g="D">D</span><span data-g="N">N</span><span data-g="R">R</span></div>
+      <div id="gearRow"><span data-g="D1">D1</span><span data-g="D2">D2</span><span data-g="D3">D3</span><span data-g="N">N</span><span data-g="R1">R1</span><span data-g="R2">R2</span></div>
     </div>
     <div id="cardCol">
       <div id="hpText">900 / 900</div>
