@@ -88,8 +88,8 @@ SF.Tank = class {
       /* --- 自动变速箱(实车手感): 前进 D1/D2/D3 + 倒车 R1/R2 + 空挡 N(仅初始) ---
          每挡限速(D1≈42% / D2≈72% / D3=100% 极速; 倒挡 R1≈58%), 低挡扭力大;
          踩住油门逐级升挡(升挡 0.15s 扭矩中断的顿挫感), 减速/刹停自动回落(升/降阈值留滞回带防拉锯);
-         前后换向: 立即换入新方向低挡, 不进空挡等待 —— 挡向不符的制动照常生效, 速度过零即出反向扭矩
-         (卖头骗炮的核心节奏, 换向停顿会毁掉伸缩炮) */
+         前后换向: 立即换入新方向低挡, 不进空挡等待; 挡向不符时制动 + 新方向全扭矩一起反拽(WoT 式跟手,
+         减速≈刹车+反向动力), 速度过零即纯反向扭矩 —— 卖头骗炮的核心节奏, 换向迟滞会毁掉伸缩炮 */
       const GB = SF.CFG.sim.gearbox;
       if (this.shiftT > 0) this.shiftT -= dt;
       const gDir = this.gear[0], gIdx = this.gear === 'N' ? -1 : +this.gear[1] - 1;
@@ -107,8 +107,11 @@ SF.Tank = class {
         this.speed = U.moveToward(this.speed, 0, S.brake * dt);     // 空挡带刹滑停
         if (this.shiftT <= 0) this.gear = want === 'R' ? 'R1' : 'D1';
       } else if (input.throttle > 0) {
-        if (gDir !== 'D' || this.speed < -0.3) this.speed = U.moveToward(this.speed, 0, S.brake * dt); // 前进挡向后溜/挡向不符: 先刹
-        else {
+        if (gDir !== 'D' || this.speed < -0.3) {
+          // 换向/向后溜: 制动 + 新方向全扭矩反拽(WoT 式跟手——反向动力直接参与杀前冲动量, 减速近乎翻倍)
+          const pull = S.accel * (gDir !== 'D' ? GB.torqueR[0] : GB.torqueF[0]);
+          this.speed = U.moveToward(this.speed, 0, (S.brake + pull) * dt);
+        } else {
           const cap = top * caps[gIdx];
           if (this.speed > cap * 0.985 && gIdx < caps.length - 1) { this.gear = gDir + (gIdx + 2); this.shiftT = GB.pause; }   // 升挡顿挫
           const a = S.accel * tq[gIdx] * (this.shiftT > 0 ? 0.25 : 1) * (uphill ? slopeK : 1)
@@ -116,8 +119,11 @@ SF.Tank = class {
           this.speed = Math.min(cap * input.throttle, this.speed + a * dt);
         }
       } else if (input.throttle < 0) {
-        if (gDir !== 'R' || this.speed > 0.3) this.speed = U.moveToward(this.speed, 0, S.brake * dt);   // 倒挡还向前冲/挡向不符: 先刹
-        else {
+        if (gDir !== 'R' || this.speed > 0.3) {
+          // 换向/向前冲: 同上镜像——倒挡扭矩参与杀前冲动量(骗炮回缩的核心手感)
+          const pull = S.accel * (gDir !== 'R' ? GB.torqueF[0] : GB.torqueR[0]);
+          this.speed = U.moveToward(this.speed, 0, (S.brake + pull) * dt);
+        } else {
           const cap = top * caps[gIdx];
           if (this.speed < -cap * 0.985 && gIdx < caps.length - 1) { this.gear = gDir + (gIdx + 2); this.shiftT = GB.pause; }
           const a = S.accel * tq[gIdx] * (this.shiftT > 0 ? 0.25 : 1);
