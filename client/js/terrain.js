@@ -49,6 +49,10 @@ SF.Terrain = class {
           const roadK = (Math.abs(x) < 8 && hh < 10 && z > -250) ? 0.55 : 0;
           col = col.map(v => SF.Util.lerp(v, 0.30, roadK));
         }
+        // 不可攀断崖标识: 梯度超爬坡极限(36°≈梯度0.68)开始压黑, 断面中段(最陡处≈1.05+)近黑;
+        // 登顶坡道(≤34°/梯度0.60)不受影响 —— 亮色=能上, 渐黑=上不去(滑下不摔死), 玩家一眼可辨
+        const cliffK = SF.Util.clamp((slope - 0.68) / 0.37, 0, 1);
+        if (cliffK > 0) col = col.map(v => v * (1 - cliffK * 0.85));
         colors[vi * 3] = col[0]; colors[vi * 3 + 1] = col[1]; colors[vi * 3 + 2] = col[2];
       }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));

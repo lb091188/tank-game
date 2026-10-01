@@ -521,6 +521,7 @@ function terrainL05(x, z) {
   // 散沙坑(弹坑感) + 微沙纹
   { const r = mulberry32(20261015); for (let i = 0; i < 10; i++) { const c = { x: -220 + r() * 440, z: -180 + r() * 380, r: 4 + r() * 3, d: 0.8 + r() * 0.6 }; h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d; } }
   h += (n5((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 1.2;
+  h += (n2((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 3.0 * ss(190, 250, Math.abs(x));   // 东西侧翼沙垄(±1.5m 缓丘, 梯度~0.09 可通行; 补侧翼空旷, 出生环 |x|≤248 处振幅已收敛)
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 335));
   h = h * (1 - spawnFlat) + 6.5 * spawnFlat;
   const bx = Math.max(Math.abs(x) - (352 + 20 * n4((x + 400) / SIZE, 0.55)), 0);
@@ -566,6 +567,14 @@ function coversL05(add, rng) {
   }
   bushPatch(add, rng, -58, -278, 2); add('rock', -50, -284, rng() * 6, 1.2);  // 北远端(机堡阵地后方)
   bushPatch(add, rng, 60, -282, 2); add('rock', 52, -288, rng() * 6, 1.2);
+  // ---- 评审修订3: 东西侧翼充实 —— 散岩带+枯灌丛+弃车(配合地形侧翼沙垄), 东西边不再空旷 ----
+  for (const side of [-1, 1]) {
+    for (let z = -270; z <= 270; z += 62) {
+      add('rock', side * (205 + rng() * 45), z + (rng() - 0.5) * 30, rng() * 6, 0.9 + rng() * 0.7);
+      if (rng() < 0.75) bushPatch(add, rng, side * (205 + rng() * 45), z + 31 + (rng() - 0.5) * 20, 2);
+    }
+    add('wreck', side * (215 + rng() * 30), -120 + rng() * 240, rng() * 3);
+  }
 }
 
 /* ============ 地图定义 ============ */
