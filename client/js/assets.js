@@ -92,7 +92,20 @@ SF.Assets = (() => {
     tiger2: 'tiger2', ferdinand: 'ferdinand', is3: 'is3', t44: 't44', m26: 'm26', t26e4: 't26e4', t29: 't29', centurion: 'centurion', chiri: 'chiri',
     type62: 'type62', type59: 'type59', wz111: 'wz111',
     amx13: 'amx13', amx50100: 'amx50100', lorr40t: 'lorr40t',
-    wespe: 'wespe', hummel: 'hummel', m7priest: 'm7priest', su26: 'su26' };
+    wespe: 'wespe', hummel: 'hummel', m7priest: 'm7priest', su26: 'su26',
+    // ===== 扩充车组(与 build-models.js ROSTER 同步) =====
+    m5stuart: 'm5stuart', m24chaffee: 'm24chaffee', m41walker: 'm41walker', t1heavy: 't1heavy', m103: 'm103', t30: 't30', t28: 't28',
+    m46patton: 'm46patton', m48patton: 'm48patton', m60: 'm60', m1abrams: 'm1abrams', m1a2: 'm1a2',
+    pz2: 'pz2', pz38t: 'pz38t', hetzer: 'hetzer', jgdpz4: 'jgdpz4', nashorn: 'nashorn', jagdtiger: 'jagdtiger',
+    leopard1: 'leopard1', leopard2: 'leopard2', leopard2a7: 'leopard2a7', maus: 'maus',
+    t26: 't26', t70: 't70', t28ru: 't28ru', kv85: 'kv85', is: 'is', su76: 'su76', su152: 'su152',
+    is7: 'is7', t10: 't10', t54: 't54', t62: 't62', t90a: 't90a', t80u: 't80u', obj268: 'obj268', t14armata: 't14armata', t90m: 't90m',
+    vickersmed: 'vickersmed', valentine: 'valentine', crusader: 'crusader', churchill1: 'churchill1', comet: 'comet',
+    blackprince: 'blackprince', conqueror: 'conqueror', chieftain: 'chieftain', vickersmbt: 'vickersmbt', tortoise: 'tortoise',
+    ft: 'ft', elc: 'elc', bdr: 'bdr', arl44: 'arl44', amx50120: 'amx50120', amx50b: 'amx50b', batchat: 'batchat', leclerc: 'leclerc',
+    hago: 'hago', chihe: 'chihe', chito: 'chito', type61: 'type61', stb1: 'stb1', type74: 'type74', type90: 'type90', type10: 'type10', oi: 'oi',
+    type63: 'type63', type69: 'type69', type96: 'type96', type99: 'type99', type99a: 'type99a',
+    merkava3: 'merkava3', merkava4: 'merkava4', strv103: 'strv103', strv122: 'strv122', k2: 'k2' };
   const fileOf = {}; for (const f in MODEL_FILES) fileOf[MODEL_FILES[f]] = f;
 
   // 单坦克模型: 已载即回, 进行中去重, 失败可重试
@@ -135,7 +148,7 @@ SF.Assets = (() => {
   // 音效(开源音源, 见 CREDITS.md) + 中文战斗语音(缺失退回系统 TTS)
   const SOUNDS = ['cannon.ogg', 'pen.wav', 'bounce.wav', 'nopen.wav', 'track.wav', 'reload.wav', 'explosion.wav', 'wind.wav', 'engine-loop.wav', 'beep.wav'];
   const VOICE_VARIANTS = { v_pen: 3, v_nopen: 3, v_bounce: 3, v_absorb: 3, v_gunout: 2, v_ram: 2, v_kill: 3, v_wipe: 2,
-    v_hitpen: 3, v_track: 3, v_ammo: 3, v_engine: 2, v_gun: 2, v_rammed: 2, v_splash: 2, v_reload: 3 };
+    v_hitpen: 3, v_track: 3, v_ammo: 3, v_engine: 2, v_gun: 2, v_rammed: 2, v_splash: 2, v_reload: 3, v_supply: 2 };
 
   // 启动最小集: 版本戳 + 全部地图(json/高程都很小) + 所选坦克 + 贴图 → 车库秒开
   A.load = async (bootTank, onProgress) => {

@@ -24,7 +24,7 @@ SF.HUD = (() => {
     const off = document.createElement('canvas'); off.width = off.height = 180;
     const octx = off.getContext('2d');
     const T = world.terrain, N = 90;
-    const PAL = world.map.theme === 'city' ? [52, 52, 54] : world.map.theme === 'rock' ? [78, 76, 68] : world.map.theme === 'sand' ? [148, 128, 92] : [38, 62, 34];
+    const PAL = world.map.theme === 'city' ? [52, 52, 54] : world.map.theme === 'rock' ? [78, 76, 68] : world.map.theme === 'sand' ? [148, 128, 92] : world.map.theme === 'winter' ? [188, 194, 204] : [38, 62, 34];
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = -T.half + (i / N) * T.size, z = -T.half + (j / N) * T.size;
       const h = T.heightAt(x, z);
@@ -289,6 +289,14 @@ SF.HUD = (() => {
       .filter(k => player.modules[k] > 0)
       .map(k => `<span class="mod">${SF.CFG.armor.modules[k].text}</span>`).join(''));
 
+    // 增益条(补给空投): 图标 + 层数 + 剩余秒, 无增益时收起
+    const bb = $('buffBar');
+    if (uiState.buffs && uiState.buffs.length) {
+      setHtml(bb, uiState.buffs.map(b =>
+        `<span class="buff" style="border-color:${b.css};color:${b.css}"><img src="${b.icon}" alt="">${b.name}${b.lv > 1 ? ' ×' + b.lv : ''}<i>${b.t}s</i></span>`).join(''));
+      setDisp(bb, 'flex');
+    } else setDisp(bb, 'none');
+
     updateAimCircle(player, world, uiState);
     drawDirWidget(player, uiState);
     // 鹰眼(火炮俯视)无中心十字: 落点即准星(绿色散布椭圆), WoT 式
@@ -396,6 +404,18 @@ SF.HUD = (() => {
     ctx.fillStyle = '#7fd67f';
     ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.2, 5); ctx.lineTo(-4.2, 5); ctx.closePath(); ctx.fill();
     ctx.restore();
+
+    // 补给空投(PVE): 类型色脉冲菱形(小地图与大地图共用本画布)
+    for (const pk of (uiState.pickups || [])) {
+      const [mx, my] = worldToMap(pk.x, pk.z, T);
+      const s2 = 3 + Math.sin(world.time * 5) * 1.1;
+      ctx.save();
+      ctx.translate(mx, my); ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = pk.css;
+      ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1;
+      ctx.fillRect(-s2, -s2, s2 * 2, s2 * 2); ctx.strokeRect(-s2, -s2, s2 * 2, s2 * 2);
+      ctx.restore();
+    }
 
     // 鹰眼视野范围(WoT 火炮): 绿框=俯视相机当前看得到的地面区域, 中心随准星移动
     if (uiState.arty) {

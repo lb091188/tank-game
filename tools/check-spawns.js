@@ -12,8 +12,8 @@ const path = require('path');
 const zlib = require('zlib');
 
 const ROOT = path.join(__dirname, '..', 'client', 'assets', 'maps');
-const MAPS = ['l01-encounter', 'l02-city', 'l03-highland', 'l04-steppe', 'l05-airfield'];
-const ASSERT_LOS = { 'l01-encounter': 2, 'l03-highland': 2 };   // id → 允许的 |N-S| 上限
+const MAPS = ['l01-encounter', 'l02-city', 'l03-highland', 'l04-steppe', 'l05-airfield', 'l06-winter'];
+const ASSERT_LOS = { 'l01-encounter': 2, 'l03-highland': 2, 'l06-winter': 2 };   // id → 允许的 |N-S| 上限
 
 /* ---------- PNG16 解码(与 build-map.js writePNG16 对偶) ---------- */
 function loadPNG16(f) {

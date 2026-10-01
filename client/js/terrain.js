@@ -18,7 +18,8 @@ SF.Terrain = class {
       grass: { low: [0.44, 0.46, 0.30], mid: [0.32, 0.42, 0.20], mid2: [0.38, 0.47, 0.24], high: [0.44, 0.43, 0.41], slope: [0.45, 0.38, 0.26] },
       city: { low: [0.40, 0.40, 0.41], mid: [0.46, 0.46, 0.45], mid2: [0.38, 0.38, 0.39], high: [0.34, 0.34, 0.35], slope: [0.30, 0.30, 0.31] },
       rock: { low: [0.42, 0.40, 0.34], mid: [0.36, 0.37, 0.32], mid2: [0.42, 0.41, 0.36], high: [0.48, 0.47, 0.45], slope: [0.36, 0.33, 0.29] },
-      sand: { low: [0.74, 0.64, 0.46], mid: [0.70, 0.60, 0.42], mid2: [0.76, 0.67, 0.50], high: [0.58, 0.52, 0.42], slope: [0.60, 0.52, 0.38] }
+      sand: { low: [0.74, 0.64, 0.46], mid: [0.70, 0.60, 0.42], mid2: [0.76, 0.67, 0.50], high: [0.58, 0.52, 0.42], slope: [0.60, 0.52, 0.38] },
+      winter: { low: [0.72, 0.75, 0.80], mid: [0.84, 0.86, 0.90], mid2: [0.76, 0.79, 0.85], high: [0.90, 0.91, 0.94], slope: [0.42, 0.40, 0.37] }
     }[theme] || { low: [0.44, 0.46, 0.30], mid: [0.32, 0.42, 0.20], mid2: [0.38, 0.47, 0.24], high: [0.44, 0.43, 0.41], slope: [0.45, 0.38, 0.26] };
     const grass = P.mid, grass2 = P.mid2, rock = P.high, dirt = P.slope, lowc = P.low;
     const geo = new THREE.PlaneGeometry(this.size, this.size, this.res - 1, this.res - 1);
@@ -58,7 +59,7 @@ SF.Terrain = class {
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
     // 主题贴图(ambientCG CC0): 顶点色相乘保留生物群系/坡面着色, 贴图补微观细节
-    const TEX = { grass: ['grass', 150], city: ['asphalt', 170], rock: ['rock', 110], sand: ['rock', 130] }[theme] || ['grass', 150];
+    const TEX = { grass: ['grass', 150], city: ['asphalt', 170], rock: ['rock', 110], sand: ['rock', 130], winter: ['rock', 110] }[theme] || ['grass', 150];
     const base = SF.Assets && SF.Assets.textures[TEX[0]];
     let mat;
     if (base) {

@@ -271,6 +271,9 @@ SF.Main = (() => {
     fx = new SF.FX(scene);
     shells = new SF.Shells(scene, fx);
     world.shells = shells;
+    // 补给空投(PVE): 世界与场景注入; 单机玩家挂增益基线(联机玩家在 startMultiplayer 里挂)
+    SF.Pickups.init(world, scene, fx);
+    if (MP.mode === 'sp') SF.Pickups.attachTank(player);
     buildTrajLine();
 
     SF.Game = { scene, camera, renderer, world, fx, get uiState() { return {
@@ -289,7 +292,9 @@ SF.Main = (() => {
           return SF.Game_mp.waveInfo;
         }
         return null;
-      })()
+      })(),
+      pickups: SF.Pickups.uiList(),                      // 场上补给空投(小地图)
+      buffs: SF.Pickups.playerBuffs(world.player)        // 本地玩家增益(倒计时条)
     }; } };
   
   // 测试钩子: 无 rAF 环境下手动推进模拟与渲染(自动化测试用)
@@ -989,10 +994,10 @@ SF.Main = (() => {
   }
 
   // 敌军等级匹配: 按参战玩家最高等级, 同类别选邻近等级敌车(开 VIII 级不再割草 III 级)
-  const TIER_NUM = { III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8 };
+  const TIER_NUM = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11 };
   function pickTierTank(cls, band) {
     for (let w = 0; w < 4; w++) {
-      const lo = Math.max(3, band[0] - w), hi = Math.min(8, band[1] + w);
+      const lo = Math.max(1, band[0] - w), hi = Math.min(11, band[1] + w);
       const pool = [];
       for (const k in SF.CFG.vehicles) {
         const v = SF.CFG.vehicles[k];
@@ -1005,7 +1010,7 @@ SF.Main = (() => {
   // 等级带内所有车型(含降档扩池), 开战预载用 —— 是 pickTierTank 可能选中的全集
   function enemyTypesFor(band) {
     for (let w = 0; w < 4; w++) {
-      const lo = Math.max(3, band[0] - w), hi = Math.min(8, band[1] + w);
+      const lo = Math.max(1, band[0] - w), hi = Math.min(11, band[1] + w);
       const pool = [];
       for (const k in SF.CFG.vehicles) {
         const v = SF.CFG.vehicles[k];
@@ -1282,6 +1287,12 @@ SF.Main = (() => {
         if (repairT > 0) SF.HUD.showMsg(`${repairMsgText} ${Math.ceil(repairT)}s`, 0);   // 逐帧刷新倒计时
       }
       checkWave();
+      // 补给空投(权威端): 随机生成 + 拾取判定 + 增益计时(coop 拾取事件由主机广播, 场上空投走快照)
+      SF.Pickups.update(dt, {
+        authority: true, gameOver,
+        humans: MP.mode === 'sp' ? [world.player] : [...MP.tanks.values()].filter(t => t.netId < 100),
+        send: MP.mode === 'host' ? (m) => SF.Net.send(m) : null
+      });
     }
 
     // 玩家对敌发现: 视距×(1-目标隐蔽) + 多点通视 + 50m 强制点亮 + 5~10s 残留
@@ -1759,6 +1770,7 @@ SF.Main = (() => {
       renderer = null;
     }
     scene = null; world = null; fx = null; shells = null;
+    SF.Pickups.reset();   // 清空场上空投与增益状态(下一场 init 重建)
     if (MP.mode !== 'sp') { SF.Net.stopInputLoop(); SF.Net.close(); MP.mode = 'sp'; MP.tanks.clear(); }
     SF.Audio.stopBattle();
     document.getElementById('hud').style.display = 'none';
@@ -1777,7 +1789,7 @@ SF.Main = (() => {
     try {
       await withLoading('部署战场', async (onP) => {
         await SF.Assets.ensureMap(selMap);
-        await SF.Assets.ensureTanks([selTank, ...enemyTypesFor([Math.max(3, pt - 1), Math.min(8, pt + 1)])], onP);
+        await SF.Assets.ensureTanks([selTank, ...enemyTypesFor([Math.max(1, pt - 1), Math.min(11, pt + 1)])], onP);
       });
     } catch (err) {
       console.error(err);
@@ -1838,6 +1850,7 @@ SF.Main = (() => {
         for (const e of world.enemies) if (e.alive && e.ai && aiSeen(e) && aiTargetId(e) === id) { dtMap[id] = 1; break; }
       msg.dt = dtMap;
       if (repairT > 0) msg.rp = Math.ceil(repairT);   // 波间维修倒计时: 客户端同样有提示
+      msg.pk = SF.Pickups.netList();                  // 场上补给空投(≤3 箱, 客户端对账)
     }
     SF.Net.send(msg);
   }
@@ -1856,6 +1869,11 @@ SF.Main = (() => {
     MP.timeLeft = snap.timeLeft;
     if (snap.scores) for (const id in snap.scores) MP.scores.set(+id, snap.scores[id]);
     if (snap.wv) MP.waveInfo = { idx: snap.wv[0], total: snap.wv[1], name: snap.wv[2], kills: snap.wv[3], totalEnemies: snap.wv[4] };
+    if (MP.gameMode === 'coop') {
+      // 补给空投(客户端): 快照对账场上空投 + 本地玩家增益计时(数值以主机为准, 本地只管表现)
+      SF.Pickups.update(dt, { authority: false, gameOver, humans: [world.player] });
+      if (snap.pk) SF.Pickups.onSnapshot(snap.pk);
+    }
     // 波间维修(主机快照下发): 常驻倒计时; 结束瞬间收尾提示(客户端收不到主机的"第 N 波"消息, 需自己收尾)
     if (snap.rp) { SF.HUD.showMsg(`${world.map.repairBetweenWaves.text} ${snap.rp}s`, 0); repairMsgOn = true; }
     else if (repairMsgOn) { repairMsgOn = false; SF.HUD.showMsg('维修完成', 1.5); }
@@ -1950,6 +1968,9 @@ SF.Main = (() => {
         if (t && t.alive) { t.alive = false; }
         SF.Bus.emit('destroyed', { tank: proxyTank(d.id), shooter: proxyTank(d.by) });
         if (d.by) MP.scores.set(d.by, (MP.scores.get(d.by) || 0) + 1);
+      } else if (m.k === 'pkGet') {
+        const pl = MP.players.find(q => q.id === d.by);
+        SF.Pickups.onCollect(d, d.by === MP.myId, pl ? pl.name : '队友');
       }
     });
     SF.Net.on('end', (m) => {
@@ -1995,7 +2016,7 @@ SF.Main = (() => {
         await SF.Assets.ensureMap(MP.mapId);
         const tanks = MP.players.map(pl => pl.tank);
         if (MP.gameMode === 'coop' && role === 'host')
-          tanks.push(...enemyTypesFor([Math.max(3, pt0 - 1), Math.min(8, pt0 + 1)]));
+          tanks.push(...enemyTypesFor([Math.max(1, pt0 - 1), Math.min(11, pt0 + 1)]));
         await SF.Assets.ensureTanks(tanks, onP);
       });
     } catch (err) {
@@ -2049,6 +2070,7 @@ SF.Main = (() => {
     }
     world.enemies = [];
     world.player._yInit = false;
+    if (MP.gameMode === 'coop') for (const [id, t] of MP.tanks) if (id < 100) SF.Pickups.attachTank(t);   // 补给增益基线
     if (MP.gameMode === 'coop') {
       MP.timeLeft = 9999;
       if (role === 'host') {
