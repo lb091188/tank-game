@@ -189,6 +189,7 @@ SF.Main = (() => {
   const spotLinger = new Map();    // 敌 → 丢失视野后的残留秒数(WoT: 最短 5s, 持续暴露可延至 10s)
   let lampT = 0;                   // 被敌人持续注视的时长(六感灯 3s 延迟, WoT)
   let waveIdx = 0, waveEnemies = [], repairT = 0, repairMsgText = '', repairMsgOn = false, repairDone = false, gameOver = false, loseT = -1;
+  let wasGameOver = false, settleT = 0;   // 结算沉降: gameOver 置位后滑停 1.5s(炮弹/特效播完)再停循环
   let stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   let aimPoint = null, gunAim = null;
 
@@ -1401,10 +1402,15 @@ SF.Main = (() => {
       hintShown = true;
       SF.HUD.showMsg('未检测到键盘输入——请点击一下游戏画面', 6);
     }
+    // 任务结束(胜利/阵亡/联机结算): 立即断引擎与环境音(瞬态音效照常播完); 滑停 1.5s 后停主循环, 结算界面不再空转
+    if (gameOver && !wasGameOver) { wasGameOver = true; SF.Audio.stopBattle(); settleT = 1.5; }
+    else if (!gameOver && wasGameOver) wasGameOver = false;
+    if (gameOver) { settleT -= dtReal; if (settleT <= 0 && running) running = false; }
     renderer.render(scene, camera);
   }
 
   function tick(t) {
+    if (!running) return;   // 结算沉降结束/已退出: rAF 链与看门狗降级定时器双双熄火
     const dtReal = Math.min(0.1, (t - lastT) / 1000 || 0.016);
     lastT = t;
     acc += dtReal;
@@ -1748,6 +1754,7 @@ SF.Main = (() => {
   let battleBound = false;   // 输入与事件总线只绑一次(重开战斗不重复绑定)
   function resetBattleVars() {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairMsgText = ''; repairMsgOn = false; repairDone = false; spottedTimer = 0;
+    wasGameOver = false; settleT = 0;   // 结算状态归位(再战/回车库复用)
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
     SF.Models.setBushSeeThrough(false);   // models 侧的开镜草丛状态不随战斗变量重置, 显式归位
     SF.Models.setFoliageFocus(null, null);   // 近距草透明焦点也归位(车库预览无玩家)
