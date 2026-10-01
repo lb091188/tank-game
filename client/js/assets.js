@@ -133,17 +133,19 @@ SF.Assets = (() => {
   A.ensureTanks = (types, onProgress) => {
     const list = [...new Set(types)];
     let done = 0;
-    return Promise.all(list.map(t => {
-      // 无模型的车型(配置先于模型): 跳过 + 预载 cls 通用兜底车模 —— 一辆半成品车不再炸掉整场加载
-      if (!fileOf[t]) {
-        console.warn('[assets] 跳过无模型车型:', t);
+    const one = async (t) => {
+      try {
+        if (!fileOf[t]) throw new Error('无模型映射');
+        return await getModel(t);
+      } catch (e) {
+        // 缺映射/加载失败(弱网单点故障): 跳过 + 预载 cls 通用兜底车模 —— 一辆车的问题不再炸掉整场加载
+        console.warn('[assets] 车型加载失败(退回通用外形):', t, e.message);
         const g = A.genericOf(t);
-        if (!A.models[g]) getModel(g).catch(() => console.warn('[assets] 兜底车模也缺失:', g));
-        onProgress && onProgress(++done, list.length);
-        return Promise.resolve(null);
-      }
-      return getModel(t).finally(() => onProgress && onProgress(++done, list.length));
-    }));
+        if (!A.models[g]) { try { await getModel(g); } catch (e2) { console.warn('[assets] 兜底车模也缺失:', g); } }
+        return null;
+      } finally { onProgress && onProgress(++done, list.length); }
+    };
+    return Promise.all(list.map(one));
   };
 
   // 地图(json+高程), 并发去重
