@@ -208,7 +208,14 @@ function coversL01(add, rng) {
   bushPatch(add, rng, -230, 60, 3); bushPatch(add, rng, -230, 180, 3);             // 西翼林中战术隐蔽(树只挡车不挡点亮)
   bushPatch(add, rng, -195, 112, 3);                                               // 西岭鞍部: 穿鞍有真实隐蔽收益
   add('rock', 190, 188, rng() * 6, 1.4); bushPatch(add, rng, 194, 196, 2);         // 东南对位高地顶: 卖头锚点+蹲位
-  add('rock', -14, -218, 0.4, 1.3); add('rock', 12, 232, 2.6, 1.2);                // 南护脊翻棱硬点(中门两侧, 翻脊先手依托)
+  add('rock', -14, 233, 0.4, 1.3); add('rock', 12, 232, 2.6, 1.2);                // 南护脊翻棱硬点(中门两侧, 与北垒中门双墙对位; 修前 -218 误落北垒墙位)
+  // ---- 评审修订2: 隐蔽炮位(石旁配草) —— 蹲草藏身、被亮缩石挡弹的"隐蔽炮台", 补齐高地石头位缺的最后一块 ----
+  bushPatch(add, rng, 146, -22, 2); bushPatch(add, rng, -96, -186, 2);            // 东山/西北山崖顶面(棱后侧, 避开顶面孤树)
+  for (const [mx2, mz2] of [[-89, -50], [67, -50], [-28, 133], [118, 105]]) bushPatch(add, rng, mx2, mz2, 2);   // 四座土丘顶巨石旁(卖头位+蹲草)
+  bushPatch(add, rng, 197, -62, 2); bushPatch(add, rng, 197, -154, 2);            // 东翼岩线北段(南段已有3簇)
+  bushPatch(add, rng, -197, -16, 2); bushPatch(add, rng, -197, -108, 2); bushPatch(add, rng, -197, -200, 2);   // 西翼岩线北段
+  bushPatch(add, rng, 63, -265, 2); bushPatch(add, rng, -63, -267, 2);            // 北垒后盆地巨石旁(后区反斜面炮位)
+  bushPatch(add, rng, 16, 238, 2);                                                // 南护脊翻棱硬点旁
 }
 
 /* ============ l02 城市巷战 ============ */
@@ -299,6 +306,25 @@ function coversL02(add, rng) {
     add('barn', sx2, sz2, 0, 0.9);
     add('wreck', sx2 - Math.sign(sx2) * 9, sz2 + 12, rng() * 3);
   }
+  // ---- 评审修订2: 外围区域充实 —— 城外不再是大空地 ----
+  // 南缘(郊野村舍带, 软掩体为主): 街区以南 z>250 原本全空; 避开出生平坦区(|x|<20 不放硬掩体)
+  add('house', -100, 270, 0.2, 0.9); add('house', 95, 276, 1.1, 0.85);
+  add('ruin', -35, 256, 0.6); add('ruin', 50, 260, 2.4);
+  add('haystack', -70, 288, 0); add('haystack', 18, 296, 0, 0.9); add('haystack', 128, 290, 0, 1.0);
+  bushPatch(add, rng, -135, 282, 3); bushPatch(add, rng, 65, 286, 3); bushPatch(add, rng, -8, 302, 2); bushPatch(add, rng, 150, 302, 2);
+  // 北缘(硬掩体带, 顺带补齐"北侧出生点 100m 内无硬掩体"的审计发现): 广场以北 z<-210 原本全空
+  add('house', -95, -234, 0.3, 0.9); add('house', 92, -240, 1.4, 0.85);
+  add('ruin', -42, -258, 2.9); add('ruin', 45, -262, 0.7);
+  add('wall', -70, -248, 0.2, 1.2); add('wall', 68, -252, -0.1, 1.2);
+  bushPatch(add, rng, -15, -272, 3); bushPatch(add, rng, 18, -300, 2); bushPatch(add, rng, 140, -280, 2); bushPatch(add, rng, -138, -285, 2);
+  // 东西侧带(外环立柱之间的空档) + 四角歇脚点
+  add('ruin', -205, 5, 0.5); add('ruin', 205, 5, 2.8);
+  bushPatch(add, rng, -208, 72, 3); bushPatch(add, rng, 208, 76, 3);
+  add('wreck', -215, 138, 1.1); add('wreck', 212, 142, 2.2);
+  add('rock', 236, 242, rng() * 6, 1.3); bushPatch(add, rng, 232, 250, 2);        // 东南角
+  add('rock', -238, 246, rng() * 6, 1.3); bushPatch(add, rng, -234, 254, 2);      // 西南角
+  add('rock', 234, -252, rng() * 6, 1.3); bushPatch(add, rng, 230, -260, 2);      // 东北角
+  add('rock', -236, -256, rng() * 6, 1.3); bushPatch(add, rng, -232, -264, 2);    // 西北角
 }
 
 /* ============ l03 山川高地 ============ */
@@ -388,6 +414,18 @@ function coversL03(add, rng) {
   hillCovers(add, rng, 70, 150, 0, 48);                 // 南中山(南方本方可登制高点)
   add('rock', -8, 152, rng() * 6, 1.5);                 // 南岭顶对位工事(北峰阵地工事的低配锚点)
   bushPatch(add, rng, -14, 158, 2);
+  // ---- 评审修订2: 周边区域充实 —— 外车道南段对位(修前北半段有4处息脚点、南半段全空) + 南北远端 + 四角 ----
+  for (const [fx, fz] of [[-172, 48], [-188, 152], [172, 32], [184, 136]]) {      // 东西外车道南段息脚点(镜像北段)
+    bushPatch(add, rng, fx, fz, 3);
+    add('rock', fx + 6, fz + 6, rng() * 6, 1.3);
+  }
+  add('rock', -95, 272, rng() * 6, 1.4); bushPatch(add, rng, -91, 278, 2);        // 南远端(滚丘外沿)
+  add('rock', 90, 278, rng() * 6, 1.4); bushPatch(add, rng, 86, 284, 2);
+  add('rock', -45, -298, rng() * 6, 1.4); bushPatch(add, rng, -41, -304, 2);      // 北远端(峰后松林间)
+  add('rock', 48, -302, rng() * 6, 1.4); bushPatch(add, rng, 44, -296, 2);
+  for (const [cx3, cz3] of [[-245, 262], [245, 258], [-242, -265], [240, -268]]) {   // 四角歇脚点
+    add('rock', cx3, cz3, rng() * 6, 1.3); bushPatch(add, rng, cx3 + 4, cz3 + 6, 2);
+  }
 }
 
 /* ============ l04 东线平原(开阔炮战) ============ */
@@ -446,6 +484,14 @@ function coversL04(add, rng) {
   add('haystack', -72, -6, 0, 1.0); add('wreck', -108, -4, 1.2);   // 西缺口出口第一拍遮蔽(草垛可压过/残骸挡车挡视线)
   add('haystack', 92, -2, 0, 1.0); add('wreck', 128, -4, 1.6);     // 东缺口出口第一拍遮蔽
   add('haystack', 200, -100, 0, 0.95); add('haystack', 240, -72, 0, 0.95);  // 东北角机动歇脚点(修前北岸零草垛)
+  // ---- 评审修订2: 周边区域充实 —— 东北角节奏点镜像到其余三角 + 南北远端轻点缀(平原特性保持开阔, 只给节奏点) ----
+  add('haystack', -205, -95, 0, 0.95); bushPatch(add, rng, -211, -88, 2);    // 西北角(对位东北角)
+  add('haystack', 215, 125, 0, 0.95); bushPatch(add, rng, 221, 132, 2);      // 东南角
+  add('haystack', -220, 118, 0, 0.95); bushPatch(add, rng, -214, 125, 2);    // 西南角
+  add('haystack', 105, 280, 0, 0.9); add('haystack', -100, 275, 0, 0.9);    // 南远端麦田(田埂树列以外)
+  bushPatch(add, rng, 60, 285, 2); bushPatch(add, rng, -58, 282, 2);
+  add('haystack', 95, -292, 0, 0.9); add('haystack', -98, -288, 0, 0.9);    // 北远端(北坡阵地后)
+  bushPatch(add, rng, 55, -296, 2); bushPatch(add, rng, -52, -292, 2);
 }
 
 /* ============ l05 荒漠机场(快节奏冲锋) ============ */
@@ -496,6 +542,15 @@ function coversL05(add, rng) {
   add('wall', -52, -248, 0.15, 1.2); add('wall', 50, -246, -0.1, 1.2);
   add('wall', 0, -240, 0, 1.2);   // 切断塔台丘↔tiger 的 443m 超视距(AI视距400)白嫖线, 虎从缺口探头射击
   add('wreck', -18, -258, 0.7); add('wreck', 24, -254, 2.1);
+  // ---- 评审修订2: 周边区域充实 —— 远侧绕后带南段对位(修前 6岩+2草全在北半场 z<0, 南段同型车道零节奏点) + 南北远端灌丛 ----
+  for (const [fx2, fz2] of [[-245, 80], [-235, 180], [240, 60], [235, 160]]) add('rock', fx2, fz2, rng() * 6, 1.35);   // 远西/远东南段跳点岩(镜像北段)
+  bushPatch(add, rng, -240, 110, 2); bushPatch(add, rng, 238, 100, 2);
+  for (const [gx, gz] of [[-60, 232], [62, 238], [-130, 252], [128, 248]]) {   // 南远端荒漠灌丛(跑道南口两侧)
+    bushPatch(add, rng, gx, gz, 2);
+    add('rock', gx + 8, gz + 6, rng() * 6, 1.1);
+  }
+  bushPatch(add, rng, -58, -278, 2); add('rock', -50, -284, rng() * 6, 1.2);  // 北远端(机堡阵地后方)
+  bushPatch(add, rng, 60, -282, 2); add('rock', 52, -288, rng() * 6, 1.2);
 }
 
 /* ============ 地图定义 ============ */
