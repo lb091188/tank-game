@@ -46,6 +46,16 @@ const gauss = (d, w) => Math.exp(-(d * d) / (2 * w * w));
 // → 车辆梯度判定视为墙, 之字迂回/斜向逼近都上不去; h 取负 = 陡壁深沟
 const cliffBump = (d, w, h) => { const t = clamp((w - d) / (w * 0.55) + 0.5, 0, 1); return t * t * (3 - 2 * t) * h; };
 const cliffSeg = (x, z, ax, az, bx, bz, w, h) => cliffBump(distSeg(x, z, ax, az, bx, bz), w, h);
+// 带登坡道的沙脊: w 宽度沿脊线变化——ramps 槽位(线段参数 0..1, 一般取 0.5 中点)局部展宽到 wr 成可爬坡道,
+// 其余保持 w 陡壁断面(梯度≈2.7×h/w 远超挡墙阈, 上不去; 滑落机制兜底: 断面滑下 ≤4.5m/s 不摔死)。
+// 脊顶平带 ≈0.95×w 可沿脊线行驶 —— 登顶后即全场最好的机动观察位。配套: 脊顶/道口放标记巨石。
+function ridgeSeg(x, z, ax, az, bx, bz, w, h, ramps, wr) {
+  const dx = bx - ax, dz = bz - az, L = Math.sqrt(dx * dx + dz * dz);
+  const u = clamp(((x - ax) * dx + (z - az) * dz) / (L * L), 0, 1);
+  let g = 0;
+  for (const s of ramps) g += gauss(Math.abs(u * L - s * L), 12);   // σ12: 坡道足印 ±25m, 之外 30m 即恢复全陡壁(σ20 会把邻段断面软化到可爬)
+  return cliffBump(distSeg(x, z, ax, az, bx, bz), w + (wr - w) * Math.min(1, g), h);
+}
 // 陡壁山(可玩性基本件, 替代对称笋尖): 一侧悬崖(不可攀, 但站上去可沿坡慢慢滑下), 对侧缓环坡可开车上顶;
 // 平顶=卖头/俯瞰位。phi=缓坡开口方位角(atan2 系, 东=π/2 南=0 西=-π/2 北=π), 反侧即悬崖。
 // 坡面做旧: 等高线低频蜿蜒(不是规整几何体) + 缓坡中途两道浅垄(卖头小平台, 打断一坡到顶)
@@ -235,9 +245,9 @@ function terrainL02(x, z) {
   h += (n5((x + 400) / SIZE, (z + 400) / SIZE) - 0.5) * 2.0 * ss(180, 240, Math.abs(x));
   for (const [mx, mz, mw, mh] of [[-215, 140, 36, 4], [222, -20, 34, 3.5], [-190, -70, 32, 3]]) h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
   // 陡壁废墟山×3(封侧街死路但各留一侧缓坡可上): 缓坡开口对着保留的街道
-  h += cliffHill(x, z, -160, 32, 12, 0, 7, 36);            // 南坡上, 北崖堵北向侧街
-  h += cliffHill(x, z, 158, -78, 13, Math.PI, 7, 38);      // 北坡上(敌纵深), 南崖堵出击直路
-  h += cliffHill(x, z, 36, 168, 12, -Math.PI / 2, 6, 40); // 西坡上, 东崖堵东侧巷
+  h += cliffHill(x, z, -160, 32, 12, 0, 7, 42);            // 南坡上, 北崖堵北向侧街; wRamp 36→42 坡道余量
+  h += cliffHill(x, z, 158, -78, 13, Math.PI, 7, 44);      // 北坡上(敌纵深), 南崖堵出击直路; wRamp 38→44: 修前北坡道 36° 贴爬坡极限零余量
+  h += cliffHill(x, z, 36, 168, 12, -Math.PI / 2, 6, 46); // 西坡上, 东崖堵东侧巷; wRamp 32→46 坡道余量(噪声叠底比西山多 2°)
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 330));
   h = h * (1 - spawnFlat) + 6 * spawnFlat;
   const bx = Math.max(Math.abs(x) - (352 + 18 * n4(0.2, (z + 400) / SIZE)), 0);
@@ -294,9 +304,9 @@ function coversL02(add, rng) {
   }
   for (let i = 0; i < 26; i++) add('rock', -250 + rng() * 500, -80 + rng() * 320, rng() * 6, 0.8 + rng() * 0.7);
   for (let i = 0; i < 12; i++) add('wreck', -220 + rng() * 440, -60 + rng() * 300, rng() * 3);
-  hillCovers(add, rng, -160, 32, 0, 36, true);            // 三座废墟山(残骸代树)
-  hillCovers(add, rng, 158, -78, Math.PI, 38, true);
-  hillCovers(add, rng, 36, 168, -Math.PI / 2, 32, true);
+  hillCovers(add, rng, -160, 32, 0, 42, true);            // 三座废墟山(残骸代树)
+  hillCovers(add, rng, 158, -78, Math.PI, 44, true);
+  hillCovers(add, rng, 36, 168, -Math.PI / 2, 46, true);
   // ---- 评审修订(追加在随机流末尾) ----
   add('rock', 36, -80, rng() * 6, 1.4); add('wreck', -36, -84, 1.5);              // 弹坑带南缘两个硬点: 90m冲击带不再裸奔
   add('rock', 78, -24, rng() * 6, 1.3);                                           // 东街反制peek位(对东北山顶su100)
@@ -359,10 +369,11 @@ function terrainL03(x, z) {
   // 南麓滚丘(出击通道起伏); 南岭加高为南方主制高点(死斗公平: 峰会≈28m 对位北峰 33.4m, 兼切断谷心山顶→南池 503m 狙线;
   // 16m/44m 最大梯度 0.22=12° 四方可登缓丘, spawnFlat 在其后执行出生区不受影响)
   for (const [mx, mz, mw, mh] of [[-65, 215, 30, 3.5], [50, 240, 26, 4], [-8, 152, 44, 16]]) h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
-  // 陡壁山×3: 西鞍口山(南崖堵绕脊直进, 北坡上顶接鞍口; 13/7.5 对齐谷心山封环强度——修前 12/7 南弧漏 70° 可之字登顶),
+  // 陡壁山×3: 西鞍口山(南崖堵绕脊直进, 北坡上顶接鞍口; 13/7.5 对齐谷心山封环强度——修前 12/7 南弧漏 70° 可之字登顶;
+  //           北坡道 wRamp 38→44: 修前 36° 贴爬坡极限零余量),
   // 东鞍口山翻转为南坡上顶/北崖(攻方中场唯一的可登卖头山, 与 m36 成制高点对决), 谷心山南崖把干河床分成双车道;
   // 谷心山加高到 15(死斗公平: 切断北池(0,-310)→南池 620m 开局狙线, 修前贴山顶余量仅1.6m), wRamp 42→46 保北坡可登
-  h += cliffHill(x, z, -98, 138, 13, Math.PI, 7.5, 38);
+  h += cliffHill(x, z, -98, 138, 13, Math.PI, 7.5, 44);
   h += cliffHill(x, z, 100, -88, 12, 0, 7, 48);
   h += cliffHill(x, z, 0, -80, 15, Math.PI, 7.5, 48);
   h += cliffHill(x, z, 70, 150, 12, 0, 7, 48);   // 南中山(死斗公平: 对位北半场谷心山——南方本方可登卖头山, 南坡上顶/北崖对谷; H12/wRamp48 同东鞍口山已验证爬坡 0.591<0.63)
@@ -396,7 +407,7 @@ function coversL03(add, rng) {
   add('wreck', -30, 140, 2.9); add('wreck', 34, -40, 0.4);
   // 南侧出身掩护
   for (const [rx, rz] of [[-36, 268], [30, 276]]) add('rock', rx, rz, rng() * 6, 1.4);
-  hillCovers(add, rng, -98, 138, Math.PI, 38);            // 西鞍口山
+  hillCovers(add, rng, -98, 138, Math.PI, 44);            // 西鞍口山
   hillCovers(add, rng, 100, -88, 0, 48);                  // 东鞍口山(翻转: 南坡上顶/北崖; wRamp48 游戏口径slopeAhead 0.591<0.63 可直爬, 42时0.653超限)
   hillCovers(add, rng, 0, -80, Math.PI, 42);              // 谷心山
   // ---- 评审修订(追加在随机流末尾) ----
@@ -445,7 +456,7 @@ function terrainL04(x, z) {
   // 中野陡壁山两座(平原仅有的硬遮蔽与制高点, 争夺焦点): 东山南移让出北向视线扫东缺口;
   // 西山翻转为南崖北坡——守军拥有本方可登制高点(与东山玩家侧成对), 玩家需过壕后从北坡仰攻夺顶
   h += cliffHill(x, z, 58, 55, 13, Math.PI / 2, 7.5, 47);
-  h += cliffHill(x, z, -142, -108, 13, Math.PI, 7.5, 42);
+  h += cliffHill(x, z, -142, -108, 13, Math.PI, 7.5, 46);   // 西山翻转为南崖北坡——守军拥有本方可登制高点(与东山玩家侧成对), 玩家需过壕后从北坡仰攻夺顶; wRamp 42→46 保北坡道余量
   h += gauss(Math.hypot(x + 60, z + 148), 55) * 1.6;
   const spawnFlat = ss(115, 72, Math.hypot(x, z - 335));
   h = h * (1 - spawnFlat) + 6.5 * spawnFlat;
@@ -479,7 +490,7 @@ function coversL04(add, rng) {
   add('wall', -56, -252, 0.15, 1.2); add('wall', 54, -250, -0.1, 1.2);
   add('wreck', -22, -262, 0.9); add('wreck', 28, -258, 2.2);
   hillCovers(add, rng, 58, 55, Math.PI / 2, 47);         // 中野东山(南移: 山顶北向视线扫东缺口)
-  hillCovers(add, rng, -142, -108, Math.PI, 42);         // 中野西山(翻转: 南崖北坡, 守军本方制高点)
+  hillCovers(add, rng, -142, -108, Math.PI, 46);         // 中野西山(翻转: 南崖北坡, 守军本方制高点)
   // ---- 评审修订(追加在随机流末尾) ----
   add('haystack', -72, -6, 0, 1.0); add('wreck', -108, -4, 1.2);   // 西缺口出口第一拍遮蔽(草垛可压过/残骸挡车挡视线)
   add('haystack', 92, -2, 0, 1.0); add('wreck', 128, -4, 1.6);     // 东缺口出口第一拍遮蔽
@@ -500,9 +511,10 @@ function terrainL05(x, z) {
   // 主跑道(南北贯穿, x=-20): 微抬硬地; 东西滑行道(z=80) 连西机堡区
   h += ss(18, 10, Math.abs(x + 20)) * 0.5;
   h += ss(14, 8, Math.abs(z - 80)) * 0.35 * (1 - ss(120, 200, Math.abs(x + 20)));
-  // 两侧断续沙脊(不可攀): 各两段, 脊间缺口=冲锋通道
-  h += cliffSeg(x, z, -185, 250, -160, 120, 8, 14) + cliffSeg(x, z, -210, 20, -175, -120, 8, 14);
-  h += cliffSeg(x, z, 175, 200, 150, 60, 8, 14) + cliffSeg(x, z, 190, -60, 160, -190, 8, 14);
+  // 两侧断续沙脊: 每段中点一条登坡道(脊顶巨石即道口标记, 见 coversL05), 其余断面陡崖上不去;
+  // 上顶走坡道、下坡沿断面缓滑(≤4.5m/s 不摔死); 脊顶平带可沿脊行驶 = 全场最好的机动观察位
+  h += ridgeSeg(x, z, -185, 250, -160, 120, 8, 14, [0.5], 46) + ridgeSeg(x, z, -210, 20, -175, -120, 8, 14, [0.5], 46);
+  h += ridgeSeg(x, z, 175, 200, 150, 60, 8, 14, [0.5], 46) + ridgeSeg(x, z, 190, -60, 160, -190, 8, 14, [0.5], 46);
   // 机堡土丘(可攀缓丘, 顶上硬掩体位) + 塔台台地(加高到与机堡丘平齐, 南线灯塔)
   for (const [mx, mz, mw, mh] of [[-90, 40, 20, 4.5], [-100, -60, 20, 4.5], [90, -20, 20, 4.5], [100, -140, 20, 4], [20, 140, 16, 4.5]])
     h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
@@ -523,9 +535,12 @@ function coversL05(add, rng) {
   // 塔台与跑道设施: 塔台房(移出丘心让出北棱线 peek 位)/油料库/混凝土隔离墩列
   add('house', 30, 150, 0.3, 1.25); add('house', 34, 158, 1.2, 0.95); add('wall', 8, 150, 0.1, 1.1);
   for (let z2 = 220; z2 > -220; z2 -= 44) { add('wall', -44, z2, Math.PI / 2, 1); add('trap', 6, z2 + 18, rng() * 3); }
-  // 沙脊顶巨石标记 + 缺口拒马
+  // 沙脊顶巨石 = 四条登坡道道口标记(每段中点, 坡道就开在巨石两侧) + 缺口拒马
   add('rock', -172, 185, rng() * 6, 1.4); add('rock', -192, -50, rng() * 6, 1.4);
   add('rock', 162, 130, rng() * 6, 1.4); add('rock', 175, -125, rng() * 6, 1.4);
+  // 登坡道坡脚草丛(坡道断面宽: 55 设计米处才是真正的坡脚, 进道口前蹲一拍避开脊顶观察): 西1/西2/东1/东2 靠中场一侧
+  bushPatch(add, rng, -119, 195, 2); bushPatch(add, rng, -139, -37, 2);
+  bushPatch(add, rng, 108, 140, 2); bushPatch(add, rng, 121, -113, 2);
   add('trap', -185, 70, rng() * 3); add('trap', 165, 30, rng() * 3);   // 缺口拒马镜像成对: 西侧移到西缺口对角线中点(修前孤悬 W1 脊外 23m 什么都不堵)
   // 跑道残骸(击毁运输机/油车) + 散岩 + 稀疏荒漠灌丛
   add('wreck', -20, 210, 1.1); add('wreck', -14, 60, 2.6); add('wreck', -26, -110, 0.4); add('wreck', -18, -210, 1.8);
@@ -631,7 +646,7 @@ const MAPS = {
   l05: {
     theme: 'sand',
     dir: 'l05-airfield', name: '荒漠 · 机场争夺', seed: 20261012,
-    briefing: '沙漠前线机场。跑道直通北端机堡阵地，两侧断续沙脊是仅有的遮蔽——快速穿插，别在跑道上停留。',
+    briefing: '沙漠前线机场。两侧沙脊每段中点有一条登坡道（脊顶巨石是道口标记）直上脊顶观察位，其余断面陡崖上不去、滑下不摔死。跑道直通北端机堡阵地，快速穿插，别在跑道上停留。',
     terrain: terrainL05, covers: coversL05,
     lighting: { sunDir: [0.4, 0.8, -0.3], sunColor: [1.0, 0.95, 0.82], sunIntensity: 1.3, ambient: 0.5, ambientColor: [0.72, 0.66, 0.55], fogColor: [0.9, 0.84, 0.7], fogDensity: 0.0012, skyTop: [0.45, 0.58, 0.75], skyBottom: [0.92, 0.86, 0.72] },
     player: { spawn: [0, 335, Math.PI] },
