@@ -85,10 +85,11 @@ SF.Tank = class {
       }
       if (blocked) this.speed = U.moveToward(this.speed, 0, 8 * dt);   // 陡坡/陡壁爬不上去
       else {
-      /* --- 自动变速箱(实车手感): 前进 D1/D2/D3 + 倒车 R1/R2 + 换向空挡 N ---
+      /* --- 自动变速箱(实车手感): 前进 D1/D2/D3 + 倒车 R1/R2 + 空挡 N(仅初始) ---
          每挡限速(D1≈42% / D2≈72% / D3=100% 极速; 倒挡 R1≈58%), 低挡扭力大;
          踩住油门逐级升挡(升挡 0.15s 扭矩中断的顿挫感), 减速/刹停自动回落(升/降阈值留滞回带防拉锯);
-         换向仍是: 先刹 → 停稳 → 空挡一拍 0.35s → 新方向从低挡入 */
+         前后换向: 立即换入新方向低挡, 不进空挡等待 —— 挡向不符的制动照常生效, 速度过零即出反向扭矩
+         (卖头骗炮的核心节奏, 换向停顿会毁掉伸缩炮) */
       const GB = SF.CFG.sim.gearbox;
       if (this.shiftT > 0) this.shiftT -= dt;
       const gDir = this.gear[0], gIdx = this.gear === 'N' ? -1 : +this.gear[1] - 1;
@@ -98,8 +99,9 @@ SF.Tank = class {
       if (gIdx > 0 && Math.abs(this.speed) < top * caps[gIdx - 1] * 0.93)
         this.gear = gDir + gIdx;   // 'D'+2 → 'D2' (gIdx=2 → 第2挡)
       const want = input.throttle > 0.05 ? 'D' : input.throttle < -0.05 ? 'R' : gDir;
-      if (this.gear !== 'N' && want !== gDir && Math.abs(this.speed) < 0.4) {
-        this.gear = 'N'; this.shiftT = 0.35;
+      if (this.gear !== 'N' && want !== gDir) {
+        this.gear = want === 'R' ? 'R1' : 'D1';   // 换向即换挡(无空挡停顿)
+        this.shiftT = 0;
       }
       if (this.gear === 'N') {
         this.speed = U.moveToward(this.speed, 0, S.brake * dt);     // 空挡带刹滑停
