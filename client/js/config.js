@@ -107,6 +107,15 @@ SF.CFG = {
       sample: { l: 3.5, w: 1.7 },
       dispersion: { base: 0.40, aimTime: 2.3, max: 2.4, move: 1.5, hullTurn: 1.1, turretTurn: 0.55, fire: 1.6 }
     },
+    ru251: {   // 全场机动天花板: 极速/车体回转/炮塔回转/视距四项第一的侦察车
+      name: 'Ru 251', nation: 'GER', cls: 'LT', tier: 'VIII', hp: 1100,
+      maxSpeed: 22.22, reverseRatio: 0.45, accel: 7.5, brake: 11, coastDrag: 6.0,
+      hullTraverse: 55.0 * Math.PI / 180, turretTraverse: 50.0 * Math.PI / 180,
+      gunDepression: -10 * Math.PI / 180, gunElevation: 15 * Math.PI / 180,
+      gun: { pen: 175, dmg: 200, reload: 6.5, speed: 900 },
+      sample: { l: 2.7, w: 1.25 },
+      dispersion: { base: 0.36, aimTime: 1.8, max: 2.0, move: 1.4, hullTurn: 1.0, turretTurn: 0.5, fire: 1.5 }
+    },
     bt7: {
       name: 'BT-7', nation: 'USSR', cls: 'LT', tier: 'III', hp: 420,
       maxSpeed: 19.44, reverseRatio: 0.42, accel: 6.0, brake: 9, coastDrag: 5.2,
@@ -594,7 +603,7 @@ SF.ClsIcon = function (cls, opts = {}) {
 
 // 车库列表(依赖 vehicles 数据, 必须在 CFG 定义后生成)
 (() => {
-  const sel = ['sherman', 'sherman76', 'jumbo', 'hellcat', 'pz3', 'pz4', 'panther', 'tiger1', 'stug3', 'jagdpanther',
+  const sel = ['sherman', 'sherman76', 'jumbo', 'hellcat', 'pz3', 'pz4', 'panther', 'tiger1', 'stug3', 'jagdpanther', 'ru251',
     'bt7', 't34', 't3485', 'kv1', 'kv2', 'is2', 'su85', 'su100', 'isu152', 'm3lee', 'm10', 'm36',
     'matilda', 'cromwell', 'firefly', 'churchill7', 'b1bis', 'somua', 'chiha', 'chinu',
     'tiger2', 'ferdinand', 'is3', 't44', 'm26', 't26e4', 't29', 'centurion', 'chiri',
@@ -612,7 +621,7 @@ SF.ClsIcon = function (cls, opts = {}) {
 (() => {
   const CAL = {   // mm, 近似史实口径
     sherman: 75, sherman76: 76, jumbo: 75, hellcat: 90, pz3: 50, pz4: 75, panther: 75, tiger1: 88,
-    stug3: 75, jagdpanther: 88, bt7: 45, t34: 76, t3485: 85, kv1: 76, kv2: 152, is2: 122, su85: 85, su100: 100,
+    stug3: 75, jagdpanther: 88, ru251: 90, bt7: 45, t34: 76, t3485: 85, kv1: 76, kv2: 152, is2: 122, su85: 85, su100: 100,
     isu152: 152, m3lee: 75, m10: 76, m36: 90, matilda: 57, cromwell: 75, firefly: 76, churchill7: 75,
     b1bis: 75, somua: 47, chiha: 57, chinu: 75, tiger2: 88, ferdinand: 88, is3: 122, t44: 100, m26: 90, t26e4: 90,
     t29: 105, centurion: 76, chiri: 75, type62: 85, type59: 100, wz111: 122,
@@ -621,7 +630,7 @@ SF.ClsIcon = function (cls, opts = {}) {
   };
   const VIEW = {  // m, 点亮距离基数(再乘 (1-目标隐蔽))
     sherman: 370, sherman76: 380, jumbo: 350, hellcat: 370, pz3: 350, pz4: 365, panther: 390, tiger1: 370,
-    stug3: 350, jagdpanther: 360, bt7: 330, t34: 350, t3485: 360, kv1: 330, kv2: 320, is2: 350, su85: 330, su100: 340,
+    stug3: 350, jagdpanther: 360, ru251: 400, bt7: 330, t34: 350, t3485: 360, kv1: 330, kv2: 320, is2: 350, su85: 330, su100: 340,
     isu152: 330, m3lee: 330, m10: 370, m36: 370, matilda: 330, cromwell: 360, firefly: 370, churchill7: 350,
     b1bis: 310, somua: 320, chiha: 320, chinu: 340, tiger2: 380, ferdinand: 350, is3: 360, t44: 380, m26: 380, t26e4: 380,
     t29: 380, centurion: 390, chiri: 360, type62: 390, type59: 380, wz111: 370,

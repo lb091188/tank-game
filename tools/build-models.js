@@ -804,6 +804,10 @@ const ROSTER = [
   { type: 'jagdpanther', nation: 'GER', hw: 1.55, wheels: 7, wr: 0.40, tl: 6.9, th: 0.88, interleave: 0.30, skirts: true,
     hull: { l: 6.9, w: 3.1, h: 1.1, y: 1.30 }, gl: 2.0, ga: 0.96, gl2: 4.9, gr: 0.09, turret: 'casemate', casH: 1.0, casA: 0.5, casL: 2.6, casSplay: 0.12,
     armor: { glacis: 80, lower: 60, side: 40, rear: 40, top: 16, turretSide: 45, mantlet: 100 } },
+  { type: 'ru251', nation: 'GER', hw: 1.35, wheels: 6, wr: 0.40, tl: 6.2, th: 0.8,   // 低矮流线侦察车(Kanonenjagdpanzer 底盘衍生), 全场最低车体之一
+    hull: { l: 6.0, w: 2.7, h: 0.85, y: 1.15 }, gl: 1.6, ga: 0.35, gl2: 3.6, gr: 0.07,
+    armor: { glacis: 30, lower: 25, side: 16, rear: 16, top: 10, turretFront: 25, turretSide: 16, turretRear: 16, mantlet: 40 },
+    turret: { kind: 'box', w: 1.7, l: 1.9, th: 0.6, bustle: true, roundFront: true } },
   // 苏联
   { type: 'bt7', nation: 'USSR', hw: 1.06, wheels: 4, wr: 0.55, tl: 5.5, th: 0.8,
     hull: { l: 5.5, w: 2.12, h: 1.0, y: 1.22 }, gl: 1.1, ga: 0.4, gl2: 2.2, gr: 0.055,

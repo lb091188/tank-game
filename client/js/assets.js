@@ -84,7 +84,7 @@ SF.Assets = (() => {
 
   // 模型(文件名 → 引擎类型名)
   const MODEL_FILES = { 'm4-sherman': 'sherman', 'm4a3e8': 'sherman76', 'm4a3e2-jumbo': 'jumbo', 'm18-hellcat': 'hellcat', 'enemy-medium': 'medium', 'enemy-td': 'td', 'enemy-heavy': 'heavy',
-    pz3: 'pz3', pz4: 'pz4', panther: 'panther', tiger1: 'tiger1', stug3: 'stug3', jagdpanther: 'jagdpanther',
+    pz3: 'pz3', pz4: 'pz4', panther: 'panther', tiger1: 'tiger1', stug3: 'stug3', jagdpanther: 'jagdpanther', ru251: 'ru251',
     bt7: 'bt7', t34: 't34', t3485: 't3485', kv1: 'kv1', kv2: 'kv2', is2: 'is2', su85: 'su85', su100: 'su100', isu152: 'isu152',
     m3lee: 'm3lee', m10: 'm10', m36: 'm36',
     matilda: 'matilda', cromwell: 'cromwell', firefly: 'firefly', churchill7: 'churchill7',
