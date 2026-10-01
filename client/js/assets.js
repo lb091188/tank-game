@@ -101,12 +101,15 @@ SF.Assets = (() => {
     t26: 't26', t70: 't70', t28ru: 't28ru', kv85: 'kv85', is: 'is', su76: 'su76', su152: 'su152',
     is7: 'is7', t10: 't10', t54: 't54', t62: 't62', t90a: 't90a', t80u: 't80u', obj268: 'obj268', t14armata: 't14armata', t90m: 't90m',
     vickersmed: 'vickersmed', valentine: 'valentine', crusader: 'crusader', churchill1: 'churchill1', comet: 'comet',
-    blackprince: 'blackprince', conqueror: 'conqueror', chieftain: 'chieftain', vickersmbt: 'vickersmbt', tortoise: 'tortoise',
+    blackprince: 'blackprince', conqueror: 'conqueror', chieftain: 'chieftain', challenger2: 'challenger2', vickersmbt: 'vickersmbt', tortoise: 'tortoise',
     ft: 'ft', elc: 'elc', bdr: 'bdr', arl44: 'arl44', amx50120: 'amx50120', amx50b: 'amx50b', batchat: 'batchat', leclerc: 'leclerc',
     hago: 'hago', chihe: 'chihe', chito: 'chito', type61: 'type61', stb1: 'stb1', type74: 'type74', type90: 'type90', type10: 'type10', oi: 'oi',
     type63: 'type63', type69: 'type69', type96: 'type96', type99: 'type99', type99a: 'type99a',
     merkava3: 'merkava3', merkava4: 'merkava4', strv103: 'strv103', strv122: 'strv122', k2: 'k2' };
   const fileOf = {}; for (const f in MODEL_FILES) fileOf[MODEL_FILES[f]] = f;
+  // 半成品车点名(有数据没模型): 启动时列出, 提醒补模型或从 config 摘除
+  for (const k in SF.CFG.vehicles)
+    if (!fileOf[k]) console.warn('[assets] 无模型车型:', k);
 
   // 单坦克模型: 已载即回, 进行中去重, 失败可重试
   function getModel(type) {
@@ -120,12 +123,27 @@ SF.Assets = (() => {
     return p;
   }
   A.getModel = getModel;
+  A.hasModel = (type) => !!fileOf[type];
+
+  // cls → 通用兜底车模(config 的"敌方中坦/重坦/歼击车", 无 tier 不进等级带, 专供缺模型时兜底)
+  const GENERIC_OF = { MT: 'medium', LT: 'medium', HT: 'heavy', TD: 'td', SPG: 'td' };
+  A.genericOf = (type) => GENERIC_OF[(SF.CFG.vehicles[type] || {}).cls] || 'medium';
 
   // 一组坦克模型按需补载(开战/联机前调用; 全部缓存时瞬间完成不闪加载条)
   A.ensureTanks = (types, onProgress) => {
     const list = [...new Set(types)];
     let done = 0;
-    return Promise.all(list.map(t => getModel(t).finally(() => onProgress && onProgress(++done, list.length))));
+    return Promise.all(list.map(t => {
+      // 无模型的车型(配置先于模型): 跳过 + 预载 cls 通用兜底车模 —— 一辆半成品车不再炸掉整场加载
+      if (!fileOf[t]) {
+        console.warn('[assets] 跳过无模型车型:', t);
+        const g = A.genericOf(t);
+        if (!A.models[g]) getModel(g).catch(() => console.warn('[assets] 兜底车模也缺失:', g));
+        onProgress && onProgress(++done, list.length);
+        return Promise.resolve(null);
+      }
+      return getModel(t).finally(() => onProgress && onProgress(++done, list.length));
+    }));
   };
 
   // 地图(json+高程), 并发去重

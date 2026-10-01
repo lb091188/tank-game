@@ -1505,8 +1505,7 @@ SF.Main = (() => {
     SF.Assets.prefetch();   // 后台预取其余资源(音效/语音/模型), 不阻塞车库
 
     document.getElementById('btnStart').addEventListener('click', () => {
-      disposeGarage();
-      startBattle();
+      startBattle();   // 车库预览改为加载成功后才销毁(失败则保留, 回标题有背景可继续选车)
     });
     document.getElementById('btnExit').addEventListener('click', exitToTitle);
     document.getElementById('btnRetry').addEventListener('click', () => (MP.mode === 'sp' ? startBattle() : exitToTitle()));
@@ -1797,6 +1796,7 @@ SF.Main = (() => {
       exitToTitle();
       return;
     }
+    disposeGarage();   // 加载成功才销毁车库预览(失败时车库仍在, 与 startMultiplayer 同构)
     leaveBattle();
     resetBattleVars();
     await initAIWorker();   // worker 模式决策在独立线程; 失败自动降级主线程

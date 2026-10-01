@@ -22,7 +22,11 @@ SF.Models = (() => {
 
   /* ---------- 坦克: 克隆 GLB, 提取枢轴与部位网格 ---------- */
   function makeTank(type) {
-    const src = SF.Assets.models[type];
+    let src = SF.Assets.models[type];
+    if (!src) {   // 缺模型兜底: 退回 cls 通用车模("敌方中坦/重坦/歼击车"), 半成品车也有外形可开
+      const g = SF.Assets.genericOf(type);
+      if (SF.Assets.models[g]) { src = SF.Assets.models[g]; console.warn('[models] "' + type + '" 无模型, 退回通用外形:', g); }
+    }
     if (!src) throw new Error(`未知坦克类型: ${type}`);
     const root = src.clone(true);
     const parts = { root, turret: null, gun: null, muzzle: null, zones: [], wheels: [], trackTex: null };
