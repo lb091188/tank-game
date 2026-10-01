@@ -2,6 +2,7 @@ node_modules/
 .DS_Store
 version.txt
 dist/
+dist-pages/
 server/records/
 steel-launcher.json
 steel-server.log
