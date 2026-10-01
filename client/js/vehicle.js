@@ -26,7 +26,7 @@ SF.Tank = class {
     this.pitch = 0; this.roll = 0; this.y = 0;
 
     this.hp = this.spec.hp; this.alive = true;
-    this.gear = 'D1'; this.shiftT = 0;   // 自动变速箱: D1-D3 前进三挡 / R1-R2 倒车两挡 / N 换向空挡(0.35s 一拍)
+    this.gear = 'D1'; this.shiftT = 0; this.flipT = 0;   // 自动变速箱: D1-D3 前进三挡 / R1-R2 倒车两挡; 换向切最高挡+1s 最大扭矩窗口
     this.velX = 0; this.velZ = 0;   // 供 AI 预判提前量
     this.trackOffset = 0;           // 履带纹理滚动相位
     this.reloadT = 0.5;
@@ -88,20 +88,21 @@ SF.Tank = class {
       /* --- 自动变速箱(实车手感): 前进 D1/D2/D3 + 倒车 R1/R2 + 空挡 N(仅初始) ---
          每挡限速(D1≈42% / D2≈72% / D3=100% 极速; 倒挡 R1≈58%), 低挡扭力大;
          踩住油门逐级升挡(升挡 0.15s 扭矩中断的顿挫感), 减速/刹停自动回落(升/降阈值留滞回带防拉锯);
-         前后换向: 立即换入新方向低挡, 不进空挡等待; 挡向不符时制动 + 新方向全扭矩一起反拽(WoT 式跟手,
-         减速≈刹车+反向动力), 速度过零即纯反向扭矩 —— 卖头骗炮的核心节奏, 换向迟滞会毁掉伸缩炮 */
+         前后换向: 立即切入新方向最高挡 + 1s 最大扭矩窗口(换挡全部冻结)——无逐挡顿挫、全速域授权;
+         挡向不符时制动 + 新方向全扭矩一起反拽(WoT 式跟手), 速度过零即纯反向扭矩 —— 卖头骗炮的核心节奏 */
       const GB = SF.CFG.sim.gearbox;
       if (this.shiftT > 0) this.shiftT -= dt;
+      if (this.flipT > 0) this.flipT -= dt;
       const gDir = this.gear[0], gIdx = this.gear === 'N' ? -1 : +this.gear[1] - 1;
       const caps = gDir === 'R' ? GB.rev : GB.fwd, tq = gDir === 'R' ? GB.torqueR : GB.torqueF;
       const top = gDir === 'R' ? maxR : maxF;
-      // 降挡: 速度掉到下一低挡上限×0.93 以下(停稳一路回落到 1 挡)
-      if (gIdx > 0 && Math.abs(this.speed) < top * caps[gIdx - 1] * 0.93)
+      // 降挡: 速度掉到下一低挡上限×0.93 以下(停稳一路回落到 1 挡); 换向窗口内冻结
+      if (this.flipT <= 0 && gIdx > 0 && Math.abs(this.speed) < top * caps[gIdx - 1] * 0.93)
         this.gear = gDir + gIdx;   // 'D'+2 → 'D2' (gIdx=2 → 第2挡)
       const want = input.throttle > 0.05 ? 'D' : input.throttle < -0.05 ? 'R' : gDir;
       if (this.gear !== 'N' && want !== gDir) {
-        this.gear = want === 'R' ? 'R1' : 'D1';   // 换向即换挡(无空挡停顿)
-        this.shiftT = 0;
+        this.gear = want === 'R' ? 'R' + GB.rev.length : 'D' + GB.fwd.length;   // 换向直接切最高挡
+        this.shiftT = 0; this.flipT = 1.0;
       }
       if (this.gear === 'N') {
         this.speed = U.moveToward(this.speed, 0, S.brake * dt);     // 空挡带刹滑停
@@ -114,7 +115,7 @@ SF.Tank = class {
         } else {
           const cap = top * caps[gIdx];
           if (this.speed > cap * 0.985 && gIdx < caps.length - 1) { this.gear = gDir + (gIdx + 2); this.shiftT = GB.pause; }   // 升挡顿挫
-          const a = S.accel * tq[gIdx] * (this.shiftT > 0 ? 0.25 : 1) * (uphill ? slopeK : 1)
+          const a = S.accel * (this.flipT > 0 ? tq[0] : tq[gIdx]) * (this.shiftT > 0 ? 0.25 : 1) * (uphill ? slopeK : 1)
             * U.clamp(1.15 - Math.abs(this.speed) / (top + 0.01) * 0.5, 0.4, 1);
           this.speed = Math.min(cap * input.throttle, this.speed + a * dt);
         }
@@ -126,7 +127,7 @@ SF.Tank = class {
         } else {
           const cap = top * caps[gIdx];
           if (this.speed < -cap * 0.985 && gIdx < caps.length - 1) { this.gear = gDir + (gIdx + 2); this.shiftT = GB.pause; }
-          const a = S.accel * tq[gIdx] * (this.shiftT > 0 ? 0.25 : 1);
+          const a = S.accel * (this.flipT > 0 ? tq[0] : tq[gIdx]) * (this.shiftT > 0 ? 0.25 : 1);
           this.speed = Math.max(-cap, this.speed - a * dt);
         }
       } else {

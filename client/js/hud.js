@@ -337,9 +337,10 @@ SF.HUD = (() => {
     else
       setTxt(dEl, uiState.gunAim ? Math.round(uiState.gunAim.dist) + ' m' : '');
     // 装甲等效指示(WoT 看甲): 瞄准敌人部位时显示 等效厚度/可否击穿/跳弹警告(含过穿与归一化)
+    // 只对已点亮的目标显示 —— 未点亮的隐藏模型不给装甲情报(射线是几何的, 穿草/隔坡也能命中模型)
     const ai = $('armorInfo');
     const ap = uiState.gunAim;   // 用炮口指向(实际弹道将命中的部位)
-    if (ap && ap.hit && ap.hit.armor > 0 && ap.hit.normal && (!ap.hit.tank || ap.hit.tank.alive)) {
+    if (ap && ap.hit && ap.hit.armor > 0 && ap.hit.normal && (!ap.hit.tank || (ap.hit.tank.alive && uiState.spotted.has(ap.hit.tank)))) {
       const camDir = new THREE.Vector3();
       SF.Game.camera.getWorldDirection(camDir);
       const inc = Math.acos(SF.Util.clamp(-camDir.dot(ap.hit.normal), -1, 1));

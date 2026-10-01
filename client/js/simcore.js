@@ -19,10 +19,10 @@ SF.Sim = (() => {
       const c = heights[(j + 1) * res + i], d = heights[(j + 1) * res + i + 1];
       return a + (b - a) * tx + (c - a + (a - b - c + d) * tx) * tz;
     }
-    // 地形通视: 两点(含眼高)之间地形是否遮挡
+    // 地形通视: 两点(含眼高)之间地形是否遮挡; 4m 细步进 —— "车体头顶露一丝"也能点亮(6m 步进会跳过露头缝隙)
     function losBlocked(ax, az, ay, bx, bz, by) {
       const d = Math.hypot(bx - ax, bz - az);
-      const steps = Math.max(2, Math.ceil(d / 6));
+      const steps = Math.max(2, Math.ceil(d / 4));
       for (let i = 1; i < steps; i++) {
         const t = i / steps;
         const hTerrain = heightAt(ax + (bx - ax) * t, az + (bz - az) * t) + 1.6; // 地形 + 弹道高

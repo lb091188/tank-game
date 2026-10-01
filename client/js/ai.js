@@ -13,8 +13,8 @@ SF.losClear = function (world, ax, az, bx, bz) {
   return world.covers.blocked(ax, az, ay, dx / len, dz / len, len, (by - ay) / len) < 0;
 };
 
-// 多点通视(点亮用): WoT 双视口(车体 2.0m / 塔顶 3.0m) × 目标三点(车体 1.2m / 塔心 2.0m / 炮塔顶 2.8m),
-// 任一组合通视即算可见 —— 卖头、半坡露体、贴着小土脊/远处草丛边缘都不再"明明看得见却不点亮"
+// 多点通视(点亮用): WoT 双视口(车体 2.0m / 塔顶 3.0m) × 目标四点(车体 1.2m / 塔心 2.0m / 炮塔顶 2.8m / 车顶脊线 3.3m),
+// 任一组合通视即算可见 —— 卖头、半坡露体、"车体头顶只露一丝"都能点亮(3.3m 采样 + 4m 细步进兜住露头一丝的情形)
 // (观察者 50m 内的草丛直接透明, 见 simcore.coversBlocked)
 // tgt = 目标隐蔽状态(SF.bushState 返回值): concealed=蹲草未开炮(草丛算遮挡且把目标连炮塔一起吞);
 // fired=4s 内开过炮(目标 15m 内的草丛对视线透明, WoT 15m 规)
@@ -23,7 +23,7 @@ SF.losClearAny = function (world, ax, az, bx, bz, tgt) {
   const ay0 = world.terrain.heightAt(ax, az), by0 = world.terrain.heightAt(bx, bz);
   for (const aH of [2.0, 3.0]) {
     const ay = ay0 + aH;
-    for (const h of [1.2, 2.0, 2.8]) {
+    for (const h of [1.2, 2.0, 2.8, 3.3]) {
       const by = by0 + h;
       if (world.terrain.losBlocked(ax, az, ay, bx, bz, by)) continue;
       const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
