@@ -42,6 +42,78 @@ SF.camoOf = function (t, world) {
   return SF.Sim.camoOf(world.covers.list, t, world.time);
 };
 
+/* ---------- 地形导航: 绕行不可攀地形(反坦克壕/陡壁/边界山) ----------
+   网格 15m; 格可用 = 5 子采样全部 梯度≤NAV_G 且非凹槽(与 main.js 出生判定同一套规则, 参数保持同步;
+   凹槽判定必需——壕底沿轴是平的, 纯坡度会让 AI 认为"横穿壕底是条路", 进得去出不来)。
+   懒构建挂 terrain 实例(每局 terrain 重建即自动失效); 主线程与 worker 复制品世界通用, 只依赖注入的 world.terrain。 */
+const NAV_G = Math.tan(SF.CFG.sim.maxSlope) * 0.96;
+const NAV_SUB = [[0, 0], [5, 5], [5, -5], [-5, 5], [-5, -5]];
+function navGroove(T, x, z) {
+  const hC = T.heightAt(x, z);
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI / 4, dx = Math.sin(a) * 14, dz = Math.cos(a) * 14;
+    if (T.heightAt(x + dx, z + dz) > hC + 3 && T.heightAt(x - dx, z - dz) > hC + 3) return true;
+  }
+  return false;
+}
+const navBlockedPt = (T, x, z) => T.gradAt(x, z) > NAV_G || navGroove(T, x, z);
+function navGrid(T) {
+  if (T._navG) return T._navG;
+  const N = 64, lo = -(T.half - 20), st = (T.half * 2 - 40) / (N - 1);
+  const pass = new Uint8Array(N * N);
+  for (let j = 0; j < N; j++)
+    for (let i = 0; i < N; i++) {
+      const x = lo + i * st, z = lo + j * st;
+      let ok = 1;
+      for (const [ox, oz] of NAV_SUB)
+        if (navBlockedPt(T, x + ox, z + oz)) { ok = 0; break; }
+      pass[j * N + i] = ok;
+    }
+  T._navG = { N, lo, st, pass };
+  return T._navG;
+}
+// 直线可达: 每 8m 采样过同一套判定
+function navLineClear(T, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz);
+  const n = Math.max(2, Math.ceil(d / 8));
+  for (let s = 1; s < n; s++)
+    if (navBlockedPt(T, ax + dx * s / n, az + dz * s / n)) return false;
+  return true;
+}
+// 4 邻域 BFS + 贪心拉直(前瞻≤8格); 返回 [[x,z],...](末点为真实目标) 或 null(无解/起终点本身不可用)
+function navFindPath(T, ax, az, bx, bz) {
+  const G = navGrid(T), N = G.N;
+  const ci = (v) => Math.max(0, Math.min(N - 1, Math.round((v - G.lo) / G.st)));
+  const si = ci(ax), sj = ci(az), gi = ci(bx), gj = ci(bz);
+  if (!G.pass[sj * N + si] || !G.pass[gj * N + gi]) return null;
+  const prev = new Int32Array(N * N).fill(-1);
+  const q = [sj * N + si];
+  prev[sj * N + si] = sj * N + si;
+  for (let h = 0; h < q.length && prev[gj * N + gi] === -1; h++) {
+    const c = q[h], cx = c % N;
+    for (const d of [1, -1, N, -N]) {
+      if ((d === 1 && cx === N - 1) || (d === -1 && cx === 0)) continue;   // 不跨行环绕
+      const n2 = c + d;
+      if (n2 < 0 || n2 >= N * N || !G.pass[n2] || prev[n2] !== -1) continue;
+      prev[n2] = c; q.push(n2);
+    }
+  }
+  if (prev[gj * N + gi] === -1) return null;
+  const cells = [];
+  for (let c = gj * N + gi; ;) { cells.push(c); if (c === prev[c]) break; c = prev[c]; }
+  cells.reverse();
+  const pts = cells.map(c => [G.lo + (c % N) * G.st, G.lo + ((c / N) | 0) * G.st]);
+  pts[pts.length - 1] = [bx, bz];
+  const out = [];
+  let i0 = 0;
+  while (i0 < pts.length - 1) {
+    let j2 = Math.min(pts.length - 1, i0 + 8);
+    while (j2 > i0 + 1 && !navLineClear(T, pts[i0][0], pts[i0][1], pts[j2][0], pts[j2][1])) j2--;
+    out.push(pts[j2]); i0 = j2;
+  }
+  return out;
+}
+
 // AI 目标选择: 合作模式多名玩家 → 锁定最近存活者; 单机 → world.player
 function nearestTarget(world, from) {
   if (world.mpTargets && world.mpTargets.length) {
@@ -87,6 +159,7 @@ SF.AI = class {
     this.repositionT = 3 + Math.random() * 4;
     this.retreatT = 0; this.unstuckT = 0; this.stuckT = 0;
     this.navYawJitter = 0;
+    this._navPath = null; this._navGoal = null; this._navT = -9; this._navChk = -9;   // 地形绕行路径缓存
 
     // 听觉: 玩家开炮 → 炮声全图可闻, 记下大致方位(误差随距离增大: 远处只知个大概)
     SF.Bus.on('fire', (e) => {
@@ -154,6 +227,24 @@ SF.AI = class {
       this.input.throttle = -1; this.input.steer = this.navYawJitter > 0 ? 1 : -1;
       return;
     }
+
+    // 路径级绕行: 直线穿不过(壕/崖/凹槽)时改走网格 BFS 路径点——过壕走缺口、遇山绕环坡;
+    // 检查节流 0.3s, 直线恢复畅通即弃路, 目标移出当前格(>18m)或超龄(有路 3s/无路 1s)重算
+    if (world.time - this._navChk > 0.3) {
+      this._navChk = world.time;
+      if (navLineClear(T, t.x, t.z, px, pz)) this._navPath = null;
+      else if (!this._navGoal ||
+               Math.abs(this._navGoal[0] - px) + Math.abs(this._navGoal[1] - pz) > 18 ||
+               world.time - this._navT > (this._navPath ? 3 : 1)) {
+        this._navPath = navFindPath(T, t.x, t.z, px, pz);
+        this._navGoal = [px, pz]; this._navT = world.time;
+      }
+    }
+    if (this._navPath && this._navPath.length) {
+      while (this._navPath.length && SF.Util.dist2d(t.x, t.z, this._navPath[0][0], this._navPath[0][1]) < 14) this._navPath.shift();
+      const wp = this._navPath[0];
+      if (wp) { px = wp[0]; pz = wp[1]; } else this._navPath = null;
+    } else this._navPath = null;
 
     const dx = px - t.x, dz = pz - t.z, dist = Math.hypot(dx, dz);
     let desiredYaw = (faceYaw !== null && this.p.holdGround) ? faceYaw : Math.atan2(dx, dz);

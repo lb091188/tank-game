@@ -52,6 +52,37 @@ SF.Main = (() => {
   const bushUi = { inBush: false, concealed: false };   // 草丛隐蔽状态(HUD 指示)
   let deathMark = null;                          // 上次阵亡位置(小地图 ✕ 标记)
 
+  /* ---------- 出生点地形校验(参数与 tools/check-spawns.js 保持同步!) ----------
+     死斗出生池/重生抖动/敌军出生抖动共用: 梯度过陡(>tan(maxSlope)×0.96, 低于爬坡角与滑落阈留余量)
+     或落在凹槽(任一轴两侧 ±14m 均高出中心 3m+ —— 反坦克壕/深坑; 壕底沿轴是平的, 纯坡度查不出)即不可用。 */
+  const SPAWN_G = Math.tan(SF.CFG.sim.maxSlope) * 0.96;
+  function spawnGroove(x, z) {
+    const T = world.terrain, hC = T.heightAt(x, z);
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 4, dx = Math.sin(a) * 14, dz = Math.cos(a) * 14;
+      if (T.heightAt(x + dx, z + dz) > hC + 3 && T.heightAt(x - dx, z - dz) > hC + 3) return true;
+    }
+    return false;
+  }
+  const spawnPtOk = (x, z) => world.terrain.gradAt(x, z) <= SPAWN_G && !spawnGroove(x, z);
+  function spawnDiskOk(x, z) {   // 重生 ±10m 抖动圆盘(r=11 留边) 5m 网格全过
+    for (let dz = -11; dz <= 11; dz += 5)
+      for (let dx = -11; dx <= 11; dx += 5)
+        if (dx * dx + dz * dz <= 121 && !spawnPtOk(x + dx, z + dz)) return false;
+    return true;
+  }
+  function findSpawnSpot(x, z) {   // 螺旋找平地(确定性): 12→108m 步进 12, 8 方位, 逐环旋转 0.3rad
+    if (spawnDiskOk(x, z)) return [x, z];
+    for (let r = 12; r <= 108; r += 12)
+      for (let k = 0; k < 8; k++) {
+        const a = k / 8 * Math.PI * 2 + (r / 12) * 0.3;
+        const cx = U.clamp(x + Math.cos(a) * r, -world.terrain.half + 20, world.terrain.half - 20);
+        const cz = U.clamp(z + Math.sin(a) * r, -world.terrain.half + 20, world.terrain.half - 20);
+        if (spawnDiskOk(cx, cz)) return [cx, cz];
+      }
+    return null;
+  }
+
   /* ---------- AI Worker: 感知/决策在独立线程按真实时钟运行 ----------
      主线程再卡(渲染/GC/掉帧), worker 照常每 33ms 思考 —— AI 不会因为掉帧变傻。
      失败降级: Worker 构造/运行出错 → 回退主线程逐帧 ai.update(与旧版一致)。 */
@@ -299,10 +330,15 @@ SF.Main = (() => {
     }
     const n = defs.length;
     waveEnemies = defs.map((def, wi) => {
-      // 出生随机化(每局布局不同): 守位单位 ±18m, 机动单位 ±65m, 巡逻点独立再随机 ±25m
+      // 出生随机化(每局布局不同): 守位单位 ±18m, 机动单位 ±65m, 巡逻点独立再随机 ±25m;
+      // 落点过地形关(防刷进壕沟/崖脚/滑坡面), 最多重试 8 次仍败则用最后一个(生成器布点本身已避开极端地形)
       const jr = def.hold ? 18 : 65;
-      const dx = (Math.random() - 0.5) * 2 * jr, dz = (Math.random() - 0.5) * 2 * jr;
-      let ex = U.clamp(def.pos[0] + dx, -430, 430), ez = U.clamp(def.pos[1] + dz, -430, 430);
+      let ex = U.clamp(def.pos[0] + (Math.random() - 0.5) * 2 * jr, -430, 430);
+      let ez = U.clamp(def.pos[1] + (Math.random() - 0.5) * 2 * jr, -430, 430);
+      for (let k = 0; k < 8 && !spawnPtOk(ex, ez); k++) {
+        ex = U.clamp(def.pos[0] + (Math.random() - 0.5) * 2 * jr, -430, 430);
+        ez = U.clamp(def.pos[1] + (Math.random() - 0.5) * 2 * jr, -430, 430);
+      }
       [ex, ez] = world.covers.collide(ex, ez, 2.6);
       const CLS_OF_LEGACY = { medium: 'MT', td: 'TD', heavy: 'HT' };
       const cls = CLS_OF_LEGACY[def.type] || (SF.CFG.vehicles[def.type] || {}).cls || 'MT';
@@ -1214,7 +1250,14 @@ SF.Main = (() => {
           const tk = MP.tanks.get(r.id);
           scene.remove(tk.group);
           tk.rebuild();
-          tk.x = sp[0] + (Math.random() - 0.5) * 20; tk.z = sp[1] + (Math.random() - 0.5) * 20; tk.yaw = Math.PI;
+          // 抖动落点须过地形关(池点圆盘已验证, 此处点级复核, 全败回退池点本点) + 补掩体推挤; 朝向朝地图中心
+          let jx = sp[0], jz = sp[1];
+          for (let k = 0; k < 10; k++) {
+            const tx = sp[0] + (Math.random() - 0.5) * 20, tz = sp[1] + (Math.random() - 0.5) * 20;
+            if (spawnPtOk(tx, tz)) { jx = tx; jz = tz; break; }
+          }
+          [jx, jz] = world.covers.collide(jx, jz, 3);
+          tk.x = jx; tk.z = jz; tk.yaw = Math.atan2(-jx, -jz);
           scene.add(tk.group);
           tk._yInit = false;
         }
@@ -1975,12 +2018,14 @@ SF.Main = (() => {
     await initAIWorker();   // coop 主机的 AI 决策也走 worker(失败降级主线程)
     buildScene();
 
-    // 死斗出生池: 地图中心外围 8 点
+    // 死斗出生池: 地图中心外围 8 点(掩体推挤 + 地形校验——不合格螺旋找平地, 修 l05 沙脊/l04 壕沿出生事故)
     MP.spawnPool = [];
     for (let i = 0; i < 8; i++) {
       const a = i / 8 * Math.PI * 2;
       let sx = Math.cos(a) * 310, sz = Math.sin(a) * 310;
       [sx, sz] = world.covers.collide(sx, sz, 3);
+      const spot = findSpawnSpot(sx, sz);
+      if (spot) [sx, sz] = world.covers.collide(spot[0], spot[1], 3);
       MP.spawnPool.push([sx, sz]);
     }
 
@@ -1992,7 +2037,7 @@ SF.Main = (() => {
       const sp = MP.spawnPool[(pl.id * 3) % 8];
       const isMe = pl.id === MP.myId;
       const t = new SF.Tank(pl.tank, {
-        x: sp[0], z: sp[1], yaw: Math.PI,
+        x: sp[0], z: sp[1], yaw: Math.atan2(-sp[0], -sp[1]),   // 朝地图中心(修北半场池点恒朝北背对全场的不对等)
         netId: pl.id, team: MP.gameMode === 'coop' ? 0 : 100 + pl.id,   // 死斗人人一队; 合作同一阵营
         isPlayer: isMe
       });
