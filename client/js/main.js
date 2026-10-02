@@ -650,7 +650,8 @@ SF.Main = (() => {
 
   /* ---------- 移动端触屏操控(WoT 手游式): 左摇杆开车 / 右半屏拖动瞄准 / 开炮·开镜按钮 ----------
      检测: pointer:coarse 或有触点; localStorage.sf_touch=1 强制开启(调试/ hybrid 设备) */
-  const NATIVE_TOUCH = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
+  const NATIVE_TOUCH = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0
+    || ('ontouchstart' in window) || /Android|iPhone|iPad|HarmonyOS|HuaweiBrowser|ArkWeb/i.test(navigator.userAgent);
   const TOUCH = (() => {
     try { if (localStorage.getItem('sf_touch') === '1') return true; } catch (e) { }
     return NATIVE_TOUCH;
@@ -666,6 +667,37 @@ SF.Main = (() => {
     }, { capture: true, once: true, passive: true });
   }
   if (TOUCH) document.body.classList.add('touch');   // 竖屏旋转遮罩等触屏专属样式钩子
+
+  // 触屏环境自检 (?debug=touch): 顶部横幅显示检测链各环节 + 一键强制触屏 UI 并刷新
+  // 排查特定设备(如鸿蒙平板)触控不可用时, 打开 页面地址+?debug=touch 看哪一环断了
+  if (/[?&]debug=touch/.test(location.search)) {
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999;background:rgba(0,0,0,.85);color:#9fe08a;font:11px/1.7 monospace;padding:4px 10px;white-space:pre;pointer-events:none';
+    const renderBar = () => {
+      bar.textContent = [
+        'coarse=' + matchMedia('(pointer:coarse)').matches +
+        ' points=' + navigator.maxTouchPoints +
+        ' ontouch=' + ('ontouchstart' in window) +
+        ' TOUCH=' + TOUCH +
+        ' body.touch=' + document.body.classList.contains('touch'),
+        'screen=' + screen.width + 'x' + screen.height +
+        ' dpr=' + devicePixelRatio +
+        ' inner=' + innerWidth + 'x' + innerHeight +
+        ' ' + (matchMedia('(orientation: portrait)').matches ? '竖屏' : '横屏') +
+        ' 全屏=' + !!document.fullscreenElement,
+        'vp=' + ((document.getElementById('metaVp') || {}).content || '无')
+      ].join('\n');
+    };
+    renderBar();
+    addEventListener('resize', renderBar);
+    addEventListener('orientationchange', () => setTimeout(renderBar, 300));
+    document.body.appendChild(bar);
+    const btn = document.createElement('button');
+    btn.textContent = '强制开启触屏UI并刷新';
+    btn.style.cssText = 'position:fixed;top:70px;right:10px;z-index:999;padding:10px 16px;background:#23261c;color:#e8dcae;border:1px solid #b9a55c;border-radius:4px;font-size:15px;cursor:pointer';
+    btn.onclick = () => { try { localStorage.setItem('sf_touch', '1'); } catch (e) { } location.reload(); };
+    document.body.appendChild(btn);
+  }
 
   // 忽略系统 dip 缩放(等效 DPR=2): 系统显示缩放大的手机横屏 CSS 高度仅 ~360px, 车库/战斗按 device-width 布局放不下;
   // 视口宽固定为 物理宽÷2 → 等比缩放零变形、与屏幕纵横比一致、各机型物理字号统一, 触屏按钮物理仍有 ~9mm
