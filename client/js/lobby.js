@@ -168,7 +168,7 @@ SF.Lobby = (() => {
     $('roomCnt').textContent = `${players.length}/20`;
     $('roomModeSel').style.display = isHost ? '' : 'none';
     $('roomModeLbl').style.display = isHost ? 'none' : '';
-    if (isHost) $('roomModeSel').value = roomMode;
+    if (isHost) { for (const b of $('roomModeSel').children) b.classList.toggle('on', b.dataset.mode === roomMode); }
     else $('roomModeLbl').textContent = roomMode === 'coop' ? '合作闯关' : '阵营死斗';
     // 名单: 死斗红蓝双列 / 合作单列(蓝列隐藏)
     const coop = roomMode === 'coop';
@@ -298,7 +298,8 @@ SF.Lobby = (() => {
     });
 
     /* ----- 房间面板(车库阶段) ----- */
-    $('roomModeSel').addEventListener('change', () => { if (isHost) SF.Net.setMode($('roomModeSel').value); });
+    for (const b of $('roomModeSel').children)
+      b.addEventListener('click', () => { if (isHost && !started && b.dataset.mode !== roomMode) SF.Net.setMode(b.dataset.mode); });
     for (const btn of document.querySelectorAll('.teamHead button'))
       btn.addEventListener('click', () => { if (roomMode === 'dm' && !started) SF.Net.setTeam(+btn.dataset.team); });
     $('btnMpAction').addEventListener('click', () => {

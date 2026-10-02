@@ -144,7 +144,9 @@
   #roomHead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   #roomHead b { color: #e8dcae; font-size: 15px; letter-spacing: 1px; }
   #roomHead #roomCnt { color: #8b9080; font-size: 11px; margin-left: auto; white-space: nowrap; }
-  #roomModeSel { background: #23261c; color: #d8c887; border: 1px solid #5c6244; border-radius: 3px; font-size: 11px; padding: 2px 4px; cursor: pointer; }
+  .modeBtns { display: inline-flex; gap: 4px; }
+  .modeBtns button { background: #23261c; color: #8b9080; border: 1px solid #5c6244; border-radius: 3px; font-size: 10px; padding: 2px 6px; cursor: pointer; letter-spacing: 1px; }
+  .modeBtns button.on { color: #e8dcae; border-color: #b9a55c; background: rgba(200,178,106,.15); }
   #roomModeLbl { color: #a8ad99; font-size: 12px; }
   #roomCols { display: flex; gap: 8px; }
   .teamCol { flex: 1; min-width: 0; }
@@ -448,7 +450,7 @@
     <div id="roomPanel" class="panel">
       <div id="roomHead">
         <b id="roomTitle">房间 0000</b>
-        <select id="roomModeSel" style="display:none"><option value="dm">阵营死斗</option><option value="coop">合作闯关</option></select>
+        <span id="roomModeSel" class="modeBtns" style="display:none"><button data-mode="dm">阵营死斗</button><button data-mode="coop">合作闯关</button></span>
         <span id="roomModeLbl" style="display:none"></span>
         <span id="roomCnt"></span>
       </div>
