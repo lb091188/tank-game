@@ -1158,6 +1158,10 @@ const ROSTER = [
     hull: { l: 6.9, w: 3.1, h: 1.0, y: 1.25 }, gl: 1.8, ga: 0.05, gl2: 3.5,
     armor: { glacis: 130, lower: 80, side: 50, rear: 30, top: 20, turretFront: 130, turretSide: 50, turretRear: 40, mantlet: 130 },
     turret: { kind: 'box', w: 2.2, l: 2.5, th: 0.8 } },
+  { type: 'challenger2', nation: 'UK', hw: 1.55, wheels: 7, wr: 0.40, tl: 7.1, th: 0.95, skirts: true,
+    hull: { l: 7.2, w: 3.35, h: 1.15, y: 1.32 }, gl: 1.9, ga: 0.08, gl2: 3.6,
+    armor: { glacis: 140, lower: 60, side: 70, rear: 45, top: 25, turretFront: 260, turretSide: 110, turretRear: 60, mantlet: 260 },   // 挑战者2: 车体均衡, 炮塔复合装甲近免疫
+    turret: { kind: 'box', w: 2.4, l: 2.6, th: 0.95, bustle: true, outerMantlet: true } },
   { type: 'vickersmbt', nation: 'UK', hw: 1.4, wheels: 6, wr: 0.40, tl: 6.4, th: 0.85,
     hull: { l: 6.4, w: 3.0, h: 0.95, y: 1.2 }, gl: 1.7, ga: 0.3, gl2: 3.4,
     armor: { glacis: 80, lower: 50, side: 40, rear: 30, top: 15, turretFront: 120, turretSide: 50, turretRear: 35, mantlet: 120 },

@@ -25,6 +25,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const vm = require('vm');
 const { WebSocketServer } = require('ws');
 
 const PORT = parseInt(process.argv[2] || process.env.PORT || '8342', 10);
@@ -35,6 +36,49 @@ const RECORDS_DIR = path.join(__dirname, 'records');
 const RECORDS_FILE = path.join(RECORDS_DIR, 'battles.jsonl');
 const TOKEN_TTL = 30 * 86400 * 1000;   // 通行令牌 30 天
 const MAX_JOIN_FAILS = 5;              // 连续进房/建房失败次数 → 断开 (防爆破)
+const MAX_PLAYERS = 20;                // 单房人数上限 (j4005/8G 容量: 中继为主, 快照带宽按 4 房×20 人预算)
+const MAX_ROOMS = 4;                   // 同时在线房间上限 (40Mbps 出向 ≈ 16Mbps 满载快照, 留一半余量)
+
+/* ---------- 坦克等级表 (与客户端 config.js 同源, 供等级匹配校验) ---------- */
+// vm 沙箱执行 client/js/config.js → window.SF.CFG.vehicles; 解析失败则退化为不校验
+const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11 };
+const TIER_SPREAD = 1;                 // 等级匹配: 房主车位 ±1 级可入
+const TIERS = (() => {
+  try {
+    const ctx = { console };
+    ctx.window = ctx;                  // window 指向自身 → window.SF 即全局 SF
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'config.js'), 'utf8'), ctx);
+    const out = {};
+    for (const [id, v] of Object.entries(ctx.SF.CFG.vehicles || {}))
+      if (v.tier && ROMAN[v.tier]) out[id] = ROMAN[v.tier];
+    console.log(`等级表: ${Object.keys(out).length} 辆车 (匹配规则 ±${TIER_SPREAD} 级)`);
+    return out;
+  } catch (e) {
+    console.warn(`等级表解析失败, 等级匹配停用: ${e.message}`);
+    return {};
+  }
+})();
+const tierOf = (tank) => TIERS[tank] || null;
+
+/* ---------- 模型表 (与客户端 assets.js MODEL_FILES 同源: 有 glb 才可上场) ---------- */
+const MODELS = (() => {
+  try {
+    const src = fs.readFileSync(path.join(ROOT, 'js', 'assets.js'), 'utf8');
+    const m = src.match(/MODEL_FILES\s*=\s*\{([\s\S]*?)\}/);
+    const out = new Set();
+    for (const mm of m[1].matchAll(/:\s*'([\w-]+)'/g)) out.add(mm[1]);   // 值=车型 id, 键=glb 文件名
+    // 有配置数据没模型的半成品车: 启动点名(运行时会被消毒回默认车)
+    const missing = Object.keys(TIERS).filter(k => !out.has(k));
+    console.log(`模型表: ${out.size} 辆有模型` + (missing.length ? `; 缺模型(不可选): ${missing.join(',')}` : ''));
+    return out;
+  } catch (e) {
+    console.warn('模型表解析失败, 消毒停用:', e.message);
+    return null;
+  }
+})();
+// 车型消毒: 未知/无模型的 id 一律回默认车(客户端存档可能来自旧版本)
+const saneTank = (t, fallback) => (t && MODELS && MODELS.has(t) ? t : (fallback || 'sherman'));
 
 /* ---------- 钥匙与通行令牌 ---------- */
 // 钥匙: 8 位随机串(去易混字符), 按次数+有效期铸造, 团队可多人共用一把
@@ -84,7 +128,15 @@ let nextPid = 1;
 const rooms = new Map();    // code → { players:Map<ws,p>, started, ended, map, mode, pass }
 
 function roomState(room) {
-  return [...room.players.entries()].map(([ws, p]) => ({ id: p.id, name: p.name, tank: p.tank, ready: p.ready, host: p.host, connected: true }));
+  return [...room.players.entries()].map(([ws, p]) => ({ id: p.id, name: p.name, tank: p.tank, ready: p.ready, host: p.host, team: p.team, connected: true }));
+}
+// 大厅广播统一载荷(名单+等级锚+模式), 各处共用
+function lobbyMsg(room) { return { t: 'lobby', players: roomState(room), tier: room.tier, mode: room.mode }; }
+// 阵营平衡: 加入人数少的一方(平局进红方)
+function balancedTeam(room) {
+  let r = 0, b = 0;
+  for (const p of room.players.values()) (p.team === 1 ? b++ : r++);
+  return r <= b ? 0 : 1;
 }
 function broadcast(room, msg, exceptWs) {
   const s = JSON.stringify(msg);
@@ -95,6 +147,45 @@ function genCode() {
   let c;
   do { c = String(1000 + Math.floor(Math.random() * 9000)); } while (rooms.has(c));
   return c;
+}
+
+/* ---------- 等级匹配 ---------- */
+// 房间以房主建车位锚定 tier, 其他人(含房主自己换车)只允许 ±TIER_SPREAD 级; 房主换车不重锚(避免中途改门槛把已入房者变非法)
+const tierName = (n) => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '?';
+function tierCheck(room, tank, ws) {
+  if (!room.tier || !TIERS[tank]) return null;         // 房间无锚或车不在等级表(自定义) → 不限制
+  const t = TIERS[tank];
+  if (Math.abs(t - room.tier) > TIER_SPREAD)
+    return `等级不符 — 本房间 ${tierName(room.tier)} 级 ±${TIER_SPREAD}(即 ${tierName(Math.max(1, room.tier - TIER_SPREAD))}~${tierName(room.tier + TIER_SPREAD)}), 当前车 ${tierName(t)} 级, 请在大厅换车`;
+  return null;
+}
+
+/* ---------- 昵称唯一 ---------- */
+// 昵称规范化: 折叠空白+去首尾+限12字
+const normName = (n) => String(n || '').replace(/\s+/g, ' ').trim().slice(0, 12);
+// 全服在线昵称查重(忽略大小写): 一个昵称只允许一处在线; exceptWs=换房时排除自己
+function nameOnline(name, exceptWs) {
+  const want = name.toLowerCase();
+  for (const r of rooms.values())
+    for (const [ws, p] of r.players.entries())
+      if (ws !== exceptWs && p.name.toLowerCase() === want) return true;
+  return false;
+}
+// 离房清理: 建房/加入前把本连接从旧房间移出(一个连接同一时刻只占一个房间一个昵称);
+// 房主离房 → 房间解散(与掉线同规则)
+function leaveRoom(ws) {
+  const room = ws._room;
+  if (!room) return;
+  const me = room.players.get(ws);
+  room.players.delete(ws);
+  if (me && me.host) {
+    broadcast(room, { t: 'err', msg: '房主已离开，房间解散' });
+    for (const w of room.players.keys()) w.close();
+  } else if (room.players.size) {
+    broadcast(room, lobbyMsg(room));
+  }
+  if (!room.players.size) rooms.delete(ws._code);
+  ws._room = null;
 }
 
 /* ---------- 战斗记录 ---------- */
@@ -116,7 +207,8 @@ function recordEnd(room, code, m) {
   }).filter(Boolean);
   const line = JSON.stringify({
     time: Date.now(), room: code, mode: room.mode || 'dm', map: room.map || '',
-    win: !!m.win, players
+    win: !!m.win, players,
+    feed: (room.feed || []).slice(0, 100)   // 击杀时间线(相对开战秒): [{t, killer, victim}]
   });
   fs.appendFile(RECORDS_FILE, line + '\n', () => { });
   recordCount++;
@@ -194,46 +286,99 @@ wss.on('connection', (ws) => {
 
     switch (m.t) {
       case 'create': {
-        if (!OPEN && !tokenOk(m.token)) { fail(ws, '建房需要通行令牌 — 请先在联机设置里兑换钥匙'); break; }
+        if (!OPEN && !tokenOk(m.token)) { fail(ws, '建房需要通行令牌 — 请先在联机大厅用钥匙授权'); break; }
+        if (rooms.size >= MAX_ROOMS) { fail(ws, `服务器满载(${MAX_ROOMS} 个房间对局中), 请稍后再试`); break; }
+        const name = normName(m.name);
+        if (!name) { fail(ws, '请先填写昵称'); break; }
+        if (nameOnline(name, ws)) { fail(ws, `昵称「${name}」已在线 — 一人一名, 请换一个`); break; }
         ws._fails = 0;
+        leaveRoom(ws);
+        const tank = saneTank(m.tank);
+        if (m.tank && tank !== m.tank) console.log(`[消毒] ${name} 请求不可用车型 ${m.tank} → ${tank}`);
         const code = genCode();
-        const room0 = { players: new Map(), started: false, ended: false, map: '', mode: 'dm', pass: String(m.pass || '').trim().slice(0, 24) };
+        const room0 = { players: new Map(), started: false, ended: false, map: '', mode: 'dm', pass: String(m.pass || '').trim().slice(0, 24), tier: tierOf(tank), feed: [] };
         rooms.set(code, room0);
         ws._room = room0; ws._code = code;
-        room0.players.set(ws, { id: nextPid, name: (m.name || '车长').slice(0, 12), tank: m.tank || 'sherman', ready: true, host: true });
-        sendJson(ws, { t: 'joined', room: code, you: nextPid, players: roomState(room0), pass: room0.pass || undefined });
+        room0.players.set(ws, { id: nextPid, name, tank, ready: true, host: true, team: 0 });
+        sendJson(ws, { t: 'joined', room: code, you: nextPid, players: roomState(room0), pass: room0.pass || undefined, tier: room0.tier, mode: room0.mode });
         nextPid++;
-        console.log(`[房间${code}] 创建 by ${m.name}${room0.pass ? ' (带密码)' : ''}`);
+        console.log(`[房间${code}] 创建 by ${m.name}${room0.pass ? ' (带密码)' : ''} (${rooms.size}/${MAX_ROOMS} 房)`);
         break;
       }
       case 'join': {
         const r = rooms.get(String(m.room || '').trim());
         if (!r) { fail(ws, '房间不存在'); break; }
         if (r.pass && String(m.pass || '') !== r.pass) { fail(ws, '房间密码错误'); break; }
+        const name = normName(m.name);
+        if (!name) { fail(ws, '请先填写昵称'); break; }
+        if (nameOnline(name, ws)) { fail(ws, `昵称「${name}」已在线 — 一人一名, 请换一个`); break; }
+        const tank = saneTank(m.tank);
+        if (m.tank && tank !== m.tank) console.log(`[消毒] ${name} 请求不可用车型 ${m.tank} → ${tank}`);
+        const tErr = tierCheck(r, tank, ws);   // 等级匹配: 房主车位 ±1 级(按消毒后的车)
+        if (tErr) { fail(ws, tErr); break; }
         ws._fails = 0;
         if (r.started) { sendJson(ws, { t: 'err', msg: '对战已开始' }); break; }
-        if (r.players.size >= 8) { sendJson(ws, { t: 'err', msg: '房间已满(8人)' }); break; }
+        if (r.players.size >= MAX_PLAYERS) { sendJson(ws, { t: 'err', msg: `房间已满(${MAX_PLAYERS}人)` }); break; }
+        leaveRoom(ws);
         ws._room = r; ws._code = String(m.room).trim();
-        r.players.set(ws, { id: nextPid, name: (m.name || '车长').slice(0, 12), tank: m.tank || 'sherman', ready: false, host: false });
-        sendJson(ws, { t: 'joined', room: ws._code, you: nextPid, players: roomState(r) });
-        broadcast(r, { t: 'lobby', players: roomState(r) }, ws);
+        r.players.set(ws, { id: nextPid, name, tank, ready: false, host: false, team: r.mode === 'coop' ? 0 : balancedTeam(r) });
+        sendJson(ws, { t: 'joined', room: ws._code, you: nextPid, players: roomState(r), tier: r.tier, mode: r.mode });
+        broadcast(r, lobbyMsg(r), ws);
         nextPid++;
-        console.log(`[房间${ws._code}] 加入 ${m.name}`);
+        console.log(`[房间${ws._code}] 加入 ${m.name} (红${[...r.players.values()].filter(p => p.team === 0).length}/蓝${[...r.players.values()].filter(p => p.team === 1).length})`);
+        break;
+      }
+      case 'mode': {           // 房主切模式(未开局时): 死斗=双阵营, 合作=同阵营
+        if (!me || !me.host || room.started) break;
+        const mode = m.mode === 'coop' ? 'coop' : 'dm';
+        if (mode === room.mode) break;
+        room.mode = mode;
+        if (mode === 'coop') for (const p of room.players.values()) p.team = 0;
+        broadcast(room, lobbyMsg(room));
+        console.log(`[房间${ws._code}] 模式 → ${mode === 'coop' ? '合作闯关' : '阵营死斗'}`);
+        break;
+      }
+      case 'team': {           // 死斗模式自选阵营(未开局时); 合作固定同阵营
+        if (!me || room.started) break;
+        if (room.mode === 'coop') { sendJson(ws, { t: 'err', msg: '合作模式全队同阵营' }); break; }
+        const t = m.v === 1 ? 1 : 0;
+        if (me.team !== t) { me.team = t; me.ready = false; }   // 换阵营视为未准备(房主除外, 恒就绪)
+        if (me.host) me.ready = true;
+        broadcast(room, lobbyMsg(room));
+        break;
+      }
+      case 'leave': {          // 主动离房回大厅(区别于掉线: 客户端留在小大厅界面)
+        if (!me) break;
+        leaveRoom(ws);
+        sendJson(ws, { t: 'left' });
         break;
       }
       case 'ready': {
         if (!me) break;
         me.ready = !!m.v;
-        if (m.tank) me.tank = m.tank;
-        broadcast(room, { t: 'lobby', players: roomState(room) });
+        if (m.tank && m.tank !== me.tank) {   // 换车: 先消毒再过等级匹配(不合法保持原车并回错误)
+          const want = saneTank(m.tank, me.tank);
+          if (want !== m.tank) { sendJson(ws, { t: 'err', msg: `车型不可用(${m.tank}), 请另选` }); }
+          else {
+            const tErr = tierCheck(room, want, ws);
+            if (tErr) { sendJson(ws, { t: 'err', msg: tErr }); }
+            else {
+              me.tank = want;
+              if (me.host) console.log(`[房间${ws._code}] 房主换车 → ${want} (房间等级仍锚定 ${tierName(room.tier)})`);
+            }
+          }
+        }
+        broadcast(room, lobbyMsg(room));
         break;
       }
       case 'start': {          // 仅房主; 登记地图/模式供战斗记录用
         if (!me || !me.host) break;
         room.started = true; room.ended = false;
-        room.map = m.map || ''; room.mode = m.mode || 'dm';
-        broadcast(room, { t: 'start', map: m.map, mode: room.mode, seed: Math.random(), players: roomState(room) });
-        console.log(`[房间${ws._code}] 开战 ${room.map} (${room.mode})`);
+        room.map = m.map || ''; room.mode = m.mode && m.mode !== room.mode ? m.mode : room.mode;
+        room.feed = []; room.startedAt = Date.now();
+        broadcast(room, { t: 'start', map: room.map, mode: room.mode, seed: Math.random(), players: roomState(room) });
+        const red = [...room.players.values()].filter(p => p.team === 0).length;
+        console.log(`[房间${ws._code}] 开战 ${room.map} (${room.mode}) 红${red}/蓝${room.players.size - red} — ${[...room.players.values()].map(p => `${p.name}(${p.tank})`).join(', ')}`);
         break;
       }
       case 'input': {          // 客户端输入 → 只发给主机
@@ -244,8 +389,23 @@ wss.on('connection', (ws) => {
       }
       case 'snap': case 'ev': case 'end': {   // 主机快照/事件/结算 → 广播
         if (!me || !me.host) break;
+        // 击杀时间线: 控制台即时一行 + 进战斗记录(相对开战秒数)
+        if (m.t === 'ev' && m.k === 'kill' && room.startedAt) {
+          const idOf = (id) => { const q = [...room.players.values()].find(p => p.id === id); return q ? q.name : `#${id}`; };
+          const rel = ((Date.now() - room.startedAt) / 1000) | 0;
+          room.feed.push({ t: rel, killer: idOf(m.d.by), victim: idOf(m.d.id) });
+          console.log(`[房间${ws._code}] ${rel}s 击杀: ${m.d.by ? idOf(m.d.by) : '环境'} → ${idOf(m.d.id)}`);
+        }
         broadcast(room, m, ws);
-        if (m.t === 'end' && !room.ended) { room.ended = true; recordEnd(room, ws._code, m); console.log(`[房间${ws._code}] 结算`); }
+        if (m.t === 'end' && !room.ended) {
+          room.ended = true;
+          recordEnd(room, ws._code, m);
+          // 赛后房间复位: 保留成员回车库再战, 未准备态重新集结(房主恒就绪)
+          room.started = false;
+          for (const q of room.players.values()) q.ready = q.host;
+          broadcast(room, lobbyMsg(room));
+          console.log(`[房间${ws._code}] 结算 — ${(m.scores || []).map(([id, name, k]) => `${name} ${k}杀`).join(', ')}; 房间保留, 可再次开局`);
+        }
         break;
       }
     }
@@ -255,16 +415,8 @@ wss.on('connection', (ws) => {
     const room = ws._room;
     if (!room) return;
     const me = room.players.get(ws);
-    room.players.delete(ws);
+    leaveRoom(ws);
     console.log(`[房间${ws._code}] 离开 ${me ? me.name : '?'}`);
-    if (!room.players.size) { rooms.delete(ws._code); return; }
-    if (me && me.host) {      // 主机掉线 → 房间解散
-      broadcast(room, { t: 'err', msg: '房主已离开，房间解散' });
-      for (const w of room.players.keys()) w.close();
-      rooms.delete(ws._code);
-      return;
-    }
-    broadcast(room, { t: 'lobby', players: roomState(room) });
   });
 
   ws.isAlive = true;
@@ -413,5 +565,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  本机:   http://127.0.0.1:${PORT}   (页面即客户端, 自动连本服, 无需填地址)`);
   for (const ip of ips) console.log(`  局域网: http://${ip}:${PORT}   ← 发给朋友`);
   if (OPEN) console.log('  建房门禁: 关闭 (--open, 任何人可建房)');
+  console.log(`  容量: ${MAX_ROOMS} 房 × ${MAX_PLAYERS} 人`);
   if (ADMIN_PORT > 0) startAdmin();
 });

@@ -107,9 +107,9 @@ SF.Assets = (() => {
     type63: 'type63', type69: 'type69', type96: 'type96', type99: 'type99', type99a: 'type99a',
     merkava3: 'merkava3', merkava4: 'merkava4', strv103: 'strv103', strv122: 'strv122', k2: 'k2' };
   const fileOf = {}; for (const f in MODEL_FILES) fileOf[MODEL_FILES[f]] = f;
-  // 半成品车点名(有数据没模型): 启动时列出, 提醒补模型或从 config 摘除
+  // 半成品车点名(有数据没模型): 一次性列出, 提醒补模型或从 config 摘除
   for (const k in SF.CFG.vehicles)
-    if (!fileOf[k]) console.warn('[assets] 无模型车型:', k);
+    if (!fileOf[k]) console.warn('[assets] 无模型车型(已被各选车入口拦截):', k);
 
   // 单坦克模型: 已载即回, 进行中去重, 失败可重试
   function getModel(type) {
@@ -125,27 +125,15 @@ SF.Assets = (() => {
   A.getModel = getModel;
   A.hasModel = (type) => !!fileOf[type];
 
-  // cls → 通用兜底车模(config 的"敌方中坦/重坦/歼击车", 无 tier 不进等级带, 专供缺模型时兜底)
-  const GENERIC_OF = { MT: 'medium', LT: 'medium', HT: 'heavy', TD: 'td', SPG: 'td' };
-  A.genericOf = (type) => GENERIC_OF[(SF.CFG.vehicles[type] || {}).cls] || 'medium';
-
   // 一组坦克模型按需补载(开战/联机前调用; 全部缓存时瞬间完成不闪加载条)
+  // 无模型的类型跳过并告警 —— 一辆半成品车不再炸掉整场加载(选车入口各自把关, 这里是最后兜底)
   A.ensureTanks = (types, onProgress) => {
     const list = [...new Set(types)];
     let done = 0;
-    const one = async (t) => {
-      try {
-        if (!fileOf[t]) throw new Error('无模型映射');
-        return await getModel(t);
-      } catch (e) {
-        // 缺映射/加载失败(弱网单点故障): 跳过 + 预载 cls 通用兜底车模 —— 一辆车的问题不再炸掉整场加载
-        console.warn('[assets] 车型加载失败(退回通用外形):', t, e.message);
-        const g = A.genericOf(t);
-        if (!A.models[g]) { try { await getModel(g); } catch (e2) { console.warn('[assets] 兜底车模也缺失:', g); } }
-        return null;
-      } finally { onProgress && onProgress(++done, list.length); }
-    };
-    return Promise.all(list.map(one));
+    return Promise.all(list.map(t => {
+      if (!fileOf[t]) { console.warn('[assets] 跳过无模型车型:', t); onProgress && onProgress(++done, list.length); return Promise.resolve(null); }
+      return getModel(t).finally(() => onProgress && onProgress(++done, list.length));
+    }));
   };
 
   // 地图(json+高程), 并发去重

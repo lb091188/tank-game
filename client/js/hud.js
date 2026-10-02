@@ -382,7 +382,10 @@ SF.HUD = (() => {
       ctx.beginPath(); ctx.arc(px, py, 50 * sc, 0, 7); ctx.stroke();
     }
     // 敌标(WoT 式): 点亮=实时红标; 开炮暴露=亮标; 丢亮点=停在最后已知位置的暗标
-    for (const e of world.enemies) {
+    // 目标集与名牌同源: 联机取 MP.tanks 敌方(死斗房主 world.enemies 为空, 之前小地图恒无红点)
+    const mpMini = window.SF && SF.Game_mp && SF.Game_mp.mode !== 'sp' ? SF.Game_mp : null;
+    const miniTargets = mpMini ? [...mpMini.tanks.values()].filter(t => t.netId !== mpMini.myId && t.team !== world.player.team) : world.enemies;
+    for (const e of miniTargets) {
       if (!e.alive) continue;
       if (uiState.spotted.has(e)) {
         const [mx, my] = worldToMap(e.x, e.z, T);

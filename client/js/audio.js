@@ -95,7 +95,7 @@ SF.Audio = (() => {
   // 中文战斗语音: 打包克隆文件优先(所有设备听感一致), 缺失时退回系统 TTS
   // 每事件多条变体随机播(战场播报不重样); 文案与 tools/make-voices.py LINES 同步维护
   const VOICE_VARIANTS = { v_pen: 3, v_nopen: 3, v_bounce: 3, v_absorb: 3, v_gunout: 2, v_ram: 2, v_kill: 3, v_wipe: 2,
-    v_hitpen: 3, v_track: 3, v_ammo: 3, v_engine: 2, v_gun: 2, v_rammed: 2, v_splash: 2, v_reload: 3 };
+    v_hitpen: 3, v_track: 3, v_ammo: 3, v_engine: 2, v_gun: 2, v_rammed: 2, v_splash: 2, v_reload: 3, v_supply: 2 };
   const VOICE_TEXT = {
     v_pen: ['击穿！', '打穿了！', '吃我一炮！'],
     v_nopen: ['未能击穿！', '没打穿！', '装甲太硬！'],
@@ -112,7 +112,8 @@ SF.Audio = (() => {
     v_gun: ['火炮受损！', '炮管打坏了！'],
     v_rammed: ['遭到撞击！', '车体被撞！'],
     v_splash: ['遭到炮击！', '炮击！落点很近！'],
-    v_reload: ['装填完毕！', '弹药就绪！', '装填完成！']
+    v_reload: ['装填完毕！', '弹药就绪！', '装填完成！'],
+    v_supply: ['补给已送达！', '空投补给，请查收！']
   };
   let zhVoice = null, voicesReady = false;
   function pickVoice() {

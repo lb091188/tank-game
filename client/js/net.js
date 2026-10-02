@@ -13,7 +13,14 @@ SF.Net = (() => {
   function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
   let curAddr = '';
-  // 地址归一: 留空=同源自动连接; 支持裸host:port / ws:// / wss:// / http:// / https://
+  // 同源自动地址: 页面由对战服务器托管(页面与 WS 同源), 打开即连无需填地址
+  // http 页面 → ws://同host(含端口); https 页面 → wss://同host(默认443, 走反代)
+  function autoAddr() {
+    if (location.protocol === 'https:') return 'wss://' + location.host;
+    if (location.protocol === 'http:') return 'ws://' + location.host;
+    return '';
+  }
+  // 地址归一: 支持裸host:port / ws:// / wss:// / http:// / https://
   // wss/https 保留安全协议且不补端口(默认443), 其余补 :8342
   function normalizeAddr(raw) {
     let a = String(raw || '').trim(), secure = false;
@@ -25,12 +32,12 @@ SF.Net = (() => {
     return (secure ? 'wss://' : 'ws://') + a;
   }
   function connect(addr) {
-    const url = normalizeAddr(addr || (location.protocol.startsWith('http') ? location.host : ''));
-    if (!url) return Promise.reject(new Error('请填写服务器地址'));
+    const url = normalizeAddr(addr) || autoAddr();
+    if (!url) return Promise.reject(new Error('请通过服务器网址打开本页面 (本地文件无法联机)'));
     if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { } }
     curAddr = url;
     return new Promise((resolve, reject) => {
-      try { ws = new WebSocket(url); } catch (e) { reject(new Error('地址无效')); return; }
+      try { ws = new WebSocket(url); } catch (e) { reject(new Error('连接被浏览器拦截 (https 页面只能连 wss)')); return; }
       ws.onopen = () => resolve();
       ws.onmessage = (e) => {
         let m;
@@ -58,6 +65,9 @@ SF.Net = (() => {
     return r;
   }
   const setReady = (v, tank) => send({ t: 'ready', v, tank });
+  const setMode = (mode) => send({ t: 'mode', mode: mode || 'dm' });            // 房主: 死斗/合作
+  const setTeam = (v) => send({ t: 'team', v: v ? 1 : 0 });                      // 死斗: 选红/蓝阵营
+  const leave = () => send({ t: 'leave' });                                      // 主动离房(区别于断线)
   const startMatch = (map, mode) => send({ t: 'start', map, mode: mode || 'dm' });
 
   // 对战中: 本地输入 30Hz 上行
@@ -72,6 +82,7 @@ SF.Net = (() => {
   function stopInputLoop() { if (inputTimer) { clearInterval(inputTimer); inputTimer = null; } }
 
   // 快照插值: 取 now-delay 时刻各坦克姿态 {id: {x,z,y,yaw,tur,pitch,speed,hp,alive}}
+  // 行布局(量化后 12 字段): [x,z,y, yaw,tur,pitch,speed, hp,alive, reloadT,reloadTotal,clipLeft]
   function interpolate(delay = 120) {
     if (snaps.length < 2) return null;
     const target = performance.now() - delay;
@@ -84,17 +95,18 @@ SF.Net = (() => {
     for (const id of ids) {
       const pa = a.data.tn[id], pb = b.data.tn[id] || pa;
       if (!pa) continue;
-      let dy = pb[4] - pa[4];
+      let dy = pb[3] - pa[3];
       if (dy > Math.PI) dy -= Math.PI * 2; if (dy < -Math.PI) dy += Math.PI * 2;
       out[id] = {
         x: SF.Util.lerp(pa[0], pb[0], k), z: SF.Util.lerp(pa[1], pb[1], k),
-        y: SF.Util.lerp(pa[2], pb[2], k), yaw: pa[4] + dy * k,
-        tur: (() => { let d2 = pb[5] - pa[5]; if (d2 > Math.PI) d2 -= Math.PI * 2; if (d2 < -Math.PI) d2 += Math.PI * 2; return pa[5] + d2 * k; })(),
-        pitch: SF.Util.lerp(pa[6], pb[6], k), speed: SF.Util.lerp(pa[7], pb[7], k),
-        hp: pb[8], alive: !!pb[9]
+        y: SF.Util.lerp(pa[2], pb[2], k), yaw: pa[3] + dy * k,
+        tur: (() => { let d2 = pb[4] - pa[4]; if (d2 > Math.PI) d2 -= Math.PI * 2; if (d2 < -Math.PI) d2 += Math.PI * 2; return pa[4] + d2 * k; })(),
+        pitch: SF.Util.lerp(pa[5], pb[5], k), speed: SF.Util.lerp(pa[6], pb[6], k),
+        hp: pb[7], alive: !!pb[8],
+        reloadT: +pb[9] || 0, reloadTotal: +pb[10] || 0, clipLeft: pb[11] | 0   // 装填状态取最新帧(不需插值)
       };
     }
-    return { poses: out, timeLeft: b.data.st, scores: b.data.sc, wv: b.data.wv, dt: b.data.dt };
+    return { poses: out, timeLeft: b.data.st, scores: b.data.sc, wv: b.data.wv, dt: b.data.dt, pk: b.data.pk };
   }
 
   function resetSnaps() { snaps.length = 0; }
@@ -104,5 +116,5 @@ SF.Net = (() => {
     if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { } ws = null; }
   }
 
-  return { connect, normalizeAddr, createRoom, joinRoom, redeemKey, getToken, setReady, startMatch, startInputLoop, stopInputLoop, interpolate, resetSnaps, on, send, close, get socket() { return ws; }, get address() { return curAddr; } };
+  return { connect, normalizeAddr, createRoom, joinRoom, redeemKey, getToken, setReady, setMode, setTeam, leave, startMatch, startInputLoop, stopInputLoop, interpolate, resetSnaps, on, send, close, get socket() { return ws; }, get address() { return curAddr; } };
 })();

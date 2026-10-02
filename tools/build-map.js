@@ -577,6 +577,77 @@ function coversL05(add, rng) {
   }
 }
 
+/* ============ l06 冬季河谷(冰河 + 谷壁高地 + 南北村落) ============ */
+const RIVERX1 = { a: [-38, 330], b: [30, -330] };   // 冻结河道中心线(蜿蜒 N-S)
+function riverX(z) { return RIVERX1.a[0] + (RIVERX1.b[0] - RIVERX1.a[0]) * (z - RIVERX1.a[1]) / (RIVERX1.b[1] - RIVERX1.a[1]) + 40 * Math.sin(z * 0.012); }
+const CRATERS6 = [];
+{ const r = mulberry32(20261021); for (let i = 0; i < 9; i++) CRATERS6.push({ x: -60 + r() * 120, z: -150 + r() * 100, r: 3.5 + r() * 3, d: 0.7 + r() * 0.6 }); }
+function terrainL06(x, z) {
+  let h = 5 + fbm((x + 400) / SIZE, (z + 400) / SIZE) * 4;
+  // 冻结河道: 冰面低于两岸 2.5m, 岸坡 ~0.1 全线可进出; 河道即中央推进走廊(冰面无掩体, 快速但有暴露风险)
+  h -= gauss(x - riverX(z), 26) * 2.5;
+  // 冻湖(西岸): 开阔冰面俯角区
+  h -= gauss(Math.hypot((x + 105) * 1.1, z - 30), 34) * 2.0;
+  // 中场卖头微丘 + 弹坑带
+  for (const [mx, mz, mw, mh] of [[-45, -75, 24, 3.5], [55, 60, 26, 4], [-60, 155, 22, 3], [65, -140, 24, 3.5]])
+    h += gauss(Math.hypot(x - mx, z - mz), mw) * mh;
+  for (const c of CRATERS6) h -= gauss(Math.hypot(x - c.x, z - c.z), c.r) * c.d;
+  // 谷壁陡壁山×4: 唯一登顶路朝地图中心(坡道口朝内), 外侧断崖压黑不可攀 —— 每个高坡一条路规则
+  h += cliffHill(x, z, -170, -120, 13, Math.PI / 2, 7.5, 44);   // 西北山(东坡上)
+  h += cliffHill(x, z, -165, 140, 13, Math.PI / 2, 7.5, 44);    // 西南山(东坡上)
+  h += cliffHill(x, z, 175, -100, 12, -Math.PI / 2, 7, 44);     // 东北山(西坡上)
+  h += cliffHill(x, z, 170, 150, 12, -Math.PI / 2, 7, 44);      // 东南山(西坡上)
+  // 南北村落台地(阶段目标): 近水平 + 屋群
+  const vil = ss(60, 28, Math.hypot(x - (x > 0 ? 12 : -12), z - (z > 0 ? 205 : -205)));
+  h = h * (1 - vil * 0.6) + (h + 0.6) * vil * 0.6;
+  const spawnFlat = ss(115, 72, Math.hypot(x, z - 330));
+  h = h * (1 - spawnFlat) + 6 * spawnFlat;
+  const bx = Math.max(Math.abs(x) - (352 + 20 * n4((x + 400) / SIZE, 0.3)), 0);
+  const bz = Math.max(Math.abs(z) - (352 + 20 * n4(0.5, (z + 400) / SIZE)), 0);
+  h += ss(0, 45, Math.hypot(bx, bz)) * 55;
+  return h;
+}
+function coversL06(add, rng) {
+  // 南村(玩家推进第一目标) + 北村(敌守军阵地)
+  for (const [cx, cz, n] of [[-22, 208, 5], [26, 214, 4], [-18, -208, 4], [24, -200, 5]]) {
+    for (let i = 0; i < n; i++) {
+      const hx = cx + (rng() - 0.5) * 70, hz = cz + (rng() - 0.5) * 55;
+      add(rng() < 0.55 ? 'house' : 'barn', hx, hz, rng() * 3, 0.85 + rng() * 0.35);
+      if (rng() < 0.5) add('ruin', hx + 20 + rng() * 14, hz + (rng() - 0.5) * 30, rng() * 3);
+      if (rng() < 0.6) add('wall', hx - 14, hz + (rng() - 0.5) * 24, rng() * 3, 1.05);
+    }
+  }
+  for (const [wx, wz] of [[-8, 190], [10, -186]]) add('wreck', wx, wz, rng() * 3);
+  // 冻河岸树线(针叶林带, 视觉标出河道走向): 树只挡车不挡弹
+  for (let z = 320; z > -320; z -= 26) {
+    for (const side of [-1, 1]) {
+      if (rng() < 0.28) continue;
+      const rx = riverX(z) + side * (34 + rng() * 26);
+      add('tree', rx, z + (rng() - 0.5) * 14, rng() * 6, 0.85 + rng() * 0.5);
+    }
+  }
+  // 谷地松林(东西两翼纵深)
+  for (let i = 0; i < 52; i++) {
+    const side = rng() < 0.5 ? -1 : 1;
+    add('tree', side * (205 + rng() * 110), 300 - rng() * 600, rng() * 6, 0.85 + rng() * 0.6);
+  }
+  // 冰面与中场雪岩(卖头锚点) + 枯灌丛
+  for (const [rx, rz] of [[-45, -75], [55, 60], [-60, 155], [65, -140]]) add('rock', rx + (rng() - 0.5) * 8, rz + (rng() - 0.5) * 8, rng() * 6, 1.4 + rng() * 0.3);
+  for (const [cx2, cz2] of [[-14, 30], [22, -20], [-30, -120], [35, 120], [0, 250], [-5, -255]]) bushPatch(add, rng, cx2, cz2, 3);
+  for (let i = 0; i < 16; i++) add('rock', -220 + rng() * 440, -260 + rng() * 520, rng() * 6, 0.9 + rng() * 0.7);
+  // 东西谷壁山配套掩体(登顶路灌木 + 顶面锚点)
+  hillCovers(add, rng, -170, -120, Math.PI / 2, 44);
+  hillCovers(add, rng, -165, 140, Math.PI / 2, 44);
+  hillCovers(add, rng, 175, -100, -Math.PI / 2, 44);
+  hillCovers(add, rng, 170, 150, -Math.PI / 2, 44);
+  // 南北出生带对位掩护
+  for (const [rx2, rz2] of [[-42, 262], [38, 268], [-40, -265], [36, -258]]) add('rock', rx2, rz2, rng() * 6, 1.3);
+  bushPatch(add, rng, 0, 240, 2); bushPatch(add, rng, 0, -244, 2);
+  // ---- 评审预留(追加在随机流末尾, 不扰动上方布点) ----
+  add('rock', 190, 60, rng() * 6, 1.3); bushPatch(add, rng, 196, 66, 2);      // 东北山登顶道口外锚点
+  add('rock', -190, -45, rng() * 6, 1.3); bushPatch(add, rng, -196, -52, 2);  // 西北山登顶道口外锚点
+}
+
 /* ============ 地图定义 ============ */
 const MAPS = {
   l01: {
@@ -671,6 +742,22 @@ const MAPS = {
         { type: 'churchill7', pos: [-100, -47], yaw: 2.6, personality: 'hold', hold: true },
         // su100 东北丘南麓反斜面(修前58m外被反斜面挡成互盲; -158 因谷仓碰撞比评审的-152 南移6m, 东缺口方向仍可侧击)
         { type: 'su100', pos: [100, -158], yaw: -2.5, personality: 'sniper', hold: true } ] }
+    ]
+  },
+  l06: {
+    theme: 'winter',
+    dir: 'l06-winter', name: '冬境 · 河谷争夺', seed: 20261021,
+    briefing: '冰封河谷，两军隔岸相望。冻结的河道是中央快攻走廊——冰面无掩体，冲得快也死得快；两岸谷壁高地各有唯一登顶路（坡道口朝向地图中心），夺下制高点就锁住冰面。',
+    terrain: terrainL06, covers: coversL06,
+    lighting: { sunDir: [0.4, 0.7, 0.3], sunColor: [1.0, 0.97, 0.9], sunIntensity: 1.05, ambient: 0.65, ambientColor: [0.72, 0.78, 0.9], fogColor: [0.85, 0.88, 0.93], fogDensity: 0.0014, skyTop: [0.5, 0.62, 0.8], skyBottom: [0.88, 0.9, 0.94] },
+    player: { spawn: [0, 335, Math.PI] },
+    waves: [
+      { name: '河岸前哨', enemies: [
+        { type: 'pz4', pos: [-38, -20], yaw: 0, personality: 'flanker', patrol: [[-38, -20], [30, 40], [-20, 80]] },
+        { type: 't34', pos: [42, -60], yaw: Math.PI, personality: 'flanker', patrol: [[42, -60], [-25, -95], [55, -130]] } ] },
+      { name: '北村守军', enemies: [
+        { type: 'stug3', pos: [-64, -238], yaw: 0.3, personality: 'sniper', hold: true },
+        { type: 'tiger1', pos: [22, -246], yaw: 0, personality: 'hold', patrol: [[22, -246], [-14, -238], [-40, -210]] } ] }
     ]
   }
 };

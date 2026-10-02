@@ -1,4 +1,4 @@
-// main.js — 场景搭建/相机/输入/主循环/第一关流程(波次·维修·胜负)
+﻿// main.js — 场景搭建/相机/输入/主循环/第一关流程(波次·维修·胜负)
 window.SF = window.SF || {};
 
 SF.Main = (() => {
@@ -189,7 +189,6 @@ SF.Main = (() => {
   const spotLinger = new Map();    // 敌 → 丢失视野后的残留秒数(WoT: 最短 5s, 持续暴露可延至 10s)
   let lampT = 0;                   // 被敌人持续注视的时长(六感灯 3s 延迟, WoT)
   let waveIdx = 0, waveEnemies = [], repairT = 0, repairMsgText = '', repairMsgOn = false, repairDone = false, gameOver = false, loseT = -1;
-  let wasGameOver = false, settleT = 0;   // 结算沉降: gameOver 置位后滑停 1.5s(炮弹/特效播完)再停循环
   let stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   let aimPoint = null, gunAim = null;
 
@@ -1002,7 +1001,7 @@ SF.Main = (() => {
       const pool = [];
       for (const k in SF.CFG.vehicles) {
         const v = SF.CFG.vehicles[k];
-        if (v.tier && v.cls === cls && TIER_NUM[v.tier] >= lo && TIER_NUM[v.tier] <= hi) pool.push(k);
+        if (v.tier && v.cls === cls && TIER_NUM[v.tier] >= lo && TIER_NUM[v.tier] <= hi && SF.Assets.hasModel(k)) pool.push(k);
       }
       if (pool.length) return pool[(Math.random() * pool.length) | 0];
     }
@@ -1015,7 +1014,7 @@ SF.Main = (() => {
       const pool = [];
       for (const k in SF.CFG.vehicles) {
         const v = SF.CFG.vehicles[k];
-        if (v.tier && TIER_NUM[v.tier] >= lo && TIER_NUM[v.tier] <= hi) pool.push(k);
+        if (v.tier && TIER_NUM[v.tier] >= lo && TIER_NUM[v.tier] <= hi && SF.Assets.hasModel(k)) pool.push(k);
       }
       if (pool.length) return pool;
     }
@@ -1248,12 +1247,15 @@ SF.Main = (() => {
         const ri = MP.inputs.get(id) || IDLE_INPUT(t);
         t.update(ri, dt, world);
       }
-      // 重生队列
+      // 重生队列(死斗: 己方半侧出生点重生)
       for (const r of MP.respawn) {
         r.t -= dt;
         if (r.t <= 0) {
-          const sp = MP.spawnPool[(Math.random() * MP.spawnPool.length) | 0];
           const tk = MP.tanks.get(r.id);
+          const half = MP.spawnPool.length >> 1;
+          const base = MP.gameMode === 'coop' ? 0 : (tk.team === 1 ? half : 0);
+          const span = MP.gameMode === 'coop' ? MP.spawnPool.length : half;
+          const sp = MP.spawnPool[base + ((Math.random() * span) | 0)];
           scene.remove(tk.group);
           tk.rebuild();
           // 抖动落点须过地形关(池点圆盘已验证, 此处点级复核, 全败回退池点本点) + 补掩体推挤; 朝向朝地图中心
@@ -1297,6 +1299,12 @@ SF.Main = (() => {
     }
 
     // 玩家对敌发现: 视距×(1-目标隐蔽) + 多点通视 + 50m 强制点亮 + 5~10s 残留
+    // 目标集: 单机/合作主机=AI 敌军(world.enemies); 死斗主机=敌方玩家(同阵营队友不点亮不隐藏) —— 同一套点亮规则
+    // (此前死斗主机走下方第二块, 与本块共用 spottedTimer 双重递减, 0.25 为 dt 整倍数时第二块
+    //  永远轮不到执行 → 房主点不亮任何人; 现统一为一块一个计时器)
+    const spotTargets = (MP.mode === 'host' && MP.gameMode === 'dm')
+      ? [...MP.tanks.values()].filter(t => t.netId !== MP.myId && t.team !== p.team)
+      : world.enemies;
     spottedTimer -= dt;
     if (spottedTimer <= 0) {
       spottedTimer = 0.25;
@@ -1314,7 +1322,7 @@ SF.Main = (() => {
         const d = U.dist2d(p.x, p.z, e.x, e.z);
         return d < 50 || (d < vr * (1 - SF.camoOf(e, world)) && SF.losClearAny(world, p.x, p.z, e.x, e.z, SF.bushState(e, world)));
       };
-      for (const e of world.enemies) {
+      for (const e of spotTargets) {
         if (!e.alive) { spottedLast.delete(e); spotStreak.delete(e); spotLinger.delete(e); continue; }
         markSpot(e, lit(e));
       }
@@ -1324,30 +1332,9 @@ SF.Main = (() => {
         else { spottedLast.delete(e); spotLinger.delete(e); }
       for (const e of spotted) lastKnown.set(e, { x: e.x, z: e.z });   // 点亮=实时刷新最后已知位置
       for (const [e] of lastKnown) if (!e.alive) lastKnown.delete(e);
-      // WoT 式: 未点亮的敌军模型隐藏(看得见≠点亮; 阵亡残骸保留)
+      // WoT 式: 未点亮的敌军模型隐藏(看得见≠点亮; 阵亡残骸保留) —— 主/客同一规则
       // 显示判定与 HUD 名牌/小地图红点同一条规则: 点亮残留期内, 或 5s 内开过炮(炮口焰暴露)
-      for (const e of world.enemies) e.group.visible = !e.alive || spotDisplay(e);
-    }
-    if (MP.mode === 'host') {   // 死斗小地图红点: 其他玩家(同套隐蔽/通视/强制点亮)
-      spottedTimer -= dt;
-      if (spottedTimer <= 0) {
-        spottedTimer = 0.25;
-        const vr = p.spec.view || SF.CFG.player.viewRange;
-        for (const [id, t] of MP.tanks) {
-          if (id === MP.myId) continue;
-          if (!t.alive) { spottedLast.delete(t); spotStreak.delete(t); spotLinger.delete(t); continue; }
-          const d = U.dist2d(p.x, p.z, t.x, t.z);
-          const vis = d < 50 || (d < vr * (1 - SF.camoOf(t, world)) && SF.losClearAny(world, p.x, p.z, t.x, t.z, SF.bushState(t, world)));
-          if (vis) { if (!spotStreak.has(t)) spotStreak.set(t, world.time); spottedLast.set(t, world.time); }
-          else if (spotStreak.has(t)) { spotLinger.set(t, U.clamp(5 + (world.time - spotStreak.get(t)) * 0.5, 5, 10)); spotStreak.delete(t); }
-        }
-        spotted.clear();
-        for (const [t, t0] of spottedLast)
-          if (world.time - t0 < (spotLinger.get(t) || 5)) spotted.add(t);
-          else { spottedLast.delete(t); spotLinger.delete(t); }
-        for (const t of spotted) lastKnown.set(t, { x: t.x, z: t.z });
-        for (const [t] of lastKnown) if (!t.alive) lastKnown.delete(t);
-      }
+      for (const e of spotTargets) e.group.visible = !e.alive || spotDisplay(e);
     }
     let enemySeesMe = false;
     if (MP.mode === 'host') {
@@ -1355,7 +1342,7 @@ SF.Main = (() => {
         for (const e of world.enemies) if (e.alive && e.ai && aiSeen(e) && aiTargetId(e) === p.netId) { enemySeesMe = true; break; }
       } else {
         for (const [id, t] of MP.tanks) {
-          if (id === MP.myId || !t.alive) continue;
+          if (id === MP.myId || !t.alive || t.team === p.team) continue;   // 队友的注视不算被发现
           const d = U.dist2d(p.x, p.z, t.x, t.z);
           const vr = t.spec.view || SF.CFG.player.viewRange;   // 对方的视距 × 我的隐蔽
           if (d < 50 || (d < vr * (1 - SF.camoOf(p, world)) && SF.losClearAny(world, t.x, t.z, p.x, p.z, SF.bushState(p, world)))) { enemySeesMe = true; break; }
@@ -1402,15 +1389,10 @@ SF.Main = (() => {
       hintShown = true;
       SF.HUD.showMsg('未检测到键盘输入——请点击一下游戏画面', 6);
     }
-    // 任务结束(胜利/阵亡/联机结算): 立即断引擎与环境音(瞬态音效照常播完); 滑停 1.5s 后停主循环, 结算界面不再空转
-    if (gameOver && !wasGameOver) { wasGameOver = true; SF.Audio.stopBattle(); settleT = 1.5; }
-    else if (!gameOver && wasGameOver) wasGameOver = false;
-    if (gameOver) { settleT -= dtReal; if (settleT <= 0 && running) running = false; }
     renderer.render(scene, camera);
   }
 
   function tick(t) {
-    if (!running) return;   // 结算沉降结束/已退出: rAF 链与看门狗降级定时器双双熄火
     const dtReal = Math.min(0.1, (t - lastT) / 1000 || 0.016);
     lastT = t;
     acc += dtReal;
@@ -1511,11 +1493,13 @@ SF.Main = (() => {
     SF.Assets.prefetch();   // 后台预取其余资源(音效/语音/模型), 不阻塞车库
 
     document.getElementById('btnStart').addEventListener('click', () => {
-      startBattle();   // 车库预览改为加载成功后才销毁(失败则保留, 回标题有背景可继续选车)
+      disposeGarage();
+      startBattle();
     });
     document.getElementById('btnExit').addEventListener('click', exitToTitle);
-    document.getElementById('btnRetry').addEventListener('click', () => (MP.mode === 'sp' ? startBattle() : exitToTitle()));
-    document.getElementById('btnToGarage').addEventListener('click', exitToTitle);
+    document.getElementById('btnRetry').addEventListener('click', () => (MP.mode === 'sp' ? startBattle() : backToLobby()));
+    // 联机结算: 走"返回房间"保留房间再战; 单机回车库
+    document.getElementById('btnToGarage').addEventListener('click', () => (MP.mode !== 'sp' ? backToLobby() : exitToTitle()));
   }
 
   /* ---------- 车库 3D 预览: 全屏车库场景 + 展台坦克居中 + 随地图切换风格 ---------- */
@@ -1679,7 +1663,11 @@ SF.Main = (() => {
       const el = document.createElement('div');
       el.className = 'card' + (t.type === selTank ? ' sel' : '');
       el.innerHTML = `<b>${v.name}</b><i>${SF.ClsIcon(t.cls)} ${t.tag}</i><span>${t.desc}</span><em>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · 极速 ${Math.round(v.maxSpeed * 3.6)}</em>`;
-      el.onclick = () => { selTank = t.type; localStorage.setItem('sf_mp_tank', t.type); [...g.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); setGarageTank(t.type); };
+      el.onclick = () => {
+        selTank = t.type; localStorage.setItem('sf_mp_tank', t.type);
+        [...g.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); setGarageTank(t.type);
+        document.dispatchEvent(new CustomEvent('sf-mp-tank', { detail: t.type }));   // 联机在房: 大厅监听上报换车
+      };
       g.appendChild(el);
     }
     for (const mp of SF.CFG.maps) {
@@ -1754,7 +1742,6 @@ SF.Main = (() => {
   let battleBound = false;   // 输入与事件总线只绑一次(重开战斗不重复绑定)
   function resetBattleVars() {
     gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairMsgText = ''; repairMsgOn = false; repairDone = false; spottedTimer = 0;
-    wasGameOver = false; settleT = 0;   // 结算状态归位(再战/回车库复用)
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
     SF.Models.setBushSeeThrough(false);   // models 侧的开镜草丛状态不随战斗变量重置, 显式归位
     SF.Models.setFoliageFocus(null, null);   // 近距草透明焦点也归位(车库预览无玩家)
@@ -1763,7 +1750,7 @@ SF.Main = (() => {
     spottedLast.clear(); spotStreak.clear(); spotLinger.clear(); lastKnown.clear(); lampT = 0;
     stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   }
-  function leaveBattle() {
+  function leaveBattle(keepNet) {
     running = false;                              // 停主循环(看门狗检测 running 也会停)
     if (AIW.on) AIW.worker.postMessage({ t: 'clear' });   // worker 停算上一场的 AI(线程保留复用)
     if (timerId) { clearInterval(timerId); timerId = null; }   // 降级定时器一并停, 否则退出后仍在空跑旧战场
@@ -1777,17 +1764,31 @@ SF.Main = (() => {
     }
     scene = null; world = null; fx = null; shells = null;
     SF.Pickups.reset();   // 清空场上空投与增益状态(下一场 init 重建)
-    if (MP.mode !== 'sp') { SF.Net.stopInputLoop(); SF.Net.close(); MP.mode = 'sp'; MP.tanks.clear(); }
+    SF.Net.stopInputLoop();
+    // keepNet: 赛后回大厅保留连接与联机身份(MP.mode 不复位), 房间可再战
+    if (!keepNet && MP.mode !== 'sp') SF.Net.close();
+    if (!keepNet) MP.mode = 'sp';
+    MP.tanks.clear(); MP.inputs.clear(); MP.respawn = [];
     SF.Audio.stopBattle();
     document.getElementById('hud').style.display = 'none';
     const ovEl = document.getElementById('overlay');
     ovEl.classList.remove('on', 'settled'); ovEl.style.display = 'none';
   }
   function exitToTitle() {
-    leaveBattle();
+    leaveBattle(false);
+    document.getElementById('btnToGarage').textContent = '返 回 车 库';
     document.getElementById('titleScreen').style.display = 'flex';
     buildGaragePreview();       // 重建车库场景(出击时已销毁)
     setGarageTank(selTank);
+  }
+  // 联机赛后回车库: 房间与服务端都保留, 换车/重新准备即可再战(替代旧行为"一把后各自重载页面房间解散")
+  function backToLobby() {
+    leaveBattle(true);
+    document.getElementById('btnToGarage').textContent = '返 回 车 库';
+    document.getElementById('titleScreen').style.display = 'flex';
+    buildGaragePreview();       // 重建车库场景(战斗时已销毁)
+    setGarageTank(selTank);
+    SF.Lobby.reenter();
   }
   async function startBattle() {
     // 按需补载(懒加载): 地图 + 玩家 + 本等级带敌军车型池
@@ -1803,7 +1804,6 @@ SF.Main = (() => {
       exitToTitle();
       return;
     }
-    disposeGarage();   // 加载成功才销毁车库预览(失败时车库仍在, 与 startMultiplayer 同构)
     leaveBattle();
     resetBattleVars();
     await initAIWorker();   // worker 模式决策在独立线程; 失败自动降级主线程
@@ -1844,8 +1844,11 @@ SF.Main = (() => {
     if (MP.snapT > 0) return;
     MP.snapT = 0.05;
     const tn = {};
+    // 尾部 [reloadT, reloadTotal, clipLeft]: 客户端幽灵不跑模拟, 装填读条/弹夹余弹全靠快照对账
+    // 量化(x/z/y 0.1m, 角度 0.01rad): 20 人房快照 ~1.1KB@20Hz, 4 房满载出向 ≈ 14Mbps < 40Mbps
     for (const [id, t] of MP.tanks)
-      tn[id] = [+t.x.toFixed(2), +t.z.toFixed(2), +t.y.toFixed(2), 0, +t.yaw.toFixed(3), +t.turretYaw.toFixed(3), +t.gunPitch.toFixed(3), +t.speed.toFixed(2), Math.round(t.hp), t.alive ? 1 : 0];
+      tn[id] = [+t.x.toFixed(1), +t.z.toFixed(1), +t.y.toFixed(1), +t.yaw.toFixed(2), +t.turretYaw.toFixed(2), +t.gunPitch.toFixed(2), +t.speed.toFixed(1), Math.round(t.hp), t.alive ? 1 : 0,
+        +t.reloadT.toFixed(1), +(t.reloadTotal || 0).toFixed(1), t.clipLeft | 0];
     const sc = {};
     for (const [id, k] of MP.scores) sc[id] = k;
     const msg = { t: 'snap', st: Math.max(0, Math.round(MP.timeLeft)), tn, sc };
@@ -1866,12 +1869,26 @@ SF.Main = (() => {
   function clientFrame(dt) {
     const snap = SF.Net.interpolate(120);
     if (!snap) return;
+    const p = world.player;   // 下方幽灵插值/装填对账/点亮共用
     for (const [id, t] of MP.tanks) {
       const pose = snap.poses[id];
       if (pose) {
         t.ghostPose(pose, dt);
         if (t._awaitPose) { t._awaitPose = false; t.group.visible = true; }
       }
+    }
+    // 本机装填读条: 幽灵不跑模拟, 以主机快照对账(50ms 步进), 帧间本地衰减补匀
+    const myPose = snap.poses[MP.myId];
+    if (myPose) {
+      const wasLoading = p.reloadT > 0;
+      const al = p.spec.gun.autoloader;
+      p.reloadT = myPose.reloadT;
+      p.reloadTotal = myPose.reloadTotal || p.spec.gun.reload;
+      p.clipLeft = myPose.clipLeft || 0;
+      p.clipPhase = !al ? 'single' : (p.clipLeft >= al.clip ? 'long' : 'intra');   // 名字面义: 快照时刻处于哪段装填
+      p.reloadT = Math.max(0, p.reloadT - dt);   // 下一帧快照到来前本地走秒
+      if (wasLoading && p.reloadT === 0 && myPose.reloadT <= 0.1)
+        SF.Bus.emit('reloaded', { tank: p });    // 装填完成的音效/语音(bindBus 按弹夹阶段过滤, 与主机同规则)
     }
     MP.timeLeft = snap.timeLeft;
     if (snap.scores) for (const id in snap.scores) MP.scores.set(+id, snap.scores[id]);
@@ -1885,7 +1902,6 @@ SF.Main = (() => {
     if (snap.rp) { SF.HUD.showMsg(`${world.map.repairBetweenWaves.text} ${snap.rp}s`, 0); repairMsgOn = true; }
     else if (repairMsgOn) { repairMsgOn = false; SF.HUD.showMsg('维修完成', 1.5); }
     // 点亮: 主机裁决(dt 表)分发; 小地图红点用本地 视距×(1-隐蔽)+通视+50m 强制
-    const p = world.player;
     spottedTimer -= dt;
     if (spottedTimer <= 0) {
       spottedTimer = 0.25;
@@ -1925,8 +1941,14 @@ SF.Main = (() => {
       return;
     }
     const mm = Math.floor(MP.timeLeft / 60), ss = String(Math.floor(MP.timeLeft % 60)).padStart(2, '0');
-    const rows = MP.players.map(pl => `${pl.id === MP.myId ? '★' : ''}${pl.name} ${MP.scores.get(pl.id) || 0}`).join(' · ');
-    el.textContent = `⏱ ${mm}:${ss}   ${rows}`;
+    // 阵营死斗: 红蓝总分 + 我的击杀(20 人房不再逐人列名)
+    let r = 0, b = 0;
+    for (const [id, k] of MP.scores) {
+      const pl = MP.players.find(q => q.id === id);
+      if (!pl) continue;
+      if (pl.team === 1) b += k; else r += k;
+    }
+    el.textContent = `⏱ ${mm}:${ss}　红军 ${r} : ${b} 蓝军　我的击杀 ${MP.scores.get(MP.myId) || 0}`;
     el.style.display = 'block';
   }
 
@@ -1987,7 +2009,8 @@ SF.Main = (() => {
       document.getElementById('endTitle').textContent = m.win ? '✓ 任务完成' : '对战结束';
       document.getElementById('endTitle').style.color = m.win ? '#8fd98f' : '#d8c887';
       document.getElementById('endStats').innerHTML = `<div style="font-size:20px;line-height:2.2">${rows}</div>`;
-      document.getElementById('btnRetry').style.display = 'none';   // 联机结算: 只能回车库
+      document.getElementById('btnRetry').style.display = 'none';   // 联机结算: 单一再战按钮, 走返回房间
+      document.getElementById('btnToGarage').textContent = '返 回 车 库';
       SF.Net.stopInputLoop();
     });
     SF.Net.on('err', (m) => { alert(m.msg || '服务器错误'); location.reload(); });
@@ -2002,18 +2025,21 @@ SF.Main = (() => {
     document.getElementById('endTitle').textContent = '对战结束';
     document.getElementById('endTitle').style.color = '#d8c887';
     document.getElementById('endStats').innerHTML = `<div style="font-size:20px;line-height:2.2">${rows}</div>`;
-    document.getElementById('btnRetry').style.display = 'none';   // 联机结算: 只能回车库
+    document.getElementById('btnRetry').style.display = 'none';   // 联机结算: 单一再战按钮, 走返回房间
+    document.getElementById('btnToGarage').textContent = '返 回 车 库';
     SF.Net.stopInputLoop();
   }
 
   /* ---------- 联机开局: 房主/加入者共用 ---------- */
   async function startMultiplayer(role, init) {
+    resetBattleVars();   // 赛后房间再战: 清上一局点亮残留/六感灯/统计(world.time 归零后旧时间戳永不过期)
     MP.mode = role;
     MP.myId = init.you;
     MP.players = init.players;
     MP.mapId = init.map || 'l01';
     MP.gameMode = init.mode === 'coop' ? 'coop' : 'dm';
     MP.waveInfo = null; MP.aiId = 100;
+    MP.tanks.clear(); MP.inputs.clear(); MP.respawn = []; MP.scores.clear();   // 赛后房间再战: 清上一场残留
     for (const pl of MP.players) MP.scores.set(pl.id, 0);
     selTank = (init.players.find(pl => pl.id === init.you) || {}).tank || 'sherman';
     // 按需补载(懒加载): 地图 + 参战玩家坦克(+ 合作主机的敌军车型池)
@@ -2046,10 +2072,10 @@ SF.Main = (() => {
     await initAIWorker();   // coop 主机的 AI 决策也走 worker(失败降级主线程)
     buildScene();
 
-    // 死斗出生池: 地图中心外围 8 点(掩体推挤 + 地形校验——不合格螺旋找平地, 修 l05 沙脊/l04 壕沿出生事故)
+    // 死斗出生池: 地图中心外围 24 点环形(红蓝各占半侧, 同队同侧出发), 掩体推挤 + 地形校验
     MP.spawnPool = [];
-    for (let i = 0; i < 8; i++) {
-      const a = i / 8 * Math.PI * 2;
+    for (let i = 0; i < 24; i++) {
+      const a = i / 24 * Math.PI * 2;
       let sx = Math.cos(a) * 310, sz = Math.sin(a) * 310;
       [sx, sz] = world.covers.collide(sx, sz, 3);
       const spot = findSpawnSpot(sx, sz);
@@ -2060,13 +2086,18 @@ SF.Main = (() => {
     // 移除 buildScene 创建的单机默认玩家
     scene.remove(world.player.group);
 
-    // 建坦克: 主机=真实模拟; 客户端=幽灵(不 update)
+    // 建坦克: 主机=真实模拟; 客户端=幽灵(不 update); 死斗按服务器阵营红/蓝分侧出生
+    const half = MP.spawnPool.length >> 1;
+    const seq = [0, 0];
     for (const pl of MP.players) {
-      const sp = MP.spawnPool[(pl.id * 3) % 8];
+      const team = MP.gameMode === 'coop' ? 0 : (pl.team === 1 ? 1 : 0);
+      const sp = MP.gameMode === 'coop'
+        ? MP.spawnPool[(seq[0]++) % MP.spawnPool.length]
+        : MP.spawnPool[team * half + (seq[team]++) % half];   // 己方半侧顺序取点, 20 人内不重叠
       const isMe = pl.id === MP.myId;
       const t = new SF.Tank(pl.tank, {
         x: sp[0], z: sp[1], yaw: Math.atan2(-sp[0], -sp[1]),   // 朝地图中心(修北半场池点恒朝北背对全场的不对等)
-        netId: pl.id, team: MP.gameMode === 'coop' ? 0 : 100 + pl.id,   // 死斗人人一队; 合作同一阵营
+        netId: pl.id, team,
         isPlayer: isMe
       });
       t._isRemote = !isMe;
@@ -2089,7 +2120,11 @@ SF.Main = (() => {
       }
     } else {
       MP.timeLeft = 180;
-      if (role === 'client') for (const [id, t] of MP.tanks) if (id !== MP.myId) world.enemies.push(t);   // DM 客户端: 准星可吸附敌坦克
+      // DM 客户端: 准星可吸附"敌方"坦克(同阵营是队友, 不进敌列表不被点亮隐藏)
+      if (role === 'client') {
+        const myTeam = world.player.team;
+        for (const [id, t] of MP.tanks) if (id !== MP.myId && t.team !== myTeam) world.enemies.push(t);
+      }
     }
 
     SF.HUD.init(world);
