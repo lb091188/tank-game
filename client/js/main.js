@@ -668,35 +668,41 @@ SF.Main = (() => {
   }
   if (TOUCH) document.body.classList.add('touch');   // 竖屏旋转遮罩等触屏专属样式钩子
 
-  // 触屏环境自检 (?debug=touch): 顶部横幅显示检测链各环节 + 一键强制触屏 UI 并刷新
+  // 触屏环境自检 (?debug=touch): 顶部面板显示检测链各环节 + 一键强制触屏 UI 并刷新
   // 排查特定设备(如鸿蒙平板)触控不可用时, 打开 页面地址+?debug=touch 看哪一环断了
   if (/[?&]debug=touch/.test(location.search)) {
-    const bar = document.createElement('div');
-    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999;background:rgba(0,0,0,.85);color:#9fe08a;font:11px/1.7 monospace;padding:4px 10px;white-space:pre;pointer-events:none';
+    const yn = (b) => `<b style="color:${b ? '#9fe08a' : '#a05a4e'}">${b ? '✔' : '✘'}</b>`;
+    const row = (label, html) =>
+      `<div style="display:flex;gap:10px;align-items:baseline"><span style="color:#8b9080;flex:none;width:3em;text-align:justify;text-align-last:justify">${label}</span><span style="word-break:break-all">${html}</span></div>`;
+    const box = document.createElement('div');
+    box.className = 'panel';
+    box.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:999;padding:0 0 10px;min-width:360px;max-width:92vw;color:#b9c4a4;font:12px/2 monospace;background:rgba(14,16,11,.88)';
+    box.innerHTML = `
+      <div id="tdHead" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid rgba(200,178,106,.2)">
+        <span style="color:#e8dcae;font-size:13px;letter-spacing:2px">🔍 触屏环境自检</span>
+        <span id="tdFold" style="cursor:pointer;color:#8b9080;font:13px/1 monospace;padding:2px 6px" title="收起/展开">▾</span>
+      </div>
+      <div id="tdBody" style="padding:6px 12px 0"></div>
+      <div id="tdAct" style="padding:8px 12px 0"><button class="mbtn gold" style="width:100%;padding:7px 10px;font-size:13px">强制开启触屏 UI 并刷新</button></div>`;
+    const body = box.querySelector('#tdBody');
     const renderBar = () => {
-      bar.textContent = [
-        'coarse=' + matchMedia('(pointer:coarse)').matches +
-        ' points=' + navigator.maxTouchPoints +
-        ' ontouch=' + ('ontouchstart' in window) +
-        ' TOUCH=' + TOUCH +
-        ' body.touch=' + document.body.classList.contains('touch'),
-        'screen=' + screen.width + 'x' + screen.height +
-        ' dpr=' + devicePixelRatio +
-        ' inner=' + innerWidth + 'x' + innerHeight +
-        ' ' + (matchMedia('(orientation: portrait)').matches ? '竖屏' : '横屏') +
-        ' 全屏=' + !!document.fullscreenElement,
-        'vp=' + ((document.getElementById('metaVp') || {}).content || '无')
-      ].join('\n');
+      body.innerHTML =
+        row('触控', `coarse ${yn(matchMedia('(pointer:coarse)').matches)} · points ${navigator.maxTouchPoints} · ontouch ${yn('ontouchstart' in window)}`) +
+        row('生效', `TOUCH ${yn(TOUCH)} · body.touch ${yn(document.body.classList.contains('touch'))} · 全屏 ${yn(!!document.fullscreenElement)}`) +
+        row('视口', `screen ${screen.width}×${screen.height} · dpr ${devicePixelRatio}<br>inner ${innerWidth}×${innerHeight} · ${matchMedia('(orientation: portrait)').matches ? '竖屏' : '横屏'}`) +
+        row('vp', ((document.getElementById('metaVp') || {}).content || '无'));
     };
     renderBar();
     addEventListener('resize', renderBar);
     addEventListener('orientationchange', () => setTimeout(renderBar, 300));
-    document.body.appendChild(bar);
-    const btn = document.createElement('button');
-    btn.textContent = '强制开启触屏UI并刷新';
-    btn.style.cssText = 'position:fixed;top:70px;right:10px;z-index:999;padding:10px 16px;background:#23261c;color:#e8dcae;border:1px solid #b9a55c;border-radius:4px;font-size:15px;cursor:pointer';
-    btn.onclick = () => { try { localStorage.setItem('sf_touch', '1'); } catch (e) { } location.reload(); };
-    document.body.appendChild(btn);
+    box.querySelector('#tdFold').onclick = () => {
+      const fold = body.style.display === 'none';
+      body.style.display = fold ? '' : 'none';
+      box.querySelector('#tdAct').style.display = fold ? '' : 'none';
+      box.querySelector('#tdFold').textContent = fold ? '▾' : '▸';
+    };
+    box.querySelector('button.mbtn').onclick = () => { try { localStorage.setItem('sf_touch', '1'); } catch (e) { } location.reload(); };
+    document.body.appendChild(box);
   }
 
   // 忽略系统 dip 缩放(等效 DPR=2): 系统显示缩放大的手机横屏 CSS 高度仅 ~360px, 车库/战斗按 device-width 布局放不下;
