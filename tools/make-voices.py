@@ -30,6 +30,8 @@ LINES = {
     "v_splash1": "遭到炮击！", "v_splash2": "炮击！落点很近！",
     # 慢炮装填完毕(快炮只有音效)
     "v_reload1": "装填完毕！", "v_reload2": "弹药就绪！", "v_reload3": "装填完成！",
+    # 拾取补给(pickups 空投/掉落)
+    "v_supply1": "补给已送达！", "v_supply2": "空投补给，请查收！",
 }
 
 def main():
