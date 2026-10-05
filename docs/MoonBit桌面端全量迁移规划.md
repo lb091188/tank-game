@@ -9,8 +9,9 @@
 ## 0. 结论先行
 
 1. **可行,但工程性质是"补引擎"而非"翻译游戏"。** three-native 当前渲染能力(Basic + Lambert/Phong 直照管线)只覆盖本游戏所需渲染面的约 1/3;纹理采样、GLB 加载、阴影、雾、Line/粒子/Sprite 管线、透明混合全部缺失,需在 three-native 里补齐后游戏才搬得动。游戏逻辑层(`simcore/sim-engine/ai/srv-sim`,~3,180 行)已零 THREE/零 DOM,可对照直译,且有 `tools/golden-trace.js` 黄金轨迹可做 JS↔MoonBit 等价性验证。
-2. **"局部渲染 three 画面"——可以,且已验证。** three-native `examples/cube3d` 就是标准形态:yue 窗口内放 `Container` 子区域 → `native_handle_view` 取 GtkWidget → X11 XID → `WebGPURenderer::from_xlib` 建 surface,`host.on_size_changed` 接 resize。3D 视图可以是窗口任意子矩形,与原生控件并存。两条限制:① 跨平台只趟通了 Linux/X11(`from_win32`/macOS 路径未实现);② 原生控件**叠加在 3D 画面上方**受 X11 子窗口层级限制——本游戏 HUD 恰好是全屏 overlay 叠 3D,因此战斗 HUD 规划为**画进 GPU 的 2D overlay 管线**(与现状一致:HUD 本来就是手工 NDC 投影对齐,hud.js:54-61,同一套数学直接搬)。
-3. **总工作量统计:约 185~265 人日(≈9~13 人月,单人),其中 three-native 引擎补齐约占 40%。** 明细见 §5。
+2. **"局部渲染 three 画面"——可以,且已验证。** three-native `examples/cube3d` 就是标准形态:yue 窗口内放 `Container` 子区域 → `native_handle_view` 取 GtkWidget → X11 XID → `WebGPURenderer::from_xlib` 建 surface,`host.on_size_changed` 接 resize。3D 视图可以是窗口任意子矩形,与原生控件并存。两条限制:① 跨平台只趟通了 Linux/X11(`from_win32`/macOS 路径未实现,且 libyue 的 `native_handle_view` **在 Windows 返回 0**,见 R1);② 原生控件**叠加在 3D 画面上方**三平台都不可行(airspace/X11 子窗口层级)。
+3. **UI 架构决策(2026-10-05 复核):全自渲染。** 原生控件叠 3D 不跨平台 → 按约定不做;多窗口覆盖窗方案被否决(libyue 有 frameless/transparent/always_on_top 但**没有点击穿透 API**,FPS 视角与 HUD 按钮点击无法共存,补齐需改 yue C++ 三平台);结论:**单窗口单 wgpu surface,游戏所有画面(3D+HUD+车库+大厅+结算)全部自渲染**,libyue 降级为窗口壳/事件循环/原生模态对话框(玩家名中文输入用系统 IME 的模态框解决)。详见 §3 D1。
+3. **总工作量统计:约 190~290 人日(中位 ≈240,≈11 人月,单人),其中 three-native 引擎补齐约占 45%。** 明细见 §5。
 4. **好消息(削减范围):** 游戏全项目 grep 证实**零 AnimationMixer/SkinnedMesh/InstancedMesh/后处理**——"动画系统/蒙皮/实例化"三项**不需要**给 three-native 补(坦克炮塔炮管是手动改 rotation,掩体 411 个靠手工几何合批已是静态十几个 Mesh);"粒子/线/Sprite"三项**必须补**(曳光拖尾、烟/闪光、空投图标全在用)。
 
 ---
@@ -50,8 +51,9 @@
 | **音频播放+解码** | **Milky2018/moon_rodio 0.3.5**(6,638 下载) | Rust rodio 的 native 移植:播放管线、源效果、**WAV/MP3/FLAC/Vorbis/MP4A 全解码**——一包覆盖游戏全部音频格式(wav/ogg/mp3)。与 three-native 同依赖 wgpu-mbt 作者生态 | moon_cpal 0.11.8(设备层)、CorvusCinereus/miniaudio 0.4.0、纯解码:LL728/moonvorbis、enanandesu/mp3、bw448/moon-wav |
 | 声像/滤波 | moon_rodio 源效果 + 自写 biquad | 游戏 WebAudio 用法很浅:手写距离衰减+sin(relYaw) 立体声像、引擎音 lowpass、playbackRate 变调、loop——全部可在解码 PCM 上等价实现,无需 PannerNode/HRTF | moondsp(DSP 引擎) |
 | **图像解码** | **mizchi/image 0.4.3**(21,374 下载) | PNG/BMP/JPEG 解码+缩放——覆盖 8 张 JPG 纹理 + 16 位灰度 PNG 高程图(需确认 16 位灰度通道支持,阶段0 验证;不行就手写 PNG16 解码,服务端已有一份 zlib+5 种 filter 的参考实现 server.js:91-117) | riantr/moonbit_image、shunge/image(纯 MoonBit 六格式)、mizchi/zlib(DEFLATE) |
-| **WebSocket 客户端** | tonyfettes/soup 0.2.0(libsoup3 绑定,HTTP+WS,与 libyue 同 GTK 栈)或 Hosi121/ws_session(基于 moonbitlang/async) | 协议是纯 JSON 文本帧,客户端只要 connect/send/on-message | 兜底:基于 moonbitlang/async 的 native TCP 自实现 RFC6455 客户端(握手+帧编解码,几百行)。⚠️ zdu881/webmocket 是 JS FFI 包装器,**仅浏览器目标不可用** |
-| HTTP(钥匙兑换 POST) | soup 或 moonbitlang/async | net.js:59-67 `POST /key/redeem` | moonbitstack/moonhttp |
+| **WebSocket 客户端** | **moonbitlang/async/websocket 0.22.4(官方,主选,已核实可用)** | RFC 6455 客户端+服务端;`Conn::connect(url)` 支持 ws/wss/代理/自定义头,`send_text`/`recv()→Message(Text/Binary)`,native 目标。游戏协议是纯 JSON 文本帧(net.js `send(JSON)`),一一映射。⚠️ 特性清单勾了"Windows support (IOCP)"但 README 写"仅 Linux/macOS",Windows 实况阶段0 验证;游戏服务器是明文 ws,TLS/OpenSSL 依赖可避 | 备选:tonyfettes/soup(libsoup3);最坏自实现 RFC6455 客户端(几百行)。⚠️ zdu881/webmocket 是 JS FFI 包装器,**仅浏览器目标不可用** |
+| 事件循环共存 | **moonbitlang/async/external_loop_integration 0.22.4** | 官方支持把 async 嵌进外部事件循环(`set_external_event_loop`+`ExternalEventLoop`)——WS 收发跑在 yue/GTK 主循环里的官方通道,网络消息→`@yue.post_task`→游戏主线程 | 后备:async 跑独立 OS 线程+队列回投(需验证 native 线程) |
+| HTTP(钥匙兑换 POST) | moonbitlang/async/http | net.js:59-67 `POST /key/redeem`,与 WS 同栈 | moonbitstack/moonhttp |
 | **GLTF 解析参考** | hzfhzf89/moonbit-gltf-tools 0.1.2 | GLB 读取/校验/节点树遍历,可作 three-native GLTF 加载器的解析层参考或直接依赖 | 自写(GLB=JSON chunk+bin chunk,游戏只消费静态网格/材质/extras/顶点色/内嵌贴图,面不宽) |
 | 动画参考(不需要) | mizchi/anim3d 0.6.0 | 游戏**不用**骨骼/关键帧动画,不引入 | — |
 | 中文字体(2D HUD 文字用) | mizchi/font 0.7.4(30,870 下载,TTF/OTF 解析)+ 自写光栅化/图集 | 伤害数字/敌名牌/提示大量中文 | bikallem/freetype 0.5.3(纯 FreeType 兼容引擎) |
@@ -63,8 +65,23 @@
 
 ## 3. 关键架构决策
 
-### D1. 战斗 HUD:画进 GPU,不用原生控件叠(必选)
-现状 HUD 全部叠在 3D 上(z-index:#game < #hud < overlay),靠手工 NDC 投影对齐;而 libyue+three-native 的嵌入形态是"3D 占窗口子矩形、原生控件在旁"。X11 子窗口层级决定原生控件压不到 3D 上面。**方案:战斗场景让 Container 占满窗口,HUD 用 three-native 新增的"2D overlay 管线"(正交相机 + 矩形/圆弧/线段图元 + 文字纹理图集)画在同一 wgpu surface 上**——与网页版"canvas 上画 HUD"同构,投影数学(hud.js:54-61,注意 WebGPU z∈[0,1] 与 Y 翻转)直接搬。车库/大厅/结算这类"整屏 UI"则用 libyue 声明式重写,3D 车库展台作为窗口内子区域嵌入(D1 与 cube3d 形态一致)。
+### D1. UI 架构:全自渲染(2026-10-05 三方案对比后定稿)
+
+前置事实(libyue 本地源码核实):
+- 窗口能力**有**:`Window::new_with_options(frame=false, transparent=true, no_activate=true)`、`set_always_on_top`、`set_has_shadow`(view.mbt:40-76);
+- 窗口能力**无**:点击穿透/输入区域设置(grep 全库无 set_shape/input_shape 类 API);
+- `native_handle_view` **Windows 返回 0**(shim/yue_mbt.cpp:581 注释:"Windows 的 NativeView 为内部 ViewImpl*,HWND 需经内部类转换,平台铺开时补")——3D 嵌入在 Windows 连句柄都拿不到,属 libyue 侧待补项(与 three-native 的 from_win32 是两件独立的事)。
+
+三方案对比(判据 = 跨平台 + 实现游戏全部功能):
+
+| 方案 | 跨平台 | 功能覆盖 | 结论 |
+|---|---|---|---|
+| ① 原生控件叠 3D(同窗口) | ✗ X11 子窗口层级/Win32 子 HWND/macOS 视图分层,三平台 airspace 问题,libyue 无 API | HUD overlay 全废 | **不做**(不跨平台,按约定直接排除) |
+| ② 多窗口(透明覆盖窗) | 半跨:透明/frameless/置顶 libyue 三平台都有,但**点击穿透三平台都没暴露** | 致命伤:无点击穿透 → HUD 覆盖窗吃掉全部鼠标事件,FPS 相对视角(指针捕获)与 HUD 按钮点击**二选一**;焦点在两窗口间跳动,键盘(WASD)跟着焦点走;窗口移动/缩放时覆盖窗同步滞后;X11 无合成器时透明失效 | **否决**。补齐需给 yue C++ 加三套各自平台的 input-shape(XShapeInput/WS_EX_TRANSPARENT+LAYERED/ignoresMouseEvents),维护面大且体验脆 |
+| ③ **全自渲染(单窗口单 surface)** | ✓ 渲染 100% 走 wgpu,平台相关只剩 surface 创建(3D 本来就必须做);无任何叠加/穿透/焦点问题 | HUD/车库/大厅/结算全在同一 surface 上画:准星 NDC 投影数学原样搬(hud.js:54-61,注意 WebGPU z∈[0,1] 与 Y 翻转);特效与 HUD 同管线混合;唯一弱项=自绘文本框的系统 IME,而全游戏只有一处文本输入(玩家名,中文) → 用 libyue 原生**模态对话框**(独立窗口,非叠加,自带系统 IME,三平台等价)解决 | **采纳** |
+
+定稿架构:**libyue 只做窗口壳/事件循环/模态对话框/托盘(可选);游戏全部画面自渲染**。游戏画面仍走 cube3d 的嵌入形态(Container 占满窗口 → 句柄 → surface),只是窗口里不再摆任何游戏用原生控件。输入由 host Container 的鼠标/滚轮事件(input_diag 已验证)+窗口键盘事件承载,FPS 视角用绝对位移差分(网页版本就有 >300px 跳变丢弃与虚拟光标模式的等价逻辑 main.js:482-488,892-967),指针捕获 API 若需要后续作为 libyue 小增量。
+代价:A11 的 2D overlay 管线扩成"2D overlay + 基础自绘控件层"(按钮/列表/面板/文字排版/九宫格),车库/大厅从"libyue 重写"改为"自绘控件组装"——两处工作量互有消长,总账 +5~10 人日(见 §5)。
 
 ### D2. three-native 需补齐的管线清单(=本迁移的"引擎工程"部分)
 按依赖顺序:
@@ -144,7 +161,7 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 | A8 | Points 粒子 + Sprite 公告板 | 8–12 |
 | A9 | 透明排序 + 状态控制(depthWrite/Test/blending) | 3–5 |
 | A10 | 着色器注入点(天空穹/轮廓壳/草透明) | 5–8 |
-| A11 | 2D overlay 管线(正交+图元+文字图集) | 10–15 |
+| A11 | 2D overlay 管线 + 基础自绘控件层(正交+图元+文字图集+按钮/列表/面板/排版,支撑 D1 全自渲染) | 14–20 |
 | A12 | Raycaster | 3–5 |
 | A13 | 几何补齐(Extrude+Shape/Icosahedron/Ring/Circle) | 4–6 |
 | A14 | 统计/画质档/上下文销毁重建 | 3–5 |
@@ -161,7 +178,7 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 | B4 | models(装配/掩体/合批/碰撞表) | 10–15 |
 | B5 | terrain + vehicle + combat + pickups 表现层 | 10–14 |
 | B6 | 战斗 HUD(2D overlay 重写,四块 canvas 语义平移) | 12–18 |
-| B7 | 车库/大厅/结算(libyue 重写,534 行 CSS/DOM + 630 行 js) | 10–15 |
+| B7 | 车库/大厅/结算(自绘控件组装,534 行 CSS/DOM + 630 行 js;玩家名输入走原生模态框) | 8–12 |
 | | **小计** | **75–107** |
 
 ### C. 平台层
@@ -172,7 +189,7 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 | C2 | 音频(moon_rodio 集成,声像/lowpass/变调/循环/voice 上限) | 6–10 |
 | C3 | 资产加载与版本化(本地 fs) | 2–3 |
 | C4 | 存档(localStorage→JSON) | 1–2 |
-| C5 | WS 客户端 + net.js 协议(含插值缓冲) | 5–10 |
+| C5 | WS 客户端(官方 async/websocket 现成)+ net.js 协议(含插值缓冲) | 4–8 |
 | | **小计** | **19–33** |
 
 ### D. 联调与收尾
@@ -184,7 +201,7 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 | D3 | 打包发布(Windows/Linux 产物) | 3–5 |
 | | **小计** | **13–21** |
 
-**总计:190–290 人日(中位约 240,≈11 人月)。** 与 §0 的 185–265 略有出入以本表为准(表更细)。占比:A 引擎 ~43%、B 游戏 ~38%、C 平台 ~11%、D 收尾 ~8%。
+**总计:190–290 人日(中位约 240,≈11 人月)。** 注:A11 扩入自绘控件层 +4~5、B7 改自绘 −2~3、C5 用官方 ws −1~2,总账与首版基本持平。占比:A 引擎 ~45%、B 游戏 ~36%、C 平台 ~10%、D 收尾 ~8%。
 
 > 压缩空间的三个杠杆:① 先只做 Linux(A15 后置,−5–10);② 联机后置先出单机版(C5/D1 后置,−10–18);③ 2D overlay 管线做最小集(先矩形+文字,圆弧/罗盘降级) −3–5。全开可到 ~160–200 人日。反之,要 macOS 再 +10–15。
 
@@ -192,13 +209,13 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 
 ## 6. 分阶段路线图
 
-- **阶段0|验证与选型(1–2 周)**——每项都是小实验,失败即调整规划:
-  1. from_win32 surface 可行性(Windows 是硬门槛);
+- **阶段0|验证与选型(1–2 周)**——每项都是小实验,失败即调整规划。**Windows 专项(V1–V5/V6/V7 等)已拆成可执行清单 → [Windows验证清单.md](Windows验证清单.md),由 Windows 机逐项实证后回填,再据此更新本节:**
+  1. **Windows 3D 嵌入链路**:libyue shim 补 `native_handle_view` 返回 HWND(shim/yue_mbt.cpp:581 现返回 0)+ three-native `create_surface_win32`(wgpu-mbt 声明支持 D3D12)——Windows 版硬门槛,两件独立小事;
   2. mizchi/image 对 16 位灰度 PNG 的解码正确性(高程图 R*256+G 语义);
-  3. WS 客户端选型落地:soup vs async+自实现,连上现有 server.js 跑通 join/lobby;
+  3. **官方 async/websocket 连通实验**:连现有 server.js 跑通 create/join/lobby 消息往返;同时验证 `external_loop_integration` 嵌入 yue/GTK 主循环(或独立线程+post_task 回投);Windows 上验证 async IOCP 实况(特性清单勾了、README 写仅 Linux/macOS,矛盾待证);
   4. moon_rodio 播放 engine-loop.wav 变调循环 + ogg/mp3 一致性;
   5. AI 主线程分帧真机帧率(AI 15 敌 + 渲染同跑);
-  6. X11 子窗口上叠原生控件的最小反证实验(10 分钟,给 D1 定案存档);
+  6. X11 子窗口上叠原生控件的最小反证实验(10 分钟,给 D1 定案存档;结论已按"不可行"规划,实验仅留证据);
   7. 1.7MB JSON 运行时加载的启动耗时。
 - **阶段1|引擎底座(≈A1–A4,A6)**:纹理→GLB→材质分发→hemi/雾。里程碑:一张地图的地形+掩体+坦克在窗口里点亮(无阴影无特效)。
 - **阶段2|逻辑内核(≈B1–B2)**:四模块直译,golden-trace 逐帧对拍全绿。里程碑:`moon test` + 轨迹零偏差。
@@ -215,8 +232,9 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 
 | # | 风险 | 影响 | 缓解 |
 |---|---|---|---|
-| R1 | wgpu surface 仅 X11 趟通,from_win32 未实现 | Windows 版整个不可用 | 阶段0#1 立即验证;wgpu-mbt 本身声明 D3D12 支持,缺口只在 surface 创建层 |
-| R2 | X11 子窗口层级 → 原生控件无法叠 3D 上 | HUD 架构 | 已按 GPU 自绘规划(D1),不依赖该能力 |
+| R1 | Windows 3D 嵌入两处缺口:libyue `native_handle_view` 返回 0 + three-native 无 from_hwnd | Windows 版整个不可用 | **已核实为"未铺开"而非"不可行"(2026-10-05 源码验证):** ① wgpu_mbt 0.16.2 **已封装** `Instance::create_surface_windows_hwnd` 与 `surface_descriptor_windows_hwnd_new`(还备有 macOS/Wayland/XCB 路径),three-native 只需加个调用它的构造器;② Windows 上 Container 是无窗口视图(nativeui/win/container_win.h:17),正确路径是取**顶层窗口 HWND**(`WindowImpl : public Win32Window`,window_win.h:23),shim 补一个取句柄分支即可(机械改动);③ libyue GUI 本体 Windows ✅(三平台 CI)。**实证任务已拆成 10 项 checklist 交 Windows 机执行 → [Windows验证清单.md](Windows验证清单.md)**,结果回填后更新本规划 |
+| R1b | async 在 Windows 的实况不明(IOCP 特性勾选 vs README"仅 Linux/macOS") | 联机功能 Windows 缺席 | 阶段0#3 实测;不行则 WS 走独立线程或 soup 备选;单机模式不受影响 |
+| R2 | 原生控件无法叠 3D 上(三平台 airspace) | HUD 架构 | 已按**全自渲染**规划(D1 三方案对比定稿),不再依赖任何叠加能力;多窗口方案因 libyue 无点击穿透 API 否决 |
 | R3 | three-native 早期(0.1.0)API 漂移/bug | 返工 | 以 fork/锁版本 + 回馈上游;游戏本身是很好的回归用例 |
 | R4 | 阴影/粒子等新管线的 wgpu 性能未证 | 帧率 | 游戏自带三档画质+合批+按需阴影等全部降级手段,语义平移即可 |
 | R5 | AI 线程模型未定 | 帧率/延迟 | 主线程分帧是已验证降级路径,不阻塞 |
@@ -236,4 +254,6 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 - 地图/资产格式:§四(map.json 字段;PNG16 两条解码路径 assets.js:37-60 与 server.js:91-117;GLB 129 个 88MB;音频清单)。
 - 游戏循环与帧率技巧:§七(固定步长 60Hz;9 条帧率技巧)。
 - three-native 覆盖矩阵:three-native/docs/coverage-matrix.md;嵌入示例 examples/cube3d、examples/input_diag。
+- libyue 窗口能力核实(2026-10-05,本地源码):`Window::new_with_options(frame/transparent/no_activate)`、`set_always_on_top`(yue/view.mbt:40-76);无点击穿透/输入区域 API(全库 grep);`native_handle_view` Windows 返回 0(shim/yue_mbt.cpp:581)。
+- moonbitlang/async 0.22.4 核实(2026-10-05,mooncakes 文档):`websocket` 包 = RFC 6455 client/server,`Conn::connect/send_text/recv(Message Text|Binary)/ping/send_close`,native 目标;`external_loop_integration` 包 = `set_external_event_loop` 官方外部事件循环嵌入;Windows IOCP 特性勾选与 README 表述矛盾待实测。
 - mooncakes 检索:2026-10-05 站内 API(/api-new/v0/search?kw=)实查,选型见 §2。
