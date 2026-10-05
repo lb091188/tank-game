@@ -39,10 +39,12 @@ SF.Main = (() => {
   let artyH = ARTY_H[2], artyHIdx = 2;
   let sniperFov = SF.CFG.camera.sniperFovMax;   // 当前狙镜视场(滚轮镜内变焦)
   let cruise = 0;              // 巡航控制: 1 前进 / -1 倒车 / 0 关
-  let autoTarget = null;       // 自动瞄准目标(WoT E 键)
+  let autoTarget = null;       // 自动瞄准目标(WoT E 键 / 右键短按, 共用一套锁定)
+  let aimLockBreakT = 0, aimLockLostT = 0;   // 锁定维持计时: 甩镜超角累计 / 目标失联累计(见 updateAutoAimLock)
+  let rmbDownT = -1e9;         // 右键按下时刻: 短按(<CFG.aimLock.rmbMs)=切锁定, 长按=自由视角(原语义)
   const keys = {};
   let acc = 0, lastT = 0, running = false, lastRaf = 0, timerId = null;
-  let selTank = 'sherman', selMap = 'l01';   // 出击前选择
+  // 出击前选择(selTank/selMap)归 SF.Garage 持有(client/js/garage.js), 本文件只经 SF.Garage.selTank/selMap 读写
   // PVE 修改器(仅单机): localStorage 持久化, 联机战斗一律不读取
   let PVE = (() => {
     try { return { ...SF.CFG.pve, ...JSON.parse(localStorage.getItem('sf_pve') || '{}') }; }
@@ -929,10 +931,30 @@ SF.Main = (() => {
         }
         mouseDown = true;
       }
-      if (e.button === 2) freeLook = true;
+      if (e.button === 2) { rmbDownT = performance.now(); freeLook = true; }
     });
-    document.addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; if (e.button === 2) freeLook = false; });
+    document.addEventListener('mouseup', (e) => {
+      if (e.button === 0) mouseDown = false;
+      if (e.button === 2) {
+        freeLook = false;
+        // 右键双语义(与既有自由视角兼容): 短按=切换自动瞄准锁定(与 E 键同一套 toggleAutoAim),
+        // 长按=自由视角(炮塔相对角锁死, 既有行为不变)。短暂 freeLook(<200ms)对炮塔姿态影响可忽略
+        if (world && world.player && !gameOver && performance.now() - rmbDownT < SF.CFG.aimLock.rmbMs) toggleAutoAim();
+      }
+    });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
+    // 手机默认非全屏, 首次触摸申请一次全屏: 全屏 API 必须挂在真实用户手势上, 加载期自动申请必被拒。
+    // _fsTried 记录本局已申请过 —— 之后(含用户手动退出全屏)不再重复骚扰; 已在全屏/桌面无触摸时不触发;
+    // iOS Safari 不支持网页全屏(API 缺失), 静默跳过靠既有横屏提示兜底
+    let _fsTried = false;
+    document.addEventListener('touchstart', () => {
+      if (_fsTried || document.fullscreenElement || document.webkitFullscreenElement) return;
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!req) return;
+      _fsTried = true;
+      try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+    }, { passive: true });
     // 滚轮(WoT 式连续变焦): 第三人称上滚拉近相机, 最近后开镜(从最广镜开始);
     // 镜内上滚继续放大 / 下滚降低倍率, 最广时下滚才退镜(上滚忽略防闪烁)
     document.addEventListener('wheel', (e) => {
@@ -1000,8 +1022,8 @@ SF.Main = (() => {
       if (e.code === 'AltLeft' || e.code === 'AltRight') { e.preventDefault(); altHeld = false; return; }
       const k = keyOf(e); if (k) keys[k] = false;
     }, true);
-    // 失焦清键, 防卡键
-    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; altHeld = false; });
+    // 失焦清键, 防卡键(右键在窗口外松开会收不到 mouseup → freeLook 一并清, 防炮塔锁死卡键)
+    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; altHeld = false; freeLook = false; });
     window.addEventListener('resize', () => {
       camera.aspect = innerWidth / innerHeight;
       camera.updateProjectionMatrix();
@@ -1011,24 +1033,100 @@ SF.Main = (() => {
 
   const IDLE_INPUT = (t) => ({ throttle: 0, steer: 0, aimYaw: t.turretYaw, aimPitch: t.gunPitch, fire: false, holdTurret: true });
 
-  // 自动瞄准(WoT E): 锁定准星方向最近的可见敌人, 炮塔持续跟踪
+  // 自动瞄准(WoT E 键 / 右键短按): 锁定准星方向锥内最居中的已点亮敌人, 炮塔持续跟踪(含移动预判)
   function playerEnemies() {
     if (MP.mode === 'sp') return world.enemies.filter(e => e.alive);
     return [...MP.tanks.values()].filter(t => t.netId !== MP.myId && t.alive && t.team !== world.player.team);
   }
+  function dropAutoAim(msg, dur) {
+    autoTarget = null; aimLockBreakT = 0; aimLockLostT = 0;
+    if (msg) SF.HUD.showMsg(msg, dur);
+  }
   function toggleAutoAim() {
-    if (autoTarget) { autoTarget = null; SF.HUD.showMsg('自动瞄准解除', 1); return; }
+    if (autoTarget) { dropAutoAim('自动瞄准解除', 1); return; }
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
-      let best = null, bestAng = 16 * Math.PI / 180;   // WoT 式宽容锥角(容纳相机俯仰)
-      for (const e of playerEnemies()) {
-        if (!spotted.has(e)) continue;                 // 只能锁定已点亮目标(未点亮模型已隐藏)
-        const to = e.pos3.clone().sub(camera.position);
-      const ang = to.normalize().angleTo(dir);
-      if (ang < bestAng && SF.losClear(world, camera.position.x, camera.position.z, e.x, e.z)) { bestAng = ang; best = e; }
+    /* 拾取两级(用户实测: 旧"相机锥角+losClear(相机落点)"在敌车山脊探头时肉眼可见、方块标记
+       亮着却报"无目标" —— losClear 是弹道口径(+1.6m 余量)比视觉点亮严, 假阴性主源):
+       ① 主判定=与击穿指示同一条相机中心射线 raycast 敌车部位网格 —— 准星方块套着谁就锁谁,
+         所见即所得; 再以地形步进+掩体解析复验遮挡(挡在前面的是墙不是它)。
+       ② 兜底=准星近旁锥角(aimLock.coneDeg)内角距最小的已点亮目标 —— 准星贴着车缘没套住也能锁。
+       两级的可见门都是 spotted(游戏自己的点亮系统, 模型渲染的真相源), 不再叠 losClear。 */
+    const O = camera.position;
+    let pick = null;
+    const objs = [];
+    for (const e of playerEnemies()) { if (!e.alive || !spotted.has(e)) continue; objs.push(...e.parts.zones); }
+    _ray.set(O, dir); _ray.far = 1000;
+    const hits = _ray.intersectObjects(objs, true);
+    if (hits.length) {
+      const ho = hits[0].object, hitT = hits[0].distance;
+      for (const e of playerEnemies()) if (e.alive && e.parts.zones.includes(ho)) { pick = e; break; }
+      if (pick) {   // 遮挡复验: 地形步进 + 掩体解析(与 findRayHit 同口径)
+        const coverT = world.covers.blocked(O.x, O.z, O.y, dir.x, dir.z, hitT, dir.y);
+        let blocked = coverT >= 0 && coverT < hitT;
+        if (!blocked) for (let t = 2; t < hitT; t += 2) {
+          if (O.y + dir.y * t <= world.terrain.heightAt(O.x + dir.x * t, O.z + dir.z * t)) { blocked = true; break; }
+        }
+        if (blocked) pick = null;
+      }
     }
-    if (best) { autoTarget = best; SF.HUD.showMsg('自动瞄准：' + best.spec.name, 1.5); }
-    else SF.HUD.showMsg('准星方向无目标', 1.2);
+    if (!pick) {   // ② 兜底锥角(spotted 即可见, 不再叠 losClear)
+      let bestAng = SF.CFG.aimLock.coneDeg * Math.PI / 180;
+      for (const e of playerEnemies()) {
+        if (!e.alive || !spotted.has(e)) continue;
+        const ang = e.pos3.clone().sub(O).normalize().angleTo(dir);
+        if (ang < bestAng) { bestAng = ang; pick = e; }
+      }
+    }
+    if (pick) { autoTarget = pick; aimLockBreakT = 0; aimLockLostT = 0; SF.HUD.showMsg('自动瞄准：' + pick.spec.name, 1.5); }
+    else SF.HUD.showMsg('准星处无可锁定目标', 1.2);
+  }
+
+  // 锁定维持(每渲染帧复验, 单机/主机/客户端同一套): 三条解除链
+  //   ①目标死亡 → 立即解除(原 step 里的死亡检查挪到这里, 客户端的目标死亡走 kill 中继同样覆盖)
+  //   ②甩镜解除: 相机前向偏离目标超 breakDeg 持续 breakS 才解除 —— 大幅手动移视角(如掉头看后方)即掉锁,
+  //     阈值≈第三人称水平半视场, 容忍小幅调整; 右键自由视角期间相机与炮塔本就解耦, 停止累计(松开后再验)
+  //   ③失联解除: 目标脱离 spotted 点亮集持续 lostS(WoT 2~3s)才解除 —— spotted 集自带 5~10s 残留,
+  //     短暂入掩不掉锁; 自己阵亡期间不复验不弹提示(锁保留到重生, 与既有 E 键行为一致)
+  const _lockFwd = new THREE.Vector3(), _lockTo = new THREE.Vector3();
+  function updateAutoAimLock(dt) {
+    if (!autoTarget || !world) { aimLockBreakT = 0; aimLockLostT = 0; return; }
+    if (!autoTarget.alive) { dropAutoAim('目标已击毁 · 自动瞄准解除', 1.5); return; }
+    const p = world.player;
+    if (!p || !p.alive) return;
+    if (spotted.has(autoTarget)) aimLockLostT = 0; else aimLockLostT += dt;
+    if (aimLockLostT >= SF.CFG.aimLock.lostS) { dropAutoAim('目标丢失 · 自动瞄准解除', 1.2); return; }
+    if (!freeLook) {
+      camera.getWorldDirection(_lockFwd);
+      _lockTo.set(autoTarget.x, autoTarget.y + 1.5, autoTarget.z).sub(camera.position).normalize();
+      if (_lockFwd.angleTo(_lockTo) > SF.CFG.aimLock.breakDeg * Math.PI / 180) aimLockBreakT += dt;
+      else aimLockBreakT = 0;
+      if (aimLockBreakT >= SF.CFG.aimLock.breakS) { dropAutoAim('视角已离开目标 · 自动瞄准解除', 1.2); return; }
+    } else aimLockBreakT = 0;
+  }
+
+  // 全实体速度差分: velX/velZ 此前只在出生时初始化为 0(vehicle.js:30), 全项目仅本机玩家有精确回写
+  // (step 中按位移差分), 于是 sp/coop 敌 AI 与联机远端车的速度恒为 0 —— AI 对敌预瞄与玩家锁定预判
+  // 读到的都是 0, 预判静默失效。统一在渲染帧按"本帧位移/dt"差分 + 指数平滑(τ≈0.1s, 抗帧率/快照毛刺),
+  // 覆盖 单机 AI / 主机远端玩家与 coop AI / 客户端幽灵(含本机玩家幽灵, client 模式本机不跑物理);
+  // 非 client 模式跳过本机玩家 —— 不覆盖 step 里的精确回写, AI 读玩家速度的既有精度不受扰动
+  const velTrack = new WeakMap();   // tank → 上一帧位置(重生/传送跳变检测用)
+  function estimateTankVel(dt) {
+    if (!world || dt < 1e-4) return;
+    const list = [...world.tanks];
+    for (const t of MP.tanks.values()) if (!list.includes(t)) list.push(t);
+    for (const t of world.enemies) if (!list.includes(t)) list.push(t);
+    for (const t of list) {
+      if (t === world.player && MP.mode !== 'client') continue;
+      const prev = velTrack.get(t);
+      velTrack.set(t, { x: t.x, z: t.z });
+      if (!prev) continue;                                        // 首见帧只记位置, 下帧才可差分
+      const dx = t.x - prev.x, dz = t.z - prev.z;
+      if (dx * dx + dz * dz > 100) { t.velX = 0; t.velZ = 0; continue; }   // 单帧位移>10m=传送/重生: 速度清零防伪预判
+      const k = 1 - Math.exp(-10 * dt);
+      t.velX += (dx / dt - t.velX) * k;
+      t.velZ += (dz / dt - t.velZ) * k;
+    }
   }
 
   // 敌军等级匹配: 按参战玩家最高等级, 同类别选邻近等级敌车(开 VIII 级不再割草 III 级)
@@ -1099,8 +1197,15 @@ SF.Main = (() => {
       fire: mouseDown
     };
     // 有效瞄准目标: 自动瞄准锁定目标 > 相机准星点
-    const tg = (autoTarget && autoTarget.alive) ? { x: autoTarget.x, y: autoTarget.y + 1.1, z: autoTarget.z }
-      : (aimPoint ? aimPoint.pos : null);
+    // 锁定目标带移动预判(WoT 式提前量): fl=距离/弹速(与 AI 预瞄 ai.js、下方 SPG 解算同款口径),
+    // 提前量=目标横向速度×飞行时间; 目标速度来自全实体位移差分(estimateTankVel), 客户端幽灵同样成立
+    let tg = null;
+    if (autoTarget && autoTarget.alive) {
+      const fl = Math.hypot(autoTarget.x - p.x, autoTarget.z - p.z) / p.spec.gun.speed;
+      tg = { x: autoTarget.x + (autoTarget.velX || 0) * fl * SF.CFG.aimLock.leadK,
+             y: autoTarget.y + 1.1,
+             z: autoTarget.z + (autoTarget.velZ || 0) * fl * SF.CFG.aimLock.leadK };
+    } else tg = aimPoint ? aimPoint.pos : null;
     if (tg) {
       const dx = tg.x - p.x, dz = tg.z - p.z, d = Math.max(Math.hypot(dx, dz), 1);
       input.aimYaw = Math.atan2(dx, dz);
@@ -1399,19 +1504,22 @@ SF.Main = (() => {
     if (detected && !wasDetected) SF.Audio.play('beep', null, { gain: 1.1 });
     wasDetected = detected;
 
-    if (autoTarget && !autoTarget.alive) { autoTarget = null; SF.HUD.showMsg('目标已击毁 · 自动瞄准解除', 1.5); }
     if (loseT > 0) { loseT -= dt; if (loseT <= 0 && !gameOver) { gameOver = true; SF.HUD.endGame(false, stats); } }
   }
 
   function frame(dtReal) {
     if (MP.mode === 'client') clientFrame(dtReal);
     updateCamera(dtReal);
+    estimateTankVel(dtReal);      // 全实体速度差分(锁定预判/AI 对敌预瞄的数据源, 见函数注释)
+    updateAutoAimLock(dtReal);    // 锁定维持复验: 死亡/甩镜/失联三条解除链(单机与联机同一套)
     computeAim();
     fx.update(dtReal);
     SF.Models.setFoliageFocus(world.player.x, world.player.z);   // 近距草本透明跟随玩家
     SF.Audio.setEngine(Math.abs(world.player.speed) / world.player.spec.maxSpeed, keys.KeyW || keys.KeyS ? 1 : 0, dtReal);
     SF.HUD.update(dtReal, world, SF.Game.uiState);
-    if (AIW.on) {
+    // 阶段5 10Hz AI 快照链退役(联机段): dm 无 AI、coop AI 已上服务器(srv-sim), 联机模式不再需要
+    // AI 快照副本 —— 仅单机 sp 保留 AI worker 链(设计 §3.1/§3.3 的目标态; sp 链路零改动)
+    if (AIW.on && MP.mode === 'sp') {
       AIW.snapT -= dtReal;
       if (AIW.snapT <= 0) { AIW.snapT = 0.1; sendAISnap(); }
       if (gameOver && !AIW.overSent) { AIW.overSent = true; AIW.worker.postMessage({ t: 'over' }); }
@@ -1779,8 +1887,9 @@ SF.Main = (() => {
   /* ---------- 战斗生命周期: 开战 / 退出回车库 / 再战 ---------- */
   let battleBound = false;   // 输入与事件总线只绑一次(重开战斗不重复绑定)
   function resetBattleVars() {
-    gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairMsgText = ''; repairMsgOn = false; repairDone = false; spottedTimer = 0;
+    gameOver = false; loseT = -1; waveIdx = 0; repairT = 0; repairMsgText = ''; repairMsgOn = false; repairDone = false; spottedTimer = 0; dmHostSeesMe = false;
     deathMark = null; autoTarget = null; sniper = false; freeLook = false; mouseDown = false; cruise = 0; shakeT = 0;
+    aimLockBreakT = 0; aimLockLostT = 0; rmbDownT = -1e9;   // 锁定维持计时与右键按下时刻一并归位
     SF.Models.setBushSeeThrough(false);   // models 侧的开镜草丛状态不随战斗变量重置, 显式归位
     SF.Models.setFoliageFocus(null, null);   // 近距草透明焦点也归位(车库预览无玩家)
     AIW.overSent = false; AIW.byId.clear();

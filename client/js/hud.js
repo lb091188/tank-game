@@ -301,6 +301,13 @@ SF.HUD = (() => {
     drawDirWidget(player, uiState);
     // 鹰眼(火炮俯视)无中心十字: 落点即准星(绿色散布椭圆), WoT 式
     $('crosshair').style.display = (uiState.sniper && player.spec.cls === 'SPG') ? 'none' : 'block';
+    // 自动瞄准锁定指示(轻量): 准星下方一行小字(目标名牌另有 🎯 边框高亮; 目标失联隐匿时名牌
+    // 不可见, 此处仍提示锁未掉 —— 提前量持续瞄向最后位置)。鹰眼俯视同样显示
+    const lt = $('lockTag');
+    if (uiState.autoTarget && uiState.autoTarget.alive) {
+      setDisp(lt, 'block');
+      setOp(lt, uiState.spotted.has(uiState.autoTarget) ? 0.95 : 0.45);   // 失联滞留期减淡: 目标已不可见
+    } else setDisp(lt, 'none');
 
     // 伤害数字上浮
     for (const d of dmgFloats) {
