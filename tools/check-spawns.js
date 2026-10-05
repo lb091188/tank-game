@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // check-spawns.js — 死斗出生池与南北公平性确定性校验(零依赖)
-// 三段:
+// 四段:
 //   ① 地形门禁: 五图 covers/waves 齐备、单机出生点平坦、边界山体不可攀(等价 map-review 工作流 SCAN)
 //   ② 出生池校验: 复刻 main.js 的螺旋找平地逻辑, 断言五图 8 池点的 ±11m 抖动圆盘全安全
 //      (⚠ 与 client/js/main.js 的 _ptOk/_diskOk/螺旋参数保持同步修改)
-//   ③ 通视对称探针: 各半场局部高点对对侧池环的地形通视计数, l01/l03 断言 |北→南 − 南→北| ≤ 2
+//   ③ 通视对称探针: 各半场局部高点对侧池环的地形通视计数, l01/l03/l06 断言 |北→南 − 南→北| ≤ 2
+//   ④ player.spawns 多点出生池校验(每图 ≥8 组, 新格式向后兼容旧单点):
+//      逐点复刻三道关(±11m 地形圆盘+凹槽 / 硬掩体净空) + 两两间距 + 左中右分布 + 模拟 60 局
+//      固定种子随机选取的全覆盖多样性(每组至少被选到一次); 无 spawns 字段的图跳过(旧图合法)
 // 用法: node tools/check-spawns.js   (退出码非 0 = 有 FAIL)
 'use strict';
 const fs = require('fs');
@@ -106,6 +109,102 @@ function findSpawnSpot(T, x, z) {      // 螺旋找平地(确定性): 半径 12�
   return null;
 }
 
+/* ---------- ④ player.spawns 校验辅助 ---------- */
+// mulberry32(与 client/js/main.js 联机洗牌 / tools/ai-bench.js 同款): 固定种子 → 多样性模拟可复现
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// coverCol: models.js buildCover 碰撞列的纯数据复刻(与 tools/ai-bench.js 同源, map.json 掩体表改动后自动跟随)
+function coverCol(c) {
+  const s = c.scale || 1;
+  const OBB = (hx, hz) => ({ shape: 'box', hx, hz, yaw: c.yaw || 0, r: Math.hypot(hx, hz) });
+  let col = { type: c.type, blocksMove: true, blocksShells: true, x: c.x, z: c.z, r: 2, h: 3, shape: 'circle', yaw: c.yaw || 0 };
+  switch (c.type) {
+    case 'house': Object.assign(col, OBB(3.5 * s, 2.75 * s), { h: 3.4 + 1.8 * s }); break;
+    case 'barn': Object.assign(col, OBB(5.5 * s, 3.75 * s), { h: 5 + 2.2 * s }); break;
+    case 'ruin': Object.assign(col, OBB(3.2 * s, 2.4 * s), { h: 4.5 }); break;
+    case 'wall': Object.assign(col, OBB(3.5 * s, 0.35 * s), { h: 3.1 }); break;
+    case 'hedge': col.blocksMove = col.blocksShells = false; col.blocksSpot = true;
+      Object.assign(col, OBB(3.0 * s, 1.1 * s), { h: 3.2 }); break;
+    case 'haystack': col.blocksMove = col.blocksShells = false; col.blocksSpot = true;
+      col.r = 2.6 * s; col.h = 3.6 * s; break;
+    case 'tree': col.blocksShells = false; col.r = 0.9; col.h = 1.6; break;
+    case 'trap': col.blocksShells = false; col.r = 1.2; col.h = 1.2; break;
+    case 'wreck': col.blocksShells = false; col.blocksSpot = true;
+      Object.assign(col, OBB(1.75, 3.1), { h: 2.4 }); break;
+    case 'bush': col.blocksMove = col.blocksShells = false; col.blocksSpot = true;
+      col.r = 1.6 * s; col.h = 1.9; break;
+    case 'rock': col.r = 2.5 * s; col.h = 3.3 * s; break;
+  }
+  return col;
+}
+// CoverField.collide 复刻(models.js 圆请求方 vs 圆/OBB 推出) —— 出生点只认"推离前零位移"
+function collideCover(list, x, z, radius) {
+  let nx = x, nz = z;
+  for (const c of list) {
+    if (!c.blocksMove) continue;
+    if (c.shape === 'box') {
+      const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+      const px = nx - c.x, pz = nz - c.z;
+      let lx = cs * px - sn * pz, lz = sn * px + cs * pz;
+      const qx = Math.max(-c.hx, Math.min(c.hx, lx)), qz = Math.max(-c.hz, Math.min(c.hz, lz));
+      let ddx = lx - qx, ddz = lz - qz;
+      const d2 = ddx * ddx + ddz * ddz;
+      if (d2 > radius * radius) continue;
+      if (d2 < 1e-6) {
+        if (c.hx - Math.abs(lx) < c.hz - Math.abs(lz)) lx = (lx >= 0 ? c.hx + radius : -c.hx - radius);
+        else lz = (lz >= 0 ? c.hz + radius : -c.hz - radius);
+      } else {
+        const d = Math.sqrt(d2);
+        lx = qx + ddx / d * radius; lz = qz + ddz / d * radius;
+      }
+      nx = c.x + cs * lx + sn * lz; nz = c.z - sn * lx + cs * lz;
+    } else {
+      const dx = nx - c.x, dz = nz - c.z, d = Math.hypot(dx, dz), min = c.r + radius;
+      if (d < min && d > 0.001) { nx = c.x + dx / d * min; nz = c.z + dz / d * min; }
+    }
+  }
+  return [nx, nz];
+}
+// 单图 spawns 校验: 返回 FAIL 行数(0=全过), 过程打日志
+function checkSpawnsField(T, cols, J, dir) {
+  const sps = J.player && J.player.spawns;
+  if (!sps) { console.log('  spawns: 无字段(旧格式) — 跳过, 回退 player.spawn 单点'); return 0; }
+  let bad = 0;
+  const fail = (msg) => { bad++; console.log(`  spawns ${msg} *** FAIL ***`); };
+  if (!Array.isArray(sps) || sps.length < 8) { fail(`数量 ${Array.isArray(sps) ? sps.length : typeof sps} < 8`); return bad; }
+  for (let i = 0; i < sps.length; i++) {
+    const p = sps[i];
+    if (!Array.isArray(p) || p.length !== 3 || p.some(v => typeof v !== 'number' || !isFinite(v))) { fail(`点${i} 坐标非法: ${JSON.stringify(p)}`); continue; }
+    const [x, z] = p;
+    if (Math.abs(x) > T.half - 20 || Math.abs(z) > T.half - 20) { fail(`点${i} (${x},${z}) 越出边界留边(±${T.half - 20})`); continue; }
+    if (!diskOk(T, x, z)) fail(`点${i} (${x},${z}) ±11m 地形圆盘不过(梯度/凹槽)`);
+    const [cx, cz] = collideCover(cols, x, z, 5);
+    if (cx !== x || cz !== z) fail(`点${i} (${x},${z}) 距硬掩体 <5m(会被推离到 ${cx.toFixed(1)},${cz.toFixed(1)})`);
+  }
+  let md = 1e18;
+  for (let i = 0; i < sps.length; i++) for (let j = i + 1; j < sps.length; j++)
+    md = Math.min(md, Math.hypot(sps[i][0] - sps[j][0], sps[i][1] - sps[j][1]));
+  if (md < 50) fail(`两两最小间距 ${md.toFixed(1)}m < 50m(车体重叠风险)`);
+  const minL = Math.min(...sps.map(p => p[0])), maxR = Math.max(...sps.map(p => p[0]));
+  const hasMid = sps.some(p => Math.abs(p[0]) <= 60);
+  if (!(minL <= -200 && maxR >= 200 && hasMid)) fail(`左中右分布不足: minX=${minL} maxX=${maxR} 中位=${hasMid}`);
+  // 多样性: 固定种子模拟 60 局单机随机选点, 每组至少被选到一次(确定性可复现, 不掷真随机)
+  const rng = mulberry32(20261005), seen = new Set();
+  for (let k = 0; k < 60; k++) seen.add((rng() * sps.length) | 0);
+  const missing = [];
+  for (let i = 0; i < sps.length; i++) if (!seen.has(i)) missing.push(i);
+  if (missing.length) fail(`60 局模拟有 ${missing.length} 组从未被选中: [${missing.join(',')}]`);
+  console.log(`  spawns: ${sps.length} 组 · 最小间距 ${md.toFixed(0)}m · minX=${minL.toFixed(0)} maxX=${maxR.toFixed(0)} · 60局覆盖 ${seen.size}/${sps.length} ${bad ? '*** FAIL ***' : 'OK'}`);
+  return bad;
+}
+
 /* ---------- 通视对称探针: 半场局部高点 → 对侧池环 ---------- */
 function poolRing(T) {                 // 死斗出生池 8 点(过螺旋校验后的最终位置)
   const pts = [];
@@ -180,6 +279,9 @@ for (const dir of MAPS) {
   console.log(`  通视: 北高点${north.length}处→南池 ${N} 对 [${nDet.join(' | ')}]`);
   console.log(`        南高点${south.length}处→北池 ${S} 对 [${sDet.join(' | ')}]`);
   console.log(`        |N-S|=${diff}${lim !== undefined ? ` (限≤${lim})` : ' (仅报告)'} ${losOk ? 'OK' : '*** FAIL ***'}`);
+
+  // ④ player.spawns 多点出生池(新格式, 无字段跳过)
+  bad += checkSpawnsField(T, J.covers.map(coverCol), J, dir);
 }
 console.log(bad ? `\n*** ${bad} 项 FAIL ***` : '\n全部 OK');
 process.exit(bad ? 1 : 0);

@@ -133,6 +133,7 @@ SF.Lobby = (() => {
     $('lobbyScreen').style.display = 'none';
     document.getElementById('titleScreen').style.display = 'flex';
     $('roomPanel').style.display = 'block';
+    const sp = $('specPanel'); if (sp) sp.style.display = 'none';   // 参数面板与房间面板同占车库右栏, 进房让位
     $('btnStart').style.display = 'none';
     $('mpDock').style.display = 'flex';
     const b = $('btnMp'); if (b) b.style.display = 'none';   // 在房不再进小大厅
@@ -140,6 +141,7 @@ SF.Lobby = (() => {
   }
   function exitGarageUI() {
     $('roomPanel').style.display = 'none';
+    const sp = $('specPanel'); if (sp) sp.style.display = '';       // 离房恢复参数面板(CSS 默认显示)
     $('btnStart').style.display = '';
     $('mpDock').style.display = 'none';
     const b = $('btnMp'); if (b) b.style.display = '';       // 恢复 CSS .on 控制
@@ -232,7 +234,9 @@ SF.Lobby = (() => {
       $('lobbyScreen').style.display = 'none';
       $('roomPanel').style.display = 'none';
       $('mpDock').style.display = 'none';
-      SF_StartMP(isHost ? 'host' : 'client', { you: myId, players: m.players, map: m.map, mode: m.mode });
+      // seed: 服务器开战广播的每局随机数(server.js:379), 透传给战斗端做出生池洗牌(全房同种子各端推导一致)
+      // srvSim(阶段3): dm 房服务器权威跑模拟, 房主也走 client 幽灵路径(host 代码保留, coop 不带此标记仍走中继)
+      SF_StartMP(m.srvSim ? 'client' : (isHost ? 'host' : 'client'), { you: myId, players: m.players, map: m.map, mode: m.mode, seed: m.seed, srvSim: !!m.srvSim });
     });
     // 断线释放连接态: 下次操作自动重连(昵称随之释放/重新占用)
     SF.Net.on('disconnect', () => {

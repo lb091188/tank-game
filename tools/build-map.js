@@ -656,7 +656,16 @@ const MAPS = {
     briefing: '穿越树篱田野与干河床，肃清村庄巡逻队，随后突破北坡敌军阵地。全歼敌军即胜利。',
     terrain: terrainL01, covers: coversL01,
     lighting: { sunDir: [0.45, 0.75, 0.35], sunColor: [1.0, 0.95, 0.85], sunIntensity: 1.15, ambient: 0.55, ambientColor: [0.6, 0.7, 0.85], fogColor: [0.78, 0.83, 0.9], fogDensity: 0.0013, skyTop: [0.42, 0.6, 0.85], skyBottom: [0.87, 0.91, 0.95] },
-    player: { spawn: [0, 335, Math.PI] },
+    // 多点出生池(设计坐标, 输出 ×S 成世界坐标): 每图 12 组, 布点过三道关(±11m 地形圆盘/无凹槽/硬掩体净空)
+    // 且两两 ≥60m 左中右分布 —— 校验见 tools/check-spawns.js 第④段; 手改 map.json 的 player.spawns 亦可
+    player: {
+      spawn: [0, 335, Math.PI],
+      spawns: [
+        [-240, 244, Math.PI], [240, 244, Math.PI], [0, 192, Math.PI], [-124, 196, Math.PI],
+        [100, 300, Math.PI], [-60, 300, Math.PI], [-160, 300, Math.PI], [20, 276, Math.PI],
+        [0, 328, Math.PI], [-288, 348, Math.PI], [288, 348, Math.PI], [188, 348, Math.PI]
+      ]
+    },
     waves: [
       { name: '村庄巡逻队', enemies: [
         { type: 'pz4', pos: [-28, -12], yaw: 0, personality: 'flanker', patrol: [[-28, -12], [32, 6], [-24, 38], [60, -50]] },
@@ -675,7 +684,14 @@ const MAPS = {
     briefing: '逐街推进，肃清街区敌军，最终攻克北广场核心阵地。残垣断壁是掩体也是坟场。',
     terrain: terrainL02, covers: coversL02,
     lighting: { sunDir: [-0.4, 0.6, 0.5], sunColor: [1.0, 0.88, 0.75], sunIntensity: 1.0, ambient: 0.5, ambientColor: [0.55, 0.58, 0.62], fogColor: [0.72, 0.72, 0.72], fogDensity: 0.0019, skyTop: [0.5, 0.52, 0.55], skyBottom: [0.8, 0.78, 0.74] },
-    player: { spawn: [0, 300, Math.PI] },
+    player: {
+      spawn: [0, 300, Math.PI],
+      spawns: [
+        [-248, 244, Math.PI], [244, 244, Math.PI], [-4, 192, Math.PI], [116, 240, Math.PI],
+        [-108, 300, Math.PI], [20, 300, Math.PI], [180, 300, Math.PI], [-188, 300, Math.PI],
+        [-8, 340, Math.PI], [288, 348, Math.PI], [-288, 348, Math.PI], [100, 348, Math.PI]
+      ]
+    },
     waves: [
       { name: '街区巡逻队', enemies: [
         { type: 't34', pos: [-90, 60], yaw: Math.PI, personality: 'flanker', patrol: [[-90, 60], [-51, 60], [-51, -2], [-90, -2]] },
@@ -692,7 +708,14 @@ const MAPS = {
     briefing: '沿峡谷推进，夺取山间小村，翻越鞍部攻克北峰阵地。制高点决定一切。',
     terrain: terrainL03, covers: coversL03,
     lighting: { sunDir: [0.5, 0.85, 0.2], sunColor: [1.0, 0.98, 0.92], sunIntensity: 1.25, ambient: 0.5, ambientColor: [0.62, 0.72, 0.9], fogColor: [0.8, 0.86, 0.94], fogDensity: 0.0010, skyTop: [0.32, 0.52, 0.85], skyBottom: [0.85, 0.9, 0.96] },
-    player: { spawn: [0, 322, Math.PI] },
+    player: {
+      spawn: [0, 322, Math.PI],
+      spawns: [
+        [-240, 244, Math.PI], [240, 244, Math.PI], [0, 192, Math.PI], [-124, 196, Math.PI],
+        [108, 300, Math.PI], [-60, 300, Math.PI], [-160, 300, Math.PI], [24, 280, Math.PI],
+        [0, 328, Math.PI], [-288, 348, Math.PI], [288, 348, Math.PI], [192, 348, Math.PI]
+      ]
+    },
     waves: [
       { name: '峡谷巡逻队', enemies: [
         { type: 'cromwell', pos: [-24, 80], yaw: Math.PI, personality: 'flanker', patrol: [[-24, 80], [30, 60], [-10, 130]] },
@@ -711,7 +734,14 @@ const MAPS = {
     briefing: '一望无际的麦田与反坦克壕。视野开阔、遮蔽稀少，先敌发现先敌开火；过壕只有两处缺口。',
     terrain: terrainL04, covers: coversL04,
     lighting: { sunDir: [-0.35, 0.7, 0.45], sunColor: [1.0, 0.93, 0.8], sunIntensity: 1.1, ambient: 0.55, ambientColor: [0.65, 0.68, 0.78], fogColor: [0.82, 0.85, 0.88], fogDensity: 0.0011, skyTop: [0.4, 0.56, 0.82], skyBottom: [0.88, 0.9, 0.9] },
-    player: { spawn: [0, 335, Math.PI] },
+    player: {
+      spawn: [0, 335, Math.PI],
+      spawns: [
+        [-240, 244, Math.PI], [240, 244, Math.PI], [0, 192, Math.PI], [-124, 196, Math.PI],
+        [100, 300, Math.PI], [-60, 300, Math.PI], [-160, 300, Math.PI], [20, 276, Math.PI],
+        [0, 328, Math.PI], [-288, 348, Math.PI], [288, 348, Math.PI], [188, 348, Math.PI]
+      ]
+    },
     waves: [
       { name: '远距炮击组', enemies: [
         // su100 上西山山顶平台(-147,-113, 翻转后守军本方制高点): 南向越过崖唇瞰制西缺口两端口/麦垄脊/东缺口(含掩体模型5/5通视, 避开崖缘巨石)
@@ -729,7 +759,14 @@ const MAPS = {
     briefing: '沙漠前线机场。两侧沙脊每段中点有一条登坡道（脊顶巨石是道口标记）直上脊顶观察位，其余断面陡崖上不去、滑下不摔死。跑道直通北端机堡阵地，快速穿插，别在跑道上停留。',
     terrain: terrainL05, covers: coversL05,
     lighting: { sunDir: [0.4, 0.8, -0.3], sunColor: [1.0, 0.95, 0.82], sunIntensity: 1.3, ambient: 0.5, ambientColor: [0.72, 0.66, 0.55], fogColor: [0.9, 0.84, 0.7], fogDensity: 0.0012, skyTop: [0.45, 0.58, 0.75], skyBottom: [0.92, 0.86, 0.72] },
-    player: { spawn: [0, 335, Math.PI] },
+    player: {
+      spawn: [0, 335, Math.PI],
+      spawns: [
+        [-240, 244, Math.PI], [240, 244, Math.PI], [0, 192, Math.PI], [-124, 196, Math.PI],
+        [100, 300, Math.PI], [-60, 300, Math.PI], [-160, 300, Math.PI], [20, 276, Math.PI],
+        [0, 328, Math.PI], [-288, 348, Math.PI], [288, 348, Math.PI], [188, 348, Math.PI]
+      ]
+    },
     waves: [
       { name: '快速反应组', enemies: [
         { type: 'cromwell', pos: [-80, -40], yaw: 2.9, personality: 'flanker', patrol: [[-80, -40], [-160, 60], [-90, 100]] },
@@ -750,7 +787,14 @@ const MAPS = {
     briefing: '冰封河谷，两军隔岸相望。冻结的河道是中央快攻走廊——冰面无掩体，冲得快也死得快；两岸谷壁高地各有唯一登顶路（坡道口朝向地图中心），夺下制高点就锁住冰面。',
     terrain: terrainL06, covers: coversL06,
     lighting: { sunDir: [0.4, 0.7, 0.3], sunColor: [1.0, 0.97, 0.9], sunIntensity: 1.05, ambient: 0.65, ambientColor: [0.72, 0.78, 0.9], fogColor: [0.85, 0.88, 0.93], fogDensity: 0.0014, skyTop: [0.5, 0.62, 0.8], skyBottom: [0.88, 0.9, 0.94] },
-    player: { spawn: [0, 335, Math.PI] },
+    player: {
+      spawn: [0, 335, Math.PI],
+      spawns: [
+        [-240, 244, Math.PI], [240, 244, Math.PI], [0, 192, Math.PI], [-124, 196, Math.PI],
+        [100, 300, Math.PI], [-60, 300, Math.PI], [-160, 300, Math.PI], [20, 276, Math.PI],
+        [0, 328, Math.PI], [-288, 348, Math.PI], [288, 348, Math.PI], [188, 348, Math.PI]
+      ]
+    },
     waves: [
       { name: '河岸前哨', enemies: [
         { type: 'pz4', pos: [-38, -20], yaw: 0, personality: 'flanker', patrol: [[-38, -20], [30, 40], [-20, 80]] },
@@ -809,11 +853,16 @@ for (const id in MAPS) {
   const add = add0;
   M.covers(add, rng);
   const mapJson = {
-    _说明: '手改本文件即可调整关卡(世界坐标米, x 东西 / z 南北, 玩家在南朝北推进)',
+    _说明: '手改本文件即可调整关卡(世界坐标米, x 东西 / z 南北, 玩家在南朝北推进); 出生点: player.spawn 单点兜底, player.spawns 多点池每局随机(≥8组, 缺省回退单点)',
     id: id + '-' + M.dir, name: M.name, briefing: M.briefing,
     terrain: { size: SIZE, resolution: RES, maxHeight: MAX_H },
     lighting: M.lighting, theme: M.theme,
-    player: { spawn: [M.player.spawn[0] * S, M.player.spawn[1] * S, M.player.spawn[2]] },
+    player: {
+      spawn: [M.player.spawn[0] * S, M.player.spawn[1] * S, M.player.spawn[2]],
+      // 多点出生池(设计坐标 ×S → 世界坐标): 与 spawn 同步输出, 重建图不丢字段;
+      // defs 未配 spawns 的图不产出此键(JSON.stringify 丢弃), 老读法回退 spawn 不受影响
+      ...(M.player.spawns ? { spawns: M.player.spawns.map(q => [q[0] * S, q[1] * S, q[2]]) } : {})
+    },
     waves: M.waves.map(w => ({ ...w, enemies: w.enemies.map(e => ({ ...e, pos: [e.pos[0] * S, e.pos[1] * S], patrol: (e.patrol || []).map(q => [q[0] * S, q[1] * S]) })) })),
     repairBetweenWaves: { hpRatio: 0.35, duration: 4, text: '维修组抢修中…' },
     covers,
