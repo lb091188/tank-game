@@ -1,0 +1,37 @@
+{
+ "seed": 20261006,
+ "judge": "glb",
+ "shells": 2080,
+ "hitRate": 11.49,
+ "penRate": 82.01,
+ "bounceRate": 1.67,
+ "nopenRate": 13.39,
+ "absorbRate": 0.42,
+ "gunRate": 2.51,
+ "zoneRate": {
+  "mantlet": 1.67,
+  "glacis": 4.18,
+  "hullSide": 40.17,
+  "lowerPlate": 7.53,
+  "tracks": 19.67,
+  "turretSide": 6.69,
+  "turretRoof": 2.93,
+  "hullRear": 7.53,
+  "turretRear": 1.67,
+  "gun": 2.51,
+  "turretFront": 3.77,
+  "hullTop": 1.67
+ },
+ "hitByDist": {
+  "60": 30.58,
+  "100": 10.58,
+  "175": 3.27,
+  "260": 1.54
+ },
+ "penByDist": {
+  "60": 83.02,
+  "100": 81.82,
+  "175": 76.47,
+  "260": 75
+ }
+}

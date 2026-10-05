@@ -20,12 +20,15 @@ SF.Sim = (() => {
       return a + (b - a) * tx + (c - a + (a - b - c + d) * tx) * tz;
     }
     // 地形通视: 两点(含眼高)之间地形是否遮挡; 4m 细步进 —— "车体头顶露一丝"也能点亮(6m 步进会跳过露头缝隙)
-    function losBlocked(ax, az, ay, bx, bz, by) {
+    // margin: 视线语义传 0.2(点亮用——1.6 的弹道余量会把只探出炮塔 0.3~0.5m 的目标判成被挡,
+    // '非要出一个车身才点亮'即此), 默认 1.6 不动兼容其他调用方; 步进 2m 兜山脊窄缝漏采
+    function losBlocked(ax, az, ay, bx, bz, by, margin) {
+      const m2 = margin === undefined ? 1.6 : margin;
       const d = Math.hypot(bx - ax, bz - az);
-      const steps = Math.max(2, Math.ceil(d / 4));
+      const steps = Math.max(2, Math.ceil(d / 2));
       for (let i = 1; i < steps; i++) {
         const t = i / steps;
-        const hTerrain = heightAt(ax + (bx - ax) * t, az + (bz - az) * t) + 1.6; // 地形 + 弹道高
+        const hTerrain = heightAt(ax + (bx - ax) * t, az + (bz - az) * t) + m2;
         const hLine = ay + (by - ay) * t;
         if (hTerrain > hLine) return true;
       }

@@ -31,7 +31,7 @@ function buildWorld(init) {
 
 // 快照行布局(主线程 sendAISnap 同一约定):
 // 敌车   [id, x, z, y, yaw, speed, velX, velZ, hp, disp, reloadT, turretYaw, lastFireT, alive, lastYawRate]
-// 玩家侧 [netId, x, z, y, yaw, speed, velX, velZ, hp, lastFireT, alive]
+// 玩家侧 [netId, x, z, y, yaw, speed, velX, velZ, hp, lastFireT, alive, cls]
 function applyEnemy(r, d, drift) {
   r.x = d[1]; r.z = d[2]; r.y = d[3]; r.yaw = d[4];
   r.speed = d[5]; r.velX = d[6]; r.velZ = d[7];
@@ -43,6 +43,7 @@ function applyPlayer(r, d, drift) {
   r.x = d[1]; r.z = d[2]; r.y = d[3]; r.yaw = d[4];
   r.speed = d[5]; r.velX = d[6]; r.velZ = d[7];
   r.hp = d[8]; r.lastFireT = d[9] + drift; r.alive = !!d[10];
+  r.cls = d[11] || 'MT';   // 穿深门用车类等效甲; 兜 'MT' 防旧快照(远端幽灵本有全量 spec, 此处只认快照列)
 }
 
 self.onmessage = (e) => {
