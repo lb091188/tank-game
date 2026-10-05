@@ -185,3 +185,24 @@ l06 (0,0)=57966 (143,143)=4946 (287,287)=57864 (100,50)=6892  — 8/8 MATCH
 3. **本机 moon 核心 API 漂移两处**(moonc 0.10.12):`StringView::exact_view` 移除(sysmonitor 示例挂)、`eprintln` 移除(async 包内 6 处);前者已标记 Linux 专属,后者运行时等价替换为 println。
 4. **moon run 包装器 0xC0000005**:cube3d_win 经 `moon run` 起会在渲染初始化前偶发崩溃(直跑 `_build` 下同位 exe 不复现);证据链一律直跑 exe + 文件日志,moon run 问题另案。
 
+### 补充实验(2026-10-05,并发架构三项)
+
+> 回答规划 D4(线程模型)与阶段0#3 遗留(external_loop_integration),全部 Windows 真机首验。
+
+**A. async external_loop_integration 嵌 yue 主循环 —— PASS(阶段0#3 遗留项关闭)**
+
+- 形态:async main 里建 yue 窗口 → `@async.set_external_event_loop(YueLoop)` → 主线程 `poll()` = `MsgWaitForMultipleObjectsEx(唤醒事件 | QS_ALLINPUT)` + `PeekMessageW` 全量派发(yue WndProc 收 WM_TIMER/鼠标/键盘);唤醒回调 = 仅调一个 C FFI(`SetEvent` 自复位事件)的闭包,满足官方契约("只准 C FFI,零 MoonBit 引用计数",external_loop.mbt 契约注释);async 内部等待线程独立跑 IOCP。
+- 文件日志全记录:`tcp: server got ping-async-yue` / `tcp: client got echo ping-async-yue`(本机 TCP echo 往返)/ `tick #1..#12`(500ms async 定时器准时)/ 结算 `ticks=12 clicks=10 tcp=ping-async-yue`(10 次 PostMessage 点击全部到达,GUI 存活)/ `loop: terminate` 干净退出。
+- 结论:**async 网络/定时器与 yue GUI 事件三线并行无冲突,联机的"async 嵌 yue 循环"路线实测可用**;宿主只需 ~40 行 C 泵 + trait 三方法,代码形态随本实验存档。
+- 实现注:①stub C 文件注释必须 ASCII(cl 无 /utf-8 按 CP936 误读中文注释吞行);②`int32_t` 需显式 `#include <stdint.h>`(windows.h 只有 INT32);③EmptyEventLoop 的 poll 超时三分支(Some(0) 不阻塞/Some(t) 限时/None 无限)按契约实现。
+
+**B. async.process spawn/collect —— PASS(Windows 首验)**
+
+- `collect_output("cmd.exe", ["/c", "echo hello-from-child"])` → `exit=0 out=hello-from-child`;windows.c 编译通过,进程树/管道/收集全通。
+
+**C. AI 独立进程最小形态(多进程 AI 的 RTT datum)—— PASS**
+
+- 形态:父进程(MoonBit)`spawn` 子进程(node 扮演 AI 内芯,读 JSON-L 快照 `{id,x,y,enemies:[…]}` → 算最近敌人 → 回 `{id,fire,throttle,dist}`),stdio 行协议,60 次决策 @33ms 节奏。
+- 结果:`replies=60/60 exit=0`,RTT **avg 16.9ms / min 0ms / max 265ms**(max=node 冷启动+JIT 预热一次性;稳态 0~16ms,33ms 的 AI 节拍预算内绰绰有余;真实 MoonBit AI 子进程无 node 启动开销,更低)。
+- 结论:**D4 的多进程方案从"兜底设想"升级为"已实测可选"**——协议形状与网页版 ai-worker.js 一致(快照→5 元组输入),管道双向 + 行协议 + 生命周期(wait/exit)全通;AI 进程完全隔离(崩溃不连累渲染),无 GC/线程互作,golden-trace 对拍不受影响。
+

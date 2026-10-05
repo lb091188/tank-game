@@ -106,8 +106,8 @@
 ### D3. 逻辑内核:对照直译 + 黄金轨迹验证
 simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平台依赖);`tools/golden-trace.js` 与 `tools/sim-headless.js` 已能离线跑 JS 内芯产轨迹——迁移期间以"同输入同轨迹逐帧对比"作验收门。config.js 拆两半:数值参数(手译)+ `partBoxes` 1.7MB 数据(**改构建期生成 JSON、运行时加载**,不要硬编码进 MoonBit 源码,编译会炸)。
 
-### D4. AI 线程模型(阶段0 调研项)
-网页版 AI 在 Web Worker 33ms 独立时钟跑,主线程降级路径已存在(main.js:116-142)。桌面端顺序:① 先用主线程分帧跑(降级路径行为等价,AI 是 30Hz 思考+每帧只消费输入缓存,不卡渲染的可行性要在真机测);② MoonBit native 线程成熟则换线程;③ 兜底独立进程+管道。**此项不阻塞其余阶段。**
+### D4. AI 线程模型(阶段0 调研项,2026-10-05 Windows 实测后落位)
+网页版 AI 在 Web Worker 33ms 独立时钟跑,主线程降级路径已存在(main.js:116-142)。桌面端顺序:① 先用主线程分帧跑(降级路径行为等价,AI 是 30Hz 思考+每帧只消费输入缓存,不卡渲染的可行性要在真机测);② 帧预算不够则换**独立进程**(async.process 已在 Windows 实测:spawn/管道/行协议 60/60 往返,RTT 稳态 0~16ms ≪ 33ms 节拍;协议与 ai-worker.js 同形,见附录「并发架构落位」);③ C 线程不用于游戏逻辑(仅音频等 C 库自管线程场景)。兜底的独立线程跑 async 方案不再需要——external_loop_integration 嵌 yue 主循环已实测可用(附录纪律 5)。**此项不再阻塞任何阶段。**
 
 ### D5. 联机:协议不动,服务端不迁(第一阶段)
 桌面客户端连现有 Node 服务器(JSON 文本 WS,proto:2)。客户端侧用 soup/ws_session/自实现 RFC6455。服务器迁 MoonBit(moonback/async 生态已备)列为远期可选,不在本次统计内。
@@ -212,7 +212,7 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 - **阶段0|验证与选型(1–2 周)**——每项都是小实验,失败即调整规划。**Windows 专项(V1–V5/V6/V7 等)已于 2026-10-05 在 Windows 机逐项实证完毕、11/11 PASS → [Windows验证清单.md](Windows验证清单.md)(含逐项证据);据此更新:**
   1. ~~**Windows 3D 嵌入链路**~~ **✅ 关闭(R1 撤销)**:shim `yue_mbt_window_get_hwnd` + three-mbt `from_hwnd`/cube3d_win 均已真机趟通,补丁在两仓库分支待审合并;新增两个 Windows 时序坑记录(WM_SIZE 同步 reconfigure 被拒、Window 级 on_wheel 错位强转),实现阶段直接按 cube3d_win 的模式写;
   2. ~~mizchi/image 16 位灰度~~ **✅ 关闭(结论=不支持)**:decode_png 对 Grayscale/16 直接 raise UnsupportedFeature → 迁移侧走「@zlib + 自写反滤波」精确 16 位路径(实测 ~80 行,8/8 采样点与 PIL 逐位一致),不必手写整条 zlib;
-  3. ~~**官方 async/websocket 连通实验**~~ **✅ 关闭(R1b 撤销)**:Windows IOCP 实测可用,TCP echo 与 websocket JSON 往返全通;`external_loop_integration` 嵌 yue 主循环仍未真机验证(联机阶段5 前补测即可,有独立线程+post_task 回投兜底);
+  3. ~~**官方 async/websocket 连通实验**~~ **✅ 关闭(R1b 撤销)**:Windows IOCP 实测可用,TCP echo 与 websocket JSON 往返全通;`external_loop_integration` 嵌 yue 主循环**亦已实测可用**(2026-10-05 补充实验 A:async 网络+定时器与 yue GUI 事件三线并行,见清单「补充实验」),阶段0#3 全部关闭;
   4. ~~moon_rodio~~ **✅ 关闭(结论=解码/效果层可用,Sink 集成层 Windows 有双缺陷)**:三格式解码元数据全对、speed/looped 效果器可用;rodio 的 MixerDeviceSink/Sink 在 Windows 不被渲染线程消费且 sleep_until_end 纯忙等(moon_rodio sink.mbt:344)→ **按规划 C2 预设走「moon_cpal 原始通路 + rodio 解码/效果器 + 自管 PCM 队列」**(绕过层实测 5s ogg 满速 455 回调、mp3 帧数与元数据精确吻合、1.5x 循环 3s 满速供数);
   5. AI 主线程分帧真机帧率(AI 15 敌 + 渲染同跑)——未测(不在 Windows 清单,属阶段3 联调);
   6. X11 子窗口上叠原生控件的最小反证实验(10 分钟,给 D1 定案存档;结论已按"不可行"规划,实验仅留证据);
@@ -252,6 +252,11 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 2. **滚轮挂 Container,不挂 Window**:shim `yue_mbt_view_on_wheel` Windows 分支(yue_mbt.cpp:2679)把 Window 当 View 错位强转,wheel_hook 是 ViewImpl 内部件、WindowImpl 不消费——Linux 同族 bug 已按类名分派修过,Windows 分支待同法修复(分支记录在案);鼠标键挂 Window/容器均可。
 3. **音频绕开 rodio 的 Sink 层**:moon_rodio 0.3.5 的 MixerDeviceSink/Sink 在 Windows 不被渲染线程消费(get_pos 恒 0、empty 恒 false、error callback 静默)且 `Sink::sleep_until_end` 是纯忙等(sink.mbt:344,100% 单核);moon_cpal 0.11.8 的 WASAPI 层实测健康(作者 wasapi_stream_smoke 全过)。落地形态 = `Device::build_output_stream` + rodio Decoder/speed/looped 拉样本 + 自管 PCM 队列。
 4. **高程图走「@zlib + 自写 5 种滤波反演」的精确 16 位路径**(bpp=2,大端 R<<8|G):mizchi/image decode_png 只支持 8 位;自写路径实测 ~80 行、与 PIL 期望 8/8 逐位一致,不必手写 zlib。
+
+**并发架构落位(2026-10-05 Windows 真机首验,三项全过,证据见清单「补充实验」):**
+
+5. **联机线程形态定案:async external_loop_integration 嵌 yue 主循环实测可用**——async 内部等待线程跑 IOCP,主线程 `poll()` 泵 yue 消息(MsgWait 唤醒事件+QS_ALLINPUT → PeekMessage 派发),唤醒回调=仅调 C FFI 的闭包;实测 async TCP echo + 500ms 定时器 + yue 鼠标事件三线并行(ticks=12/clicks=10/tcp=echo),干净退出。宿主增量仅 ~40 行 C 泵 + ExternalEventLoop 三方法。阶段5 的 C5(WS 客户端)按此形态落地,不再需要"独立 OS 线程跑 async"的兜底。
+6. **AI 独立进程方案实测可选(D4③ 升级)**:async.process 在 Windows 全通(spawn/collect/管道双向/wait);AI 子进程最小形态(node 扮演内芯)60/60 决策往返 @33ms 节奏,RTT avg 16.9ms / 稳态 0~16ms(节点冷启动 265ms 一次性),33ms 节拍预算内富余;协议与网页版 ai-worker.js 同形(快照→输入)。D4 落位顺序维持:①主线程分帧起步 → ②帧预算不够换**独立进程**(已验证,非 C 线程——隔离性/无 GC 互作/对拍友好)→ C 线程仅作音频这类"已由 C 库自管线程"的场景,不做游戏逻辑。
 
 ---
 
