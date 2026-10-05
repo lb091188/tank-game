@@ -228,6 +228,33 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 
 ---
 
+## 附:Windows 专项实证结果(2026-10-05,规划口径沉淀)
+
+> 命令与输出原文见 [Windows验证清单.md](Windows验证清单.md)「实证详录」;本节为写进规划的结论版。环境:Win10 专业版 22H2(19045)/ VS2022 BuildTools 17.14(MSVC 19.44,SDK 10.0.26100)/ Intel Iris Xe 核显(驱动 27.20.100.8439)/ moon 0.1.20260904(moonc 0.10.12)。改动分支(**未推 main,待审**):moonbit-libyue `win/native-handle`(9d11d45 标记 sysmonitor Linux 专属 / 1a9f815 HWND 补丁 / facc2d0 prebuild 跨模块路径修复)、three-mbt `win/from-hwnd`(dbe4845 from_hwnd + cube3d_win)。
+
+| 项 | 结果 | 规划口径的关键结论 |
+|---|---|---|
+| P2 预编译包冒烟 | ✅ | bin-v0.5.3 hello.exe 起 GUI 正常,本机基线无忧 |
+| V1 libyue 源码编译+示例 | ✅ | prepare.py(须先 vcvars64,CMakeLists.txt:69 检查 INCLUDE)+ moon 链接全通;`moon test yue` 66/66(全树 moon test 会碰 examples/sysmonitor——Linux 专属,已标记勿纳入 Windows 回归) |
+| V2 wgpu D3D12 adapter | ✅ | 强制 D3D12 拿到 **Iris Xe 硬件适配器**(IntegratedGPU,max_texture_2d=16384);WARP 亦可兜底;默认枚举报 Vulkan → **游戏侧建 surface 必须显式 backend=D3D12** |
+| V3 顶层窗口 HWND 暴露 | ✅ | 现状 0 证实后,shim 补 `yue_mbt_window_get_hwnd`→MoonBit `native_handle_window`;实测自报句柄==外部 MainWindowHandle **逐位相等**、IsWindow=True |
+| V4 from_hwnd cube3d 端到端 | ✅ | yue 窗口→HWND→D3D12 硬件 surface→旋转立方体;首帧 4168 青色像素、最大化 21638(截图像素取证,resize 跟随不消失);15s 自动退出无崩溃 |
+| V5 渲染循环中输入 | ✅ | 渲染运行中合成输入 **clicks 10/10、wheels 5/5 逐条一致**(PostMessage 直投驱动) |
+| V6 async 基础 | ✅ | **IOCP 实况为真**:iocp.c/io_windows.c MSVC 编译通过,TCP ping/pong(内嵌 server+7 客户端)全往返干净终止;README "only Linux/macOS" 过时 |
+| V7 websocket 连真实服务器 | ✅ | 连本机 node server.js:create→`{t:"joined",…,proto:2}`、坏房号→`{t:"err"}`,完整 JSON 文本帧往返+服务器日志 `[房间7713] 创建 by win_test` 印证 |
+| V8 rodio 三格式 | ✅(带架构备注) | 解码/效果层全可用(ogg 455 回调 5s 满速供数;mp3 34848 帧=0.79s 与元数据**逐帧吻合**;engine-loop 1.5x 循环 3s 满速);**rodio Sink 集成层 Windows 双缺陷见下** → 播放走 cpal 原始通路+自管 PCM 队列(=C2 原预设,无新增成本) |
+| V9 image 高程/纹理 | ✅ | asphalt 1024×662 / rust 1024×256 全 MATCH;decode_png 对 Grayscale/16 直接 raise UnsupportedFeature → @zlib+自写滤波精确 16 位路径(8/8 采样点与 Linux PIL 期望**逐位相等**) |
+| V10 gamepad(可选) | ✅ | 原生后端健康,未插手柄枚举 0,API 可用 |
+
+**实现阶段必须遵守的四条 Windows 实测纪律:**
+
+1. **surface 重配不得在 WM_SIZE 同步栈内做**:最大化进行中 `configure_default` 被 D3D12 拒绝("window is in use"/ResizeBuffers 无效调用 0x887A0001),wgpu-native 以 Rust panic 直接 abort(MoonBit catch 接不住)。正确姿势:on_size_changed 只置 pending 标志 + `post_task` 延出窗口过程重配,pending 期帧循环跳渲染(cube3d_win 已按此实现并通过最大化取证)。
+2. **滚轮挂 Container,不挂 Window**:shim `yue_mbt_view_on_wheel` Windows 分支(yue_mbt.cpp:2679)把 Window 当 View 错位强转,wheel_hook 是 ViewImpl 内部件、WindowImpl 不消费——Linux 同族 bug 已按类名分派修过,Windows 分支待同法修复(分支记录在案);鼠标键挂 Window/容器均可。
+3. **音频绕开 rodio 的 Sink 层**:moon_rodio 0.3.5 的 MixerDeviceSink/Sink 在 Windows 不被渲染线程消费(get_pos 恒 0、empty 恒 false、error callback 静默)且 `Sink::sleep_until_end` 是纯忙等(sink.mbt:344,100% 单核);moon_cpal 0.11.8 的 WASAPI 层实测健康(作者 wasapi_stream_smoke 全过)。落地形态 = `Device::build_output_stream` + rodio Decoder/speed/looped 拉样本 + 自管 PCM 队列。
+4. **高程图走「@zlib + 自写 5 种滤波反演」的精确 16 位路径**(bpp=2,大端 R<<8|G):mizchi/image decode_png 只支持 8 位;自写路径实测 ~80 行、与 PIL 期望 8/8 逐位一致,不必手写 zlib。
+
+---
+
 ## 7. 风险清单(按杀伤力排序)
 
 | # | 风险 | 影响 | 缓解 |
