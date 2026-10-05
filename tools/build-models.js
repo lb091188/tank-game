@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 // build-models.js — V2 程序化坦克建模(精修版), 零 npm 依赖
 // 用法: node tools/build-models.js  → client/assets/models/*.glb
+//       node tools/build-models.js --part-boxes
+//         → 部位 OBB 表(阶段2 命中判定数据化): 每车型每部位在父空间的 AABB(center/half)+枢轴,
+//           以生成段写回 client/js/config.js 的 SF.CFG.partBoxes(标记对 [part-boxes:begin/end],
+//           重跑幂等); 供 sim-engine 的 3D 线段-OBB 求交使用(服务器可判伤, worker/Node 零 THREE)。
+//       node tools/build-models.js --emit-hit-geo out.json
+//         → 阶段2 基线用: 每部位三角面汤(父空间 positions)+枢轴, 供 hit-rate-bench 重建与
+//           GLB 一致的命中网格(THREE.Raycaster 打真形状)。
 //
 // V2 相比 V1: 完整行走机构(负重轮/托带轮/诱导轮/主动轮/挡泥板)、变速器罩、
 // 发动机舱格栅与排气、车灯/工具等细节、炮塔圆弧化+尾部储物舱+指挥塔、
@@ -233,6 +240,87 @@ function Z(name, armor) {
 function part(geo, m, color, camoScale = 0.85, tileZ = 0) {
   let g = geo.index ? geo.toNonIndexed() : geo;
   if (m) g = g.clone().applyMatrix4(m);
+  // 部位 OBB 导出(阶段2): 本地 AABB + m 的位姿分解(供有向盒; 数值与烘焙顶点同源)
+  if (!geo.boundingBox) geo.computeBoundingBox();
+  let lp = null, lq = null, lh = null, voxOut = null;
+  if (!m) {   // 无变换部件: 单位位姿(本地 AABB 即父空间 AABB)
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    const b = geo.boundingBox;
+    lp = [(b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2];
+    lq = [0, 0, 0, 1];
+    lh = [(b.max.x - b.min.x) / 2, (b.max.y - b.min.y) / 2, (b.max.z - b.min.z) / 2];
+  }
+  if (m) {
+    const P = new THREE.Vector3(), Q = new THREE.Quaternion(), S = new THREE.Vector3();
+    m.decompose(P, Q, S);
+    lp = [P.x, P.y, P.z]; lq = [Q.x, Q.y, Q.z, Q.w];
+    const b = geo.boundingBox, cnt = new THREE.Vector3().addVectors(b.max, b.min).multiplyScalar(0.5);
+    lh = [(b.max.x - b.min.x) / 2 * S.x, (b.max.y - b.min.y) / 2 * S.y, (b.max.z - b.min.z) / 2 * S.z];
+    // 本地中心经 q 旋转 + 平移 = 盒中心(父空间; 四元数旋转向量展开式)
+    lp = [P.x + (cnt.x * (1 - 2 * (Q.y * Q.y + Q.z * Q.z)) + cnt.y * 2 * (Q.x * Q.y - Q.z * Q.w) + cnt.z * 2 * (Q.x * Q.z + Q.y * Q.w)),
+          P.y + (cnt.x * 2 * (Q.x * Q.y + Q.z * Q.w) + cnt.y * (1 - 2 * (Q.x * Q.x + Q.z * Q.z)) + cnt.z * 2 * (Q.y * Q.z - Q.x * Q.w)),
+          P.z + (cnt.x * 2 * (Q.x * Q.z - Q.y * Q.w) + cnt.y * 2 * (Q.x * Q.w + Q.y * Q.z) + cnt.z * (1 - 2 * (Q.x * Q.x + Q.y * Q.y)))];
+    if (lp.some(v => Number.isNaN(v)) && !part._nanWarned) {
+      part._nanWarned = 1;
+      console.warn('[part-boxes] NaN 盒中心, 来源:\n' + new Error().stack.split('\n').slice(1, 4).join('\n'));
+    }
+    // 中空大件的体素覆盖: 非 Box 且最大边 >1.5m → 三角面 0.4m 采样标记 0.55m 体素格 → 贪行合并
+    const ext = [lh[0], lh[1], lh[2]];
+    if (geo.type !== 'BoxGeometry' && Math.max(...ext) > 1.5 && g.attributes.position) {
+      const VP = g.attributes.position.array, IDX = g.index ? g.index.array : null;
+      const CELL = 0.55, mnV = [b.min.x * S.x + P.x, b.min.y * S.y + P.y, b.min.z * S.z + P.z];
+      const nC = ext.map(e => Math.max(1, Math.ceil(e * 2 / CELL)));
+      // 每格记录采样点的 min/max(盒紧贴实际表面, 消除格量化把轨面抬高 ~0.2m 的吞弹)
+      const grid = new Map();
+      const mark = (x, y, z) => {
+        const k = ((x - mnV[0]) / CELL | 0) + ',' + ((y - mnV[1]) / CELL | 0) + ',' + ((z - mnV[2]) / CELL | 0);
+        let e = grid.get(k);
+        if (!e) grid.set(k, e = [[x, x], [y, y], [z, z]]);
+        const vs = [x, y, z];
+        for (let a = 0; a < 3; a++) { if (vs[a] < e[a][0]) e[a][0] = vs[a]; if (vs[a] > e[a][1]) e[a][1] = vs[a]; }
+      };
+      const tri = IDX ? IDX.length / 3 : VP.length / 9;
+      for (let t = 0; t < tri; t++) {
+        const vi = IDX ? [IDX[t * 3], IDX[t * 3 + 1], IDX[t * 3 + 2]] : [t * 3, t * 3 + 1, t * 3 + 2];
+        const A = [VP[vi[0] * 3], VP[vi[0] * 3 + 1], VP[vi[0] * 3 + 2]];
+        const B = [VP[vi[1] * 3], VP[vi[1] * 3 + 1], VP[vi[1] * 3 + 2]];
+        const C2 = [VP[vi[2] * 3], VP[vi[2] * 3 + 1], VP[vi[2] * 3 + 2]];
+        const steps = 6;
+        for (let i = 0; i <= steps; i++) for (let j = 0; j + i <= steps; j++) {
+          const w0 = i / steps, w1 = j / steps, w2 = 1 - w0 - w1;
+          mark(A[0] * w0 + B[0] * w1 + C2[0] * w2, A[1] * w0 + B[1] * w1 + C2[1] * w2, A[2] * w0 + B[2] * w1 + C2[2] * w2);
+        }
+      }
+      // 贪行合并: 沿 x 连续段 → y 整行扩展 → z 层扩展
+      const used = new Set(), boxes = [];
+      const has = (k) => grid.has(k) && !used.has(k);
+      const key = (i, j, k) => i + ',' + j + ',' + k;
+      // 合并盒的实际范围 = 覆盖格内采样点的 min/max(非格边界)
+      const boundOf = (i0, i1, j0, j1, k0, k1) => {
+        const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+        for (const [k, e] of grid) {
+          const idx = k.split(',').map(Number);
+          if (idx[0] < i0 || idx[0] > i1 || idx[1] < j0 || idx[1] > j1 || idx[2] < k0 || idx[2] > k1) continue;
+          for (let a = 0; a < 3; a++) { if (e[a][0] < lo[a]) lo[a] = e[a][0]; if (e[a][1] > hi[a]) hi[a] = e[a][1]; }
+        }
+        return { lo, hi };
+      };
+      for (let k = 0; k < nC[2]; k++) for (let j = 0; j < nC[1]; j++) for (let i = 0; i < nC[0]; i++) {
+        if (!has(key(i, j, k))) continue;
+        let i1 = i; while (i1 + 1 < nC[0] && has(key(i1 + 1, j, k))) i1++;
+        let j1 = j;
+        outer: while (j1 + 1 < nC[1]) { for (let ii = i; ii <= i1; ii++) if (!has(key(ii, j1 + 1, k))) break outer; j1++; }
+        let k1 = k;
+        outer2: while (k1 + 1 < nC[2]) { for (let jj = j; jj <= j1; jj++) for (let ii = i; ii <= i1; ii++) if (!has(key(ii, jj, k1 + 1))) break outer2; k1++; }
+        for (let kk = k; kk <= k1; kk++) for (let jj = j; jj <= j1; jj++) for (let ii = i; ii <= i1; ii++) used.add(key(ii, jj, kk));
+        const bd = boundOf(i, i1, j, j1, k, k1);
+        boxes.push({ c: [(bd.lo[0] + bd.hi[0]) / 2, (bd.lo[1] + bd.hi[1]) / 2, (bd.lo[2] + bd.hi[2]) / 2],
+                     h: [Math.max(0.05, (bd.hi[0] - bd.lo[0]) / 2), Math.max(0.05, (bd.hi[1] - bd.lo[1]) / 2), Math.max(0.05, (bd.hi[2] - bd.lo[2]) / 2)] });
+      }
+      if (boxes.length && boxes.length <= 40) voxOut = boxes;
+      // 体素超上限/空 → 退回有向单盒
+    }
+  }
   const P = g.attributes.position.array, Nr = g.attributes.normal.array;
   const colors = new Array(P.length);
   const base = color;
@@ -254,7 +342,7 @@ function part(geo, m, color, camoScale = 0.85, tileZ = 0) {
       uvs[i * 2 + 1] = UV ? UV[i * 2 + 1] : (P[i * 3 + 1] > 0 ? 1 : 0);
     }
   }
-  return { positions: Array.from(P), normals: Array.from(Nr), colors, uvs };
+  return { positions: Array.from(P), normals: Array.from(Nr), colors, uvs, localPos: lp, localQuat: lq, localHalf: lh, voxels: voxOut };
 }
 
 const M4x = (x, y, z, rx = 0, ry = 0, rz = 0, s = 1) =>
@@ -1572,6 +1660,79 @@ const TANKS = [
   ...ROSTER.map(T => ({ file: T.type + '.glb', build: () => (T.type === 'stug3' ? buildStug3(T) : buildRosterTank(T)), roster: true }))
 ];
 
+/* ============ 部位 OBB/命中几何导出(阶段2) ============ */
+// config.js 末尾已存在 window.SF 全局, partBoxes 直接挂 SF.CFG(数据字段, vm 沙箱安全)
+function configTag() { return 'SF.CFG.partBoxes'; }
+// 遍历节点树: 部位节点(extras.zone)的 parts 顶点已烘焙在【父空间】(车体区=root 局部,
+// 炮塔区=turret 枢轴局部, 炮管=gun 枢轴局部; 部位节点自身无平移)。导出:
+//   turretPivot/gunPivot(枢轴平移, gunParent='turret'|'root'), 每部位 {z,armor,c,h,p}:
+//   c=父空间 AABB 中心, h=半长, p=所属空间('root'|'turret'|'gun')。同名分区多节点时合并 AABB。
+function collectHitGeo(root, wantGeo) {
+  const out = { turretPivot: null, gunPivot: null, gunParent: 'root', zones: wantGeo ? {} : [] };
+  (function walk(n, space) {
+    if (n.name === 'turret') out.turretPivot = n.translation || [0, 0, 0];
+    if (n.name === 'gun') { out.gunPivot = n.translation || [0, 0, 0]; out.gunParent = space; }
+    const mySpace = n.name === 'turret' ? 'turret' : (n.name === 'gun' ? 'gun' : space);
+    if (n.extras && n.extras.zone && n.parts && n.parts.length) {
+      if (wantGeo) {   // 基线台用: 原始三角面汤(父空间, 与 GLB 顶点同源)
+        const z = n.extras.zone;
+        let g = out.zones[z];
+        if (!g) g = out.zones[z] = { z, armor: n.extras.armor || 0, p: mySpace, positions: [] };
+        for (const pt of n.parts) for (const v of pt.positions) g.positions.push(v);
+        return;
+      }
+      // 部位盒 = 每部件一个【有向】OBB(优先): part(geo, m) 的 m 携带真实位姿(含首上/侧斜甲倾角),
+      // decompose 出 平移/四元数/半尺寸 —— 有向盒让斜面有真斜面法线(入射角/跳弹与 GLB 同口径)。
+      // 大体积非 Box 部件(履带环 Extrude/铸造弧塔 Lathe/球盾 Sphere)是中空壳, 实心包络会把
+      // 穿过缝隙/弧面的弹误记到本分区(阶段2 基线对账里 hullSide/tracks 漂移 10-13pp 的主因)
+      // → 改体素覆盖: 三角面按 0.4m 采样标记 0.55m 格, 贪行合并成盒(轴对齐于父空间)。
+      const z = n.extras.zone;
+      for (const pt of n.parts) {
+        if (!pt.localHalf) continue;   // part() 未记录本地几何时跳过(防御)
+        // NaN 护栏: 个别车型参数缺项导致部件位姿 NaN(GLB 里该面片同样不可命中, 存量模型瑕疵), 跳过
+        const bad = [...pt.localPos, ...pt.localHalf, ...(pt.voxels ? pt.voxels.flatMap(b => [...b.c, ...b.h]) : [])]
+          .some(v => !Number.isFinite(v));
+        if (bad) { process.exitCode = 0; continue; }
+        if (pt.voxels) { for (const b of pt.voxels) out.zones.push({ z, armor: n.extras.armor || 0, p: mySpace, c: b.c, h: b.h }); continue; }
+        out.zones.push({ z, armor: n.extras.armor || 0, p: mySpace, c: pt.localPos, q: pt.localQuat, h: pt.localHalf });
+      }
+    }
+    for (const c of n.children || []) walk(c, mySpace);
+  })(root, 'root');
+  if (wantGeo) out.zones = Object.values(out.zones);
+  return out;
+}
+
+const MODE = process.argv[2] || '';
+if (MODE === '--part-boxes' || MODE === '--emit-hit-geo') {
+  const CFJ = path.join(__dirname, '..', 'client', 'js', 'config.js');
+  const stemToType = { 'm4-sherman': 'sherman', 'm4a3e8': 'sherman76', 'm4a3e2-jumbo': 'jumbo', 'm18-hellcat': 'hellcat', 'enemy-medium': 'medium', 'enemy-td': 'td', 'enemy-heavy': 'heavy' };
+  const all = {};
+  for (const t of TANKS) {
+    wheelSeq = 0;
+    const stem = t.file.replace(/\.glb$/, '');
+    all[stemToType[stem] || stem] = collectHitGeo(t.build(), MODE === '--emit-hit-geo');
+  }
+  if (MODE === '--emit-hit-geo') {
+    const outFile = process.argv[3] || '/tmp/hit-geo.json';
+    fs.writeFileSync(outFile, JSON.stringify(all));
+    console.log(`命中几何已导出 → ${outFile} (${(fs.statSync(outFile).size / 1e6).toFixed(1)}MB, ${Object.keys(all).length} 型)`);
+  } else {
+    const MARK_A = '/* [part-boxes:begin] 生成段(build-models.js --part-boxes), 勿手改 */';
+    const MARK_B = '/* [part-boxes:end] */';
+    const block = MARK_A + '\n' + configTag() + ' = ' + JSON.stringify(all) + ';\n' + MARK_B;
+    let cfg = fs.readFileSync(CFJ, 'utf8');
+    if (cfg.includes(MARK_A)) {
+      const a = cfg.indexOf(MARK_A), b = cfg.indexOf(MARK_B);
+      cfg = cfg.slice(0, a) + block + cfg.slice(b + MARK_B.length);
+    } else {
+      cfg = cfg.replace(/\s*$/, '\n\n' + block + '\n');
+    }
+    fs.writeFileSync(CFJ, cfg);
+    console.log(`部位 OBB 表已写入 ${CFJ} (${Object.keys(all).length} 型, ${(block.length / 1024).toFixed(0)}KB)`);
+  }
+} else {
+
 fs.mkdirSync(OUT_DIR, { recursive: true });
 for (const t of TANKS) {
   wheelSeq = 0;
@@ -1594,3 +1755,4 @@ for (const t of TANKS) {
   console.log(`✓ ${t.file}  三角面≈${triCount}  枢轴[${pivots.join(',')}]  分区${Object.keys(zones).length}个`);
 }
 console.log(`\nV2 模型完成 → ${OUT_DIR}`);
+}

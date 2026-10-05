@@ -570,38 +570,9 @@ SF.Models = (() => {
       return [nx, nz];
     }
     // 车体碰撞(坦克): 车体 OBB(真实长宽+朝向) vs 掩体 —— 一比一, 无幽灵墙
+    // (阶段1 起单一实现移入 sim-engine.collideTank, 引擎/无头台/主线程同源, 防漂移)
     collideTank(t) {
-      let nx = t.x, nz = t.z;
-      const S = t.spec, hw = S.sample.w, hl = S.sample.l;
-      const circ = Math.hypot(hw, hl);                     // 车体外接半径(快速剔除必须用真值, 否则会漏检)
-      const cs = Math.cos(t.yaw), sn = Math.sin(t.yaw);
-      for (const c of this.list) {
-        if (!c.blocksMove) continue;
-        const dx0 = nx - c.x, dz0 = nz - c.z, rr = c.r + circ;
-        if (dx0 * dx0 + dz0 * dz0 > rr * rr) continue;
-        if (c.shape === 'box') {
-          const push = SF.Util.obbPushOut({ x: nx, z: nz, yaw: t.yaw, hx: hw, hz: hl }, c);
-          if (push) { nx += push[0]; nz += push[1]; }
-        } else {
-          // 圆掩体 vs 车体 OBB: 掩体圆心变换到车体局部系求最近点, 按穿透深度推出
-          const rx = c.x - nx, rz = c.z - nz;               // 车体→掩体圆心(世界系)
-          let lx = cs * rx - sn * rz, lz = sn * rx + cs * rz;   // 掩体圆心在车体局部系
-          const qx = Math.max(-hw, Math.min(hw, lx)), qz = Math.max(-hl, Math.min(hl, lz));
-          let ddx = lx - qx, ddz = lz - qz;                 // 最近点→圆心(车体局部系)
-          let d = Math.hypot(ddx, ddz);
-          if (d < 1e-6) {   // 圆心陷入车体(几乎不发生): 沿圆心→车心方向退出一个半径
-            const bx = nx - c.x, bz = nz - c.z, bl = Math.hypot(bx, bz) || 1;
-            nx += bx / bl * (c.r + hl); nz += bz / bl * (c.r + hl);
-            continue;
-          }
-          if (d < c.r) {
-            const k = (c.r - d) / d;
-            const px2 = -ddx * k, pz2 = -ddz * k;           // 车体沿"圆心→最近点"反方向推出
-            nx += cs * px2 + sn * pz2; nz += -sn * px2 + cs * pz2;
-          }
-        }
-      }
-      return [nx, nz];
+      return SF.SimEngine.collideTank(t, this.list);
     }
     // 弹道/视线遮挡: 委托 simcore(主线程/Worker 同一实现); 返回沿射线最近命中距离(-1 无)
     blocked(ox, oz, oy, dx, dz, len, dy, spot) {

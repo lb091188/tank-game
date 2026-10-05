@@ -160,53 +160,114 @@ SF.FX = class {
   }
 };
 
-/* ---------- 炮弹系统(表现/判定壳) ----------
-   弹的数值(散布偏转/分段积分/下坠/地形/掩体遮挡/近弹粗筛/部位命中)全在 sim-engine 弹场(零 THREE,
-   服务端权威可复用); 本类只保留表现钩子(拖尾/火花/爆炸音)。阶段2 起 弹-车精确命中走
-   SF.SimEngine.probeTankOBB(部位盒表 3D 线段-OBB 求交, 评审修改要求#3: Util.rayObb 是 2D XZ slab
-   无 pitch/法线/命中点不可用) —— 浏览器与服务器同一实现, 判中后调 vehicle.takeHit 结算。 */
+/* ---------- 炮弹系统 ---------- */
 SF.Shells = class {
   constructor(scene, fx) {
     this.scene = scene; this.fx = fx;
-    this.list = [];                     // 兼容别名(指向引擎弹场, 供调试/既有引用)
-    this.field = SF.SimEngine.makeShells({
-      onCreate: (sh) => {               // 表现侧: pos/vel 换 THREE 向量(拖尾 clone/addScaledVector 需要)
-        sh.pos = new THREE.Vector3(sh.pos.x, sh.pos.y, sh.pos.z);
-        sh.vel = new THREE.Vector3(sh.vel.x, sh.vel.y, sh.vel.z);
-        this.fx.acquireTrail(sh);
-      },
-      onFlight: (sh) => this.fx.updateTrail(sh),
-      onImpact: (kind, p) => this.fx.impact(kind, p),
-      onPlayerMiss: (p) => SF.Bus.emit('playerMiss', { point: p }),
-      onNearMiss: (sh) => SF.Bus.emit('shellFrom', { x: sh.owner.x, z: sh.owner.z }),
-      onKill: (sh) => { if (sh.trailLine) { sh.trailLine.visible = false; sh.trailLine = null; } },
-      // 弹-车精确命中(注入回调): 部位 OBB 3D 求交 → {distance, point, normal(世界面法线), zone, armor} | null
-      probeTank: (sh, tk, ox, oy, oz, dx, dy, dz, segLen) =>
-        SF.SimEngine.probeTankOBB(tk, ox, oy, oz, dx, dy, dz, segLen),
-      // takeHit 的 hitInfo.point/normal 会进 Bus 事件(HUD.dmgNumber 对 point 调 .clone()), 保持 THREE 向量契约
-      onHitTank: (sh, tk, hit, segDir) => tk.takeHit(sh.owner, { pen: sh.pen, dmg: sh.dmg, cal: sh.cal },
-        { zone: hit.zone, armor: hit.armor,
-          point: new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z),
-          normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z),
-          dir: new THREE.Vector3(segDir.x, segDir.y, segDir.z) }),
-      onExplode: (sh, p, directTank, directArmor) =>
-        this._explodeHE(sh, new THREE.Vector3(p.x, p.y, p.z), this._world, directTank, directArmor)
-    });
+    this.list = [];
+    this.ray = new THREE.Raycaster();
+    this.ray.firstHitOnly = true;
   }
 
-  // 兼容入口(旧调用方 vehicle.fire → 已改走引擎; 保留防外部直调)
-  spawn(owner, pos, dir, dispM) { return this.field.spawn(owner, pos, dir, dispM); }
+  spawn(owner, pos, dir, dispM) {
+    // 散布: 圆内随机偏转(米@100m → 弧度近似)
+    const ang = (dispM / 100) * Math.sqrt(Math.random());
+    const rot = Math.random() * Math.PI * 2;
+    const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+    const up = new THREE.Vector3().crossVectors(right, dir).normalize();
+    const d = dir.clone().addScaledVector(right, Math.cos(rot) * ang).addScaledVector(up, Math.sin(rot) * ang).normalize();
+    const spec = owner.spec.gun;
+    const shell = {
+      active: true, owner, team: owner.team,
+      pos: pos.clone(), vel: d.clone().multiplyScalar(spec.speed),
+      pen: spec.pen, dmg: spec.dmg, cal: spec.cal || 75, life: spec.life || 4, tracer: null,
+      grav: spec.grav || SF.CFG.sim.shellGravity,    // 火炮 HE 用大重力打高抛弧线
+      splash: spec.splash || 0
+    };
+    this.list.push(shell);
+    this.fx.acquireTrail(shell);
+  }
 
   update(dt, world) {
-    this._world = world;                // HE 溅射结算需要 world(取坦克表)
-    this.field.update(dt, {
-      heightAt: world.terrain.heightAt,
-      coversBlocked: (ox, oz, oy, dx, dz, len, dy) => world.covers.blocked(ox, oz, oy, dx, dz, len, dy),
-      tanks: world.tanks,
-      playerPos: world.player,
-      playerTeam: world.player ? world.player.team : 0
-    });
-    this.list = this.field.list;
+    const T = world.terrain;
+    for (const sh of this.list) {
+      if (!sh.active) continue;
+      sh.life -= dt;
+      if (sh.life <= 0) { this._kill(sh); continue; }
+
+      const next = sh.pos.clone().addScaledVector(sh.vel, dt);
+      sh.vel.y -= sh.grav * dt;
+      const seg = next.clone().sub(sh.pos), segLen = seg.length();
+      const segDir = seg.clone().normalize();
+
+      // --- 收集最近命中 ---
+      let hitT = Infinity, hitType = null, hitData = null;
+
+      // 地形(沿段采样)
+      const steps = Math.max(1, Math.ceil(segLen / 2));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const px = sh.pos.x + seg.x * t, py = sh.pos.y + seg.y * t, pz = sh.pos.z + seg.z * t;
+        if (py <= T.heightAt(px, pz)) { if (t < hitT) { hitT = t; hitType = 'ground'; } break; }
+      }
+
+      // 掩体
+      const coverT = world.covers.blocked(sh.pos.x, sh.pos.z, sh.pos.y, segDir.x, segDir.z, segLen, segDir.y);
+      if (coverT >= 0 && coverT / segLen < hitT) { hitT = coverT / segLen; hitType = 'cover'; }
+
+      // 坦克部位网格(先粗筛包围球: 线段上离圆心最近点); 残骸同样挡弹(WoT: 击毁的车吸收炮弹)
+      for (const tk of world.tanks) {
+        if (tk.team === sh.team) continue;
+        const c = tk.pos3;
+        const oc = new THREE.Vector3().subVectors(c, sh.pos);   // 圆心相对炮弹起点
+        const proj = U_cl(U_dot(oc, segDir), 0, segLen);
+        const closest = sh.pos.clone().addScaledVector(segDir, proj);
+        if (closest.distanceTo(c) > 3.6) continue;
+        tk.group.updateMatrixWorld(true);   // 确保部位网格世界矩阵与模拟状态一致
+        this.ray.set(sh.pos, segDir); this.ray.far = segLen;
+        const hits = this.ray.intersectObjects(tk.parts.zones, false);
+        if (hits.length && hits[0].distance / segLen < hitT) {
+          const h = hits[0];
+          hitT = h.distance / segLen; hitType = 'tank'; hitData = { tank: tk, hit: h };
+        }
+      }
+
+      // --- 处理命中 ---
+      if (hitType) {
+        const p = sh.pos.clone().addScaledVector(segDir, hitT * segLen - 0.05);
+        const wreck = hitType === 'tank' && !hitData.tank.alive;   // 打中残骸: 弹丸被吸收, 不结算伤害
+        if (hitType === 'tank' && !sh.splash && !wreck) {
+          const { tank, hit } = hitData;
+          const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+          tank.takeHit(sh.owner, { pen: sh.pen, dmg: sh.dmg, cal: sh.cal }, {
+            zone: hit.object.userData.zone, armor: hit.object.userData.armor || 0,
+            point: hit.point, normal, dir: segDir
+          });
+        } else {
+          this.fx.impact(hitType === 'ground' ? 'ground' : 'cover', p);
+          if (sh.owner.isPlayer && !sh.splash && !wreck) SF.Bus.emit('playerMiss', { point: p });   // 打飞了也要有反馈
+        }
+        if (sh.splash)
+          this._explodeHE(sh, p, world, (hitType === 'tank' && !wreck) ? hitData.tank : null,
+            hitType === 'tank' && hitData.hit ? (hitData.hit.object.userData.armor || 0) : 0);
+        this._kill(sh);
+        continue;
+      }
+
+      // 敌方炮弹飞近 → 炮口来向指示(一次性)
+      if (world.player && sh.team !== world.player.team && !sh.warned) {
+        const dPlayer = Math.hypot(sh.pos.x - world.player.x, sh.pos.z - world.player.z);
+        if (dPlayer < 45) { sh.warned = true; SF.Bus.emit('shellFrom', { x: sh.owner.x, z: sh.owner.z }); }
+      }
+      sh.pos.copy(next);
+      this.fx.updateTrail(sh);
+    }
+    this.list = this.list.filter(s => s.active);
+  }
+
+  _kill(sh) {
+    sh.active = false;
+    if (sh.trailLine) { sh.trailLine.visible = false; sh.trailLine = null; }
   }
 
   /* --- 火炮 HE 溅射: 爆炸特效 + 范围伤害(直接命中过装甲判定, 周围按距离衰减) --- */
