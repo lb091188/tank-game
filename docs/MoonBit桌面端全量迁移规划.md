@@ -16,6 +16,24 @@
 
 ---
 
+## 0.5 当前进度快照(2026-10-05,阶段0 收口后)
+
+- **已完成**:阶段0 全部验证项(Windows 清单 P2/V1–V10 共 11 项 + 并发架构 3 项补充实验)全 PASS;R1/R1b 撤销、D4 落位、§5 A15 校准(附录含全部实测纪律)。两处 Windows 缺口补丁 + 两个集成示例(yue_async_int / ai_ipc)交付在两仓库分支(**均已推送远端,待审合并**):moonbit-libyue `win/native-handle`(3 提交)、three-mbt `win/from-hwnd`(含 from_hwnd + cube3d_win + 集成示例)。
+- **剩余工作(人日,按里程碑;与 §5 一致,中位口径)**:
+
+  | 侧 | 里程碑 / 项 | 剩余 |
+  |---|---|---|
+  | yue + 平台层 | 分支合并 → C1 输入映射(指针捕获)→ C5 联机接线 → C3/C4 资产与存档 + IME 模态框 | ~12–21 |
+  | three-native | **阶段1 点亮一张地图**:A1 纹理(8–12)→ A2 GLB 加载器(10–15)→ A3 材质分发(6–10)→ A4 hemi(2–3)→ A6 雾(2) | ~28–42 |
+  | three-native | **阶段3 战斗渲染**:A5 阴影(10–15)、A7 Line(4–6)、A8 粒子+Sprite(8–12)、A9 透明排序(3–5)、A10 注入点(5–8)、A12 Raycaster(3–5)、A13 几何(4–6)、A14 统计/画质(3–5) | ~40–62 |
+  | three-native | **阶段4 HUD 与界面**:A11 2D overlay + 自绘控件层(14–20) | ~14–20 |
+  | 游戏本体 | B1–B7(simcore/ai 直译、main/models/HUD 重写) | 75–107 |
+  | 收尾 | 联机端到端 / 性能对齐 / 打包 | 13–21 |
+
+- **下一步动作**:①审阅合并两分支(合并前勿在 main 上另起渲染工作);②three-native 从 A1 纹理管线开工(阶段1),与 B1 逻辑内核直译可并行(依赖关系见 §6)。
+
+---
+
 ## 1. 三方现状盘点
 
 ### 1.1 steel-front(本仓库,基准)
@@ -255,7 +273,7 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 
 **并发架构落位(2026-10-05 Windows 真机首验,三项全过,证据见清单「补充实验」):**
 
-5. **联机线程形态定案:async external_loop_integration 嵌 yue 主循环实测可用**——async 内部等待线程跑 IOCP,主线程 `poll()` 泵 yue 消息(MsgWait 唤醒事件+QS_ALLINPUT → PeekMessage 派发),唤醒回调=仅调 C FFI 的闭包;实测 async TCP echo + 500ms 定时器 + yue 鼠标事件三线并行(ticks=12/clicks=10/tcp=echo),干净退出。宿主增量仅 ~40 行 C 泵 + ExternalEventLoop 三方法。阶段5 的 C5(WS 客户端)按此形态落地,不再需要"独立 OS 线程跑 async"的兜底。
+5. **联机线程形态定案:async external_loop_integration 嵌 yue 主循环实测可用**——async 内部等待线程跑 IOCP,主线程 `poll()` 泵 yue 消息(MsgWait 唤醒事件+QS_ALLINPUT → PeekMessage 派发),唤醒回调=仅调 C FFI 的闭包;实测 async TCP echo + 500ms 定时器 + yue 鼠标事件三线并行(ticks=12/clicks=10/tcp=echo),干净退出。**libyue `win/native-handle` 分支已落地官方三接口 `yue_mbt_loop_poll/wakeup/terminate`(shim 批次 2,45bdd9f),宿主侧只需 ExternalEventLoop 三方法的薄封装**(实验随 three-mbt `examples/yue_async_int` 交付)。阶段5 的 C5(WS 客户端)按此形态落地,不再需要"独立 OS 线程跑 async"的兜底。
 6. **AI 独立进程方案实测可选(D4③ 升级)**:async.process 在 Windows 全通(spawn/collect/管道双向/wait);AI 子进程最小形态(node 扮演内芯)60/60 决策往返 @33ms 节奏,RTT avg 16.9ms / 稳态 0~16ms(节点冷启动 265ms 一次性),33ms 节拍预算内富余;协议与网页版 ai-worker.js 同形(快照→输入)。D4 落位顺序维持:①主线程分帧起步 → ②帧预算不够换**独立进程**(已验证,非 C 线程——隔离性/无 GC 互作/对拍友好)→ C 线程仅作音频这类"已由 C 库自管线程"的场景,不做游戏逻辑。
 
 ---
