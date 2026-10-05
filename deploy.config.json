@@ -8,6 +8,8 @@
     { "type": "uploadFile", "local": "${localDir}/server/server.js", "remote": "${remoteDir}/server/server.js" },
     { "type": "uploadFile", "local": "${localDir}/server/package.json", "remote": "${remoteDir}/server/package.json" },
     { "type": "uploadDir", "local": "${localDir}/client", "remote": "${remoteDir}/client" },
+    { "type": "remote", "cmd": "date -u '+%Y-%m-%dT%H:%M:%S.000Z' > ${remoteDir}/client/version.txt && cat ${remoteDir}/client/version.txt" },
+    { "type": "log", "message": "版本戳已更新(服务器时钟), 全站资源 URL 随之换新, 旧缓存自动过期" },
     { "type": "remote", "cmd": "cd ${remoteDir}/server && rm -f package-lock.json && npm install" },
     { "type": "remote", "cmd": "cd ${remoteDir}/server && pm2 restart tank-game 2>/dev/null || pm2 start server.js --name tank-game" },
     { "type": "log", "message": "完成: 浏览器打开 http://game.liuziheng.top:17820" }
