@@ -52,8 +52,9 @@ SF.Net = (() => {
 
   // 大厅操作 (建房带通行令牌+可选密码; 进房凭房间号+密码)
   const getToken = () => localStorage.getItem('sf_token') || '';
-  const createRoom = (name, tank, pass) => send({ t: 'create', name, tank, pass: pass || undefined, token: getToken() || undefined });
-  const joinRoom = (room, pass, name, tank) => send({ t: 'join', room: String(room).trim(), pass: pass || undefined, name, tank });
+  // proto: 客户端协议版本(阶段3 服务器权威=2)。旧客户端不带此字段, 服务器按版本门禁拒绝并提示强刷
+  const createRoom = (name, tank, pass) => send({ t: 'create', name, tank, pass: pass || undefined, token: getToken() || undefined, proto: 2 });
+  const joinRoom = (room, pass, name, tank) => send({ t: 'join', room: String(room).trim(), pass: pass || undefined, name, tank, proto: 2 });
   // 钥匙兑换: POST 到 WS 同源的 HTTP 端点 (ws://x:8342 → http://x:8342)
   async function redeemKey(key) {
     const base = curAddr.replace(/^ws/, 'http');

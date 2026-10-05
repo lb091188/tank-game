@@ -17,6 +17,7 @@
 //   POST /admin/revoke?token=xxx       吊销令牌
 //   GET  /admin/records?limit=50       最近战斗记录
 //   GET  /admin/players                按昵称汇总战绩
+//   POST /admin/srv-end?room=CODE      强制结束服务器权威对局(dm srvSim, 结算照常落盘)
 //   GET  /admin/                       内置管理页 (浏览器用)
 // 玩家端点 (游戏端口, 公开):
 //   POST /key/redeem   {key:"XXXX"}    钥匙兑换通行令牌
@@ -60,6 +61,111 @@ const TIERS = (() => {
   }
 })();
 const tierOf = (tank) => TIERS[tank] || null;
+
+/* ---------- 服务器权威仿真(阶段3): 游戏脚本上下文 + 地图数据 + 60Hz 房间 tick ----------
+   dm 房开局(start)即建 SrvSim 实例: 主线程 60Hz 跑车辆数值模拟(sim-engine)+部位 OBB 判伤(阶段2),
+   20Hz 广播与房主快照同构的 tn 12 字段行(客户端 net.js interpolate 零改动); coop 房不建 sim,
+   沿用房主中继(评审修改要求#4: srvSim 仅 dm, coop 阶段4 再扩, 中继路径保留即旧版回退保证)。 */
+// 脚本源读一次, 每房独立 vm 上下文: coop 的 SF.AI 会在 SF.Bus 挂无线电监听、SF.Game 指向本房
+// world —— 多房共享单上下文会跨房串台(无线电互听/AI 目标串房), 故一房一上下文(4 房 × 数 MB 可控)。
+const GAME_SCRIPTS = ['simcore.js', 'config.js', 'ai.js', 'sim-engine.js', 'srv-sim.js']
+  .map(f => ({ f, src: fs.readFileSync(path.join(ROOT, 'js', f), 'utf8') }));
+function newGameCtx() {
+  const ctx = { console };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  for (const { f, src } of GAME_SCRIPTS) vm.runInContext(src, ctx, { filename: f });
+  ctx.SF.Game = { get world() { return ctx.__world || null; } };   // AI nowT/world2time 取时/取世界钩子(ai-worker.js:29 同款)
+  if (!GAME) { GAME = ctx.SF; console.log(`[srv-sim] 游戏脚本上下文就绪 (${Object.keys(GAME.CFG.vehicles).length} 车, partBoxes ${GAME.CFG.partBoxes ? Object.keys(GAME.CFG.partBoxes).length : 0} 型)`); }
+  return ctx;
+}
+let GAME = null;   // 首个上下文的 SF(仅用于 CFG.maps 查表)
+// 高程 PNG16 手解(zlib, tools/sim-headless.js 同款) + map.json, 按图缓存
+const mapDataCache = new Map();
+function loadMapData(mapKey) {
+  const SFg = GAME || newGameCtx().SF;
+  const meta = SFg.CFG.maps.find(m => m.id === mapKey || m.name === mapKey) || SFg.CFG.maps[0];
+  if (mapDataCache.has(meta.id)) return mapDataCache.get(meta.id);
+  const dir = path.join(ROOT, 'assets', 'maps', meta.dir);
+  const J = JSON.parse(fs.readFileSync(path.join(dir, 'map.json'), 'utf8'));
+  const b = fs.readFileSync(path.join(dir, 'heightmap.png'));
+  let p = 8, w = 0, h = 0; const idat = [];
+  while (p < b.length) {
+    const l = b.readUInt32BE(p), ty = b.toString('ascii', p + 4, p + 8);
+    if (ty === 'IHDR') { w = b.readUInt32BE(p + 8); h = b.readUInt32BE(p + 12); }
+    if (ty === 'IDAT') idat.push(b.subarray(p + 8, p + 8 + l));
+    p += 12 + l;
+  }
+  const raw = require('zlib').inflateSync(Buffer.concat(idat));
+  const heights = new Float32Array(w * h);
+  const st = w * 2;
+  for (let j = 0; j < h; j++) {
+    const ft = raw[j * (st + 1)], row = j * (st + 1) + 1;
+    for (let i = 0; i < w; i++) {
+      const x = i * 2;
+      const a = i >= 1 ? ((raw[row + x - 2] << 8) | raw[row + x - 1]) : 0;
+      const b2 = j >= 1 ? ((raw[row - (st + 1) + x] << 8) | raw[row - (st + 1) + x + 1]) : 0;
+      const c = (j >= 1 && i >= 1) ? ((raw[row - (st + 1) + x - 2] << 8) | raw[row - (st + 1) + x - 1]) : 0;
+      let v = (raw[row + x] << 8) | raw[row + x + 1];
+      if (ft === 1) v += a; else if (ft === 2) v += b2; else if (ft === 3) v += (a + b2) >> 1;
+      else if (ft === 4) {
+        const pp = a + b2 - c, pa = Math.abs(pp - a), pb = Math.abs(pp - b2), pc = Math.abs(pp - c);
+        v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b2 : c);
+      }
+      heights[j * w + i] = v / 65535 * J.terrain.maxHeight;
+    }
+  }
+  const data = { heights, terrainCfg: J.terrain, coversRaw: J.covers, waves: J.waves || [], repairBetweenWaves: J.repairBetweenWaves || null };
+  mapDataCache.set(meta.id, data);
+  console.log(`[srv-sim] 地图数据 ${meta.id}(${meta.dir}): ${w}x${h} 高程, ${J.covers.length} 掩体`);
+  return data;
+}
+// 60Hz 房间 tick(单一定时器驱动全部 sim 房; 20Hz 广播快照; tick 时长进 p95 窗口供 admin 探针)
+const srvStats = { ticks: [] };
+setInterval(() => {
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    if (!room.sim || room.started !== true) continue;
+    const dt = Math.min(0.05, Math.max(0.001, (now - (room.simLast || now)) / 1000));
+    room.simLast = now;
+    const t0 = process.hrtime.bigint();
+    try { room.sim.tick(dt); } catch (e) {
+      console.error(`[房间${ws_code_of(room)}] sim 异常, 强制结算: ${e.message}
+${(e.stack || "").slice(0, 600)}`);
+      finishSrvRoom(room); continue;
+    }
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    srvStats.ticks.push(ms);
+    if (ms > 12 && !room._budgetWarned) {   // 60Hz 预算 16ms: 连续超 12ms 举报一次(评审#10: 不达标才上 worker_threads)
+      room._budgetWarned = true;
+      console.warn(`[房间${ws_code_of(room)}] tick 超预算 ${ms.toFixed(1)}ms (>12ms) — 满员开火场景, 建议评估 per-room worker_threads`);
+    }
+    if (srvStats.ticks.length > 600) srvStats.ticks.splice(0, srvStats.ticks.length - 600);
+    if (++room._snapN >= 3) {   // 60Hz tick → 20Hz 快照(3 分频)
+      room._snapN = 0;
+      broadcast(room, room.sim.snapshot());
+    }
+    if (room.sim && room.sim.finished) finishSrvRoom(room);   // onEnd 回调可能已置空 sim
+  }
+}, 15).unref();
+function ws_code_of(room) { for (const [code, r] of rooms) if (r === room) return code; return '?'; }
+function tickP95() {
+  if (!srvStats.ticks.length) return 0;
+  const a = srvStats.ticks.slice().sort((x, y) => x - y);
+  return Math.round(a[Math.floor(a.length * 0.95)] * 100) / 100;
+}
+function finishSrvRoom(room) {   // 服务器判 end: 广播结算 + 落盘 + 房间复位可再战
+  if (!room.sim || room.ended) return;
+  room.ended = true;
+  const scores = room.sim.scoreRows();
+  const m = { t: 'end', scores, win: false };
+  broadcast(room, m);
+  recordEnd(room, ws_code_of(room), m);
+  room.sim = null; room.started = false; room.gameCtx = null;
+  for (const q of room.players.values()) q.ready = q.host;
+  broadcast(room, lobbyMsg(room));
+  console.log(`[房间${ws_code_of(room)}] 服务器结算 — ${scores.map(([id, name, k]) => `${name} ${k}杀`).join(', ')}; 房间保留, 可再次开局`);
+}
 
 /* ---------- 模型表 (与客户端 assets.js MODEL_FILES 同源: 有 glb 才可上场) ---------- */
 const MODELS = (() => {
@@ -178,13 +284,18 @@ function leaveRoom(ws) {
   if (!room) return;
   const me = room.players.get(ws);
   room.players.delete(ws);
-  if (me && me.host) {
+  if (me && me.host && !room.sim) {
+    // 房主权威房(中继/coop): 房主掉线 = 灭队(旧语义)
     broadcast(room, { t: 'err', msg: '房主已离开，房间解散' });
     for (const w of room.players.keys()) w.close();
+  } else if (me && me.host && room.sim) {
+    // 服务器权威房: 房主只是普通玩家, 掉线/离开对局继续(本次迁移要消除的行为), 提升新 host 保再战
+    const next = room.players.keys().next();
+    if (!next.done) { const pw = room.players.get(next.value); if (pw) pw.host = true; broadcast(room, lobbyMsg(room)); }
   } else if (room.players.size) {
     broadcast(room, lobbyMsg(room));
   }
-  if (!room.players.size) rooms.delete(ws._code);
+  if (!room.players.size) { rooms.delete(ws._code); if (room.sim) room.sim = null; }
   ws._room = null;
 }
 
@@ -287,6 +398,9 @@ wss.on('connection', (ws) => {
     switch (m.t) {
       case 'create': {
         if (!OPEN && !tokenOk(m.token)) { fail(ws, '建房需要通行令牌 — 请先在联机大厅用钥匙授权'); break; }
+        if ((parseInt(m.proto || '0', 10) || 0) < 2) {   // 协议版本门禁(设计 §6.3 强升): 旧客户端 err→alert→reload 拉新包
+          fail(ws, '客户端版本过旧 — 请强制刷新页面(Ctrl+Shift+R)后重进(服务器权威战斗)'); break;
+        }
         if (rooms.size >= MAX_ROOMS) { fail(ws, `服务器满载(${MAX_ROOMS} 个房间对局中), 请稍后再试`); break; }
         const name = normName(m.name);
         if (!name) { fail(ws, '请先填写昵称'); break; }
@@ -300,7 +414,7 @@ wss.on('connection', (ws) => {
         rooms.set(code, room0);
         ws._room = room0; ws._code = code;
         room0.players.set(ws, { id: nextPid, name, tank, ready: true, host: true, team: 0 });
-        sendJson(ws, { t: 'joined', room: code, you: nextPid, players: roomState(room0), pass: room0.pass || undefined, tier: room0.tier, mode: room0.mode });
+        sendJson(ws, { t: 'joined', room: code, you: nextPid, players: roomState(room0), pass: room0.pass || undefined, tier: room0.tier, mode: room0.mode, srvSimCap: true, proto: 2 });
         nextPid++;
         console.log(`[房间${code}] 创建 by ${m.name}${room0.pass ? ' (带密码)' : ''} (${rooms.size}/${MAX_ROOMS} 房)`);
         break;
@@ -314,6 +428,9 @@ wss.on('connection', (ws) => {
         if (nameOnline(name, ws)) { fail(ws, `昵称「${name}」已在线 — 一人一名, 请换一个`); break; }
         const tank = saneTank(m.tank);
         if (m.tank && tank !== m.tank) console.log(`[消毒] ${name} 请求不可用车型 ${m.tank} → ${tank}`);
+        if ((parseInt(m.proto || '0', 10) || 0) < 2) {   // 协议版本门禁(同 create)
+          fail(ws, '客户端版本过旧 — 请强制刷新页面(Ctrl+Shift+R)后重进(服务器权威战斗)'); break;
+        }
         const tErr = tierCheck(r, tank, ws);   // 等级匹配: 房主车位 ±1 级(按消毒后的车)
         if (tErr) { fail(ws, tErr); break; }
         ws._fails = 0;
@@ -322,7 +439,7 @@ wss.on('connection', (ws) => {
         leaveRoom(ws);
         ws._room = r; ws._code = String(m.room).trim();
         r.players.set(ws, { id: nextPid, name, tank, ready: false, host: false, team: r.mode === 'coop' ? 0 : balancedTeam(r) });
-        sendJson(ws, { t: 'joined', room: ws._code, you: nextPid, players: roomState(r), tier: r.tier, mode: r.mode });
+        sendJson(ws, { t: 'joined', room: ws._code, you: nextPid, players: roomState(r), tier: r.tier, mode: r.mode, srvSimCap: true, proto: 2 });
         broadcast(r, lobbyMsg(r), ws);
         nextPid++;
         console.log(`[房间${ws._code}] 加入 ${m.name} (红${[...r.players.values()].filter(p => p.team === 0).length}/蓝${[...r.players.values()].filter(p => p.team === 1).length})`);
@@ -375,20 +492,58 @@ wss.on('connection', (ws) => {
         if (!me || !me.host) break;
         room.started = true; room.ended = false;
         room.map = m.map || ''; room.mode = m.mode && m.mode !== room.mode ? m.mode : room.mode;
+        if (room.mode === 'coop') for (const q of room.players.values()) q.team = 0;   // coop 全员同阵营(与 mode 处理器同语义; 直发 start 的旧流程未切模式时兜底)
         room.feed = []; room.startedAt = Date.now();
-        broadcast(room, { t: 'start', map: room.map, mode: room.mode, seed: Math.random(), players: roomState(room) });
+        const srvSim = true;   // 阶段4: dm+coop 全服务器权威(阶段3 已定: 客户端包不采信, 回退=部署回滚)
+        const seed = (Math.random() * 4294967296) >>> 0;   // 唯一随机源: 广播给客户端(出生池占位推导) + 权威 sim 共用同一颗
+        broadcast(room, { t: 'start', map: room.map, mode: room.mode, seed, players: roomState(room), srvSim });
+        if (srvSim) {
+          // 服务器权威: 建仿真房实例(60Hz tick 由全局定时器驱动), 房主/客户端全员走幽灵路径
+          const md = loadMapData(room.map || 'l01');
+          room.gameCtx = newGameCtx();
+          room.sim = room.gameCtx.SF.SrvSim.create({
+            heights: md.heights, terrainCfg: md.terrainCfg, coversRaw: md.coversRaw,
+            waves: md.waves, repairWaves: md.repairBetweenWaves,
+            hasModel: (k) => MODELS.has(k),
+            mode: room.mode,
+            seed, timeLimit: 180,   // 与 start 广播同一颗 seed(权威端不二次取随机)
+            players: roomState(room).map(pl => ({ id: pl.id, name: pl.name, tank: pl.tank, team: pl.team })),
+            onEvent: (k, d) => {
+              if (k === 'kill' && room.startedAt) {   // 击杀时间线(与中继路径同口径)
+                const idOf = (id) => { const q = [...room.players.values()].find(p => p.id === id); return q ? q.name : `#${id}`; };
+                const rel = ((Date.now() - room.startedAt) / 1000) | 0;
+                room.feed.push({ t: rel, killer: d.by ? idOf(d.by) : '环境', victim: idOf(d.id) });
+                console.log(`[房间${ws._code}] ${rel}s 击杀: ${d.by ? idOf(d.by) : '环境'} → ${idOf(d.id)}`);
+              }
+              // 引擎事件 → 线协议形状(main.js bindMpRelay 客户端还原所依赖的字段):
+              // fire 事件引擎侧为 {tank,pos,dir}, 线上要 {id, p:[x,y,z]}; hit/kill/aiWave/pkGet 判官已按线协议产出;
+              // 其余引擎内部事件(如 reloaded——装填完成, d.tank 循环引用)只属本地表现, 客户端 coop 由快照对账, 不出线
+              const KNOWN = { fire: 1, hit: 1, kill: 1, aiWave: 1, pkGet: 1 };
+              if (!KNOWN[k]) return;
+              let wire = d;
+              if (k === 'fire') wire = { id: d.tank.netId, p: [+d.pos.x.toFixed(1), +d.pos.y.toFixed(1), +d.pos.z.toFixed(1)] };
+              broadcast(room, { t: 'ev', k, d: wire });
+            },
+            onEnd: () => finishSrvRoom(room),
+          });
+          room.gameCtx.__world = room.sim.world || null;   // AI 直读本实例世界的钩子
+          room.gameCtx.__shellTrace = [];   // 弹道追踪(admin srv-dbg 读; 默认空数组=未启用零开销)
+          room.simLast = Date.now(); room._snapN = 0;
+        }
         const red = [...room.players.values()].filter(p => p.team === 0).length;
-        console.log(`[房间${ws._code}] 开战 ${room.map} (${room.mode}) 红${red}/蓝${room.players.size - red} — ${[...room.players.values()].map(p => `${p.name}(${p.tank})`).join(', ')}`);
+        console.log(`[房间${ws._code}] 开战 ${room.map} (${room.mode}${srvSim ? '/srvSim' : ''}) 红${red}/蓝${room.players.size - red} — ${[...room.players.values()].map(p => `${p.name}(${p.tank})`).join(', ')}`);
         break;
       }
-      case 'input': {          // 客户端输入 → 只发给主机
+      case 'input': {          // sim 房: 服务器判(30Hz 5 元组 + clamp); 中继房: 只发给主机
         if (!me) break;
+        if (room.sim) { room.sim.setInput(me.id, m.i); break; }
         const host = [...room.players.entries()].find(([, p]) => p.host);
         if (host && host[0] !== ws && host[0].readyState === 1) host[0].send(JSON.stringify(m));
         break;
       }
       case 'snap': case 'ev': case 'end': {   // 主机快照/事件/结算 → 广播
         if (!me || !me.host) break;
+        if (room.sim) break;   // 服务器权威房: 快照/事件/结算由 sim 出, 客户端包不采信(旧版回退=部署回滚)
         // 击杀时间线: 控制台即时一行 + 进战斗记录(相对开战秒数)
         if (m.t === 'ev' && m.k === 'kill' && room.startedAt) {
           const idOf = (id) => { const q = [...room.players.values()].find(p => p.id === id); return q ? q.name : `#${id}`; };
@@ -517,8 +672,34 @@ function startAdmin() {
       return;
     }
     if (u.pathname === '/admin/status') {
-      let players = 0; for (const r of rooms.values()) players += r.players.size;
-      json(200, { ok: true, port: PORT, rooms: rooms.size, players, records: recordCount, gated: !OPEN, keys: keys.size, tokens: tokens.size });
+      let players = 0, sims = 0; for (const r of rooms.values()) { players += r.players.size; if (r.sim) sims++; }
+      json(200, { ok: true, port: PORT, rooms: rooms.size, players, records: recordCount, gated: !OPEN, keys: keys.size, tokens: tokens.size,
+        srv: { rooms: sims, tickP95: tickP95(), tickSamples: srvStats.ticks.length },
+        mem: Math.round(process.memoryUsage().rss / 1e6) });   // 阶段5 内存预算探针(设计 §3.4: 30-60MB/房)
+      return;
+    }
+    if (u.pathname === '/admin/srv-dbg' && req.method === 'GET') {
+      const code = u.searchParams.get('room') || '';
+      const room = rooms.get(code);
+      if (!room || !room.gameCtx) { json(404, { ok: false }); return; }
+      json(200, { ok: true, dbg: room.gameCtx.__j || null, trace: (room.gameCtx.__shellTrace || []).slice(0, 40), timeLeft: room.sim ? room.sim.timeLeft : null,
+        tanks: room.sim ? [...room.sim.tanks.values()].map(t => ({ id: t.netId, type: t.type, x: +t.x.toFixed(0), y: +(t.y || 0).toFixed(1), z: +t.z.toFixed(0), hp: Math.round(t.hp), alive: t.alive, ai: !!t.ai })) : [] });
+      return;
+    }
+    if (u.pathname === '/admin/srv-fire' && req.method === 'POST') {
+      const code = u.searchParams.get('room') || '';
+      const room = rooms.get(code);
+      if (!room || !room.sim) { json(404, { ok: false, error: '无进行中的对局' }); return; }
+      const okF = room.sim.testFire(parseInt(u.searchParams.get('from') || '0', 10), parseInt(u.searchParams.get('at') || '0', 10));
+      json(200, { ok: okF !== false, log: (room.gameCtx && room.gameCtx.__fireLog ? room.gameCtx.__fireLog.slice(-3) : []) });
+      return;
+    }
+    if (u.pathname === '/admin/srv-end' && req.method === 'POST') {
+      const code = u.searchParams.get('room') || '';
+      const room = rooms.get(code);
+      if (!room || !room.sim) { json(404, { ok: false, error: '无进行中的服务器权威对局' }); return; }
+      room.sim.forceEnd();   // 下个 tick 走 finishSrvRoom: 广播 end + 落盘 + 房间复位
+      json(200, { ok: true, room: code });
       return;
     }
     if (u.pathname === '/admin/records') {

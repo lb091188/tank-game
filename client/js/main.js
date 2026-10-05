@@ -85,6 +85,29 @@ SF.Main = (() => {
     return null;
   }
 
+  /* ---------- 种子随机(联机出生池洗牌用) ----------
+     mulberry32: 与 tools/ai-bench.js / tools/build-map.js 同款纯整数位运算 PRNG ——
+     各端同种子必得同序列, 把服务器 start 广播的每局随机 seed(server.js:379, 此前无人消费)
+     摊成全房一致的出生点取用顺序: 服务器只发一个数, 不加新消息、不改输入/快照协议。 */
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  // Fisher-Yates 洗牌(返回副本不动原池): 取数顺序固定 → 同种子各端洗出的顺序一致
+  function seededShuffle(arr, rng) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = (rng() * (i + 1)) | 0;
+      const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
   /* ---------- AI Worker: 感知/决策在独立线程按真实时钟运行 ----------
      主线程再卡(渲染/GC/掉帧), worker 照常每 33ms 思考 —— AI 不会因为掉帧变傻。
      失败降级: Worker 构造/运行出错 → 回退主线程逐帧 ai.update(与旧版一致)。 */
@@ -130,9 +153,10 @@ SF.Main = (() => {
       R(e.velX), R(e.velZ), Math.round(e.hp), R(e.disp, 4), R(e.reloadT), R(e.turretYaw, 3), e.lastFireT || -99, e.alive ? 1 : 0, R(e.lastYawRate || 0, 3)]);
     const players = (MP.mode === 'host' && MP.gameMode === 'coop')
       ? [...MP.tanks.values()].filter(t => t.netId < 100 && t.alive !== undefined)
-        .map(t => [t.netId, R(t.x), R(t.z), R(t.y), R(t.yaw, 3), R(t.speed), R(t.velX), R(t.velZ), Math.round(t.hp), t.lastFireT || -99, t.alive ? 1 : 0])
+        .map(t => [t.netId, R(t.x), R(t.z), R(t.y), R(t.yaw, 3), R(t.speed), R(t.velX), R(t.velZ), Math.round(t.hp), t.lastFireT || -99, t.alive ? 1 : 0, (t.spec && t.spec.cls) || 'MT'])
       : [[0, R(world.player.x), R(world.player.z), R(world.player.y), R(world.player.yaw, 3), R(world.player.speed),
-          R(world.player.velX), R(world.player.velZ), Math.round(world.player.hp), world.player.lastFireT || -99, world.player.alive ? 1 : 0]];
+          R(world.player.velX), R(world.player.velZ), Math.round(world.player.hp), world.player.lastFireT || -99, world.player.alive ? 1 : 0,
+          (world.player.spec && world.player.spec.cls) || 'MT']];
     AIW.worker.postMessage({ t: 'snap', time: world.time, intel: world.intel, enemies, players });
   }
   // AI 输入/感知读取: worker 模式取回传结果, 降级模式走主线程 ai 实例
@@ -190,13 +214,14 @@ SF.Main = (() => {
   const spotStreak = new Map();    // 敌 → 本次持续点亮起始时刻(决定残留时长 5→10s)
   const spotLinger = new Map();    // 敌 → 丢失视野后的残留秒数(WoT: 最短 5s, 持续暴露可延至 10s)
   let lampT = 0;                   // 被敌人持续注视的时长(六感灯 3s 延迟, WoT)
+  let dmHostSeesMe = false;        // DM 房主: 敌玩家是否看得见我(0.25s 节拍采样, 见 updatePlayerFinding)
   let waveIdx = 0, waveEnemies = [], repairT = 0, repairMsgText = '', repairMsgOn = false, repairDone = false, gameOver = false, loseT = -1;
   let stats = { kills: 0, total: 0, shots: 0, hits: 0, pens: 0, dmg: 0, time: 0 };
   let aimPoint = null, gunAim = null;
 
   /* ---------- 场景 ---------- */
   function buildScene() {
-    const map = SF.Assets.maps[selMap].json, L = map.lighting, G = GFX.cfg();
+    const map = SF.Assets.maps[SF.Garage.selMap].json, L = map.lighting, G = GFX.cfg();
     renderer = new THREE.WebGLRenderer({ antialias: G.msaa, powerPreference: 'high-performance', stencil: false });
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, G.dpr));
@@ -242,16 +267,22 @@ SF.Main = (() => {
     scene.add(new THREE.HemisphereLight(new THREE.Color(...L.ambientColor), 0x39412e, L.ambient));
 
     // 地形与掩体
-    const terrain = new SF.Terrain(SF.Assets.maps[selMap].heights, map.terrain);
+    const terrain = new SF.Terrain(SF.Assets.maps[SF.Garage.selMap].heights, map.terrain);
     scene.add(terrain.buildMesh(map.theme || 'grass'));
     const covers = new SF.Models.CoverField(map, terrain, scene);
     syncAIWorld(terrain, map, covers);   // worker 模式: 先注入世界, 后面 spawnWave 才能下发 AI
 
     // 玩家(PVE 修改器: 克隆 spec 应用配件倍率, 不污染全局配置; 联机不生效)
-    const [sx, sz, syaw] = map.player.spawn;
+    // 开局出生点: player.spawns 多点池(每图≥8组, 布点过地形圆盘+硬掩体净空校验, 见 tools/check-spawns.js)
+    // 随机取一 —— 每局起点不再固定; 旧图/自制图无此字段时回退 player.spawn 单点(向后兼容, 行为同旧版)。
+    // 联机不消费此处坐标: buildScene 的占位玩家会被 startMultiplayer 移除并按出生池重建。
+    const sps = map.player.spawns;
+    const [sx, sz, syaw] = (Array.isArray(sps) && sps.length)
+      ? sps[(Math.random() * sps.length) | 0]
+      : map.player.spawn;
     let playerSpec = null;
     if (MP.mode === 'sp') {
-      const b = SF.CFG.vehicles[selTank], M = PVE;
+      const b = SF.CFG.vehicles[SF.Garage.selTank], M = PVE;
       playerSpec = { ...b, gun: { ...b.gun }, dispersion: { ...b.dispersion } };
       if (b.gun.autoloader) playerSpec.gun.autoloader = { ...b.gun.autoloader };
       playerSpec.hp = Math.round(b.hp * M.hpMul);
@@ -263,7 +294,7 @@ SF.Main = (() => {
       playerSpec.dispersion.aimTime = b.dispersion.aimTime / M.aimMul;
       playerSpec.view = Math.round((b.view || SF.CFG.player.viewRange) * M.viewMul);
     }
-    const player = new SF.Tank(selTank, { x: sx, z: sz, yaw: syaw, isPlayer: true, spec: playerSpec });
+    const player = new SF.Tank(SF.Garage.selTank, { x: sx, z: sz, yaw: syaw, isPlayer: true, spec: playerSpec });
     scene.add(player.group);
 
     // intel = 全敌共享的玩家情报: {x,z 最后已知位置, t 时刻, level 0无/1听见炮声/2目视确认}
@@ -309,8 +340,12 @@ SF.Main = (() => {
 
   /* ---------- 波次 ---------- */
   function aiSpec(s) {   // AI 需要的 spec 子集(纯数据, 发给 worker)
+    // gun 全量 + hull/turretTraverse: 穿深门(打不穿判定)/换血(单发伤害)与后续相态判据(G2/G3)在 worker 端可用
     return { view: s.view, camo: s.camo, cls: s.cls, hp: s.hp, name: s.name,
-             gun: { speed: s.gun.speed }, dispersion: { base: s.dispersion.base, max: s.dispersion.max },
+             hullTraverse: s.hullTraverse, turretTraverse: s.turretTraverse,
+             gun: { speed: s.gun.speed, pen: s.gun.pen, dmg: s.gun.dmg, reload: s.gun.reload,
+                    autoloader: s.gun.autoloader || null },
+             dispersion: { base: s.dispersion.base, max: s.dispersion.max },
              gunDepression: s.gunDepression, gunElevation: s.gunElevation };
   }
   function spawnWave(i) {
@@ -318,7 +353,7 @@ SF.Main = (() => {
     if (!wave) return;
     const aiSpawned = [];
     const aiSpawnDefs = [];
-    let pt = TIER_NUM[(SF.CFG.vehicles[selTank] || {}).tier] || 5;
+    let pt = TIER_NUM[(SF.CFG.vehicles[SF.Garage.selTank] || {}).tier] || 5;
     if (MP.mode !== 'sp')
       for (const pl of MP.players) pt = Math.max(pt, TIER_NUM[(SF.CFG.vehicles[pl.tank] || {}).tier] || 5);
     const waveBand = i === 0 ? [pt - 1, pt] : [pt, pt + 1];
@@ -1378,6 +1413,8 @@ SF.Main = (() => {
       return;
     }
 
+    // 设计 §6.3: 房主权威路径保留一个版本期(协议门禁已拒绝旧客户端, 此块现为死代码兜底;
+    // 卸载窗口过后随阶段5 清理计划移除) —— coop srvSim 后该分支实际不可达
     const isMP = MP.mode === 'host';
     const myInput = p.alive && !gameOver ? playerInput() : IDLE_INPUT(p);
     p.update(myInput, dt, world);
@@ -1441,7 +1478,7 @@ SF.Main = (() => {
       });
     }
 
-    // 玩家对敌发现: 视距×(1-目标隐蔽) + 多点通视 + 50m 强制点亮 + 5~10s 残留
+    // 玩家对敌发现: 视距×(1-目标隐蔽) + 点阵通视 + 50m 强制点亮 + 5~10s 残留
     // 目标集: 单机/合作主机=AI 敌军(world.enemies); 死斗主机=敌方玩家(同阵营队友不点亮不隐藏) —— 同一套点亮规则
     // (此前死斗主机走下方第二块, 与本块共用 spottedTimer 双重递减, 0.25 为 dt 整倍数时第二块
     //  永远轮不到执行 → 房主点不亮任何人; 现统一为一块一个计时器)
@@ -1463,7 +1500,7 @@ SF.Main = (() => {
       };
       const lit = (e) => {
         const d = U.dist2d(p.x, p.z, e.x, e.z);
-        return d < 50 || (d < vr * (1 - SF.camoOf(e, world)) && SF.losClearAny(world, p.x, p.z, e.x, e.z, SF.bushState(e, world)));
+        return d < 50 || (d < vr * (1 - SF.camoOf(e, world)) && SF.losClearAny(world, p, e, undefined, SF.playerSpotMargin()));
       };
       for (const e of spotTargets) {
         if (!e.alive) { spottedLast.delete(e); spotStreak.delete(e); spotLinger.delete(e); continue; }
@@ -1478,18 +1515,24 @@ SF.Main = (() => {
       // WoT 式: 未点亮的敌军模型隐藏(看得见≠点亮; 阵亡残骸保留) —— 主/客同一规则
       // 显示判定与 HUD 名牌/小地图红点同一条规则: 点亮残留期内, 或 5s 内开过炮(炮口焰暴露)
       for (const e of spotTargets) e.group.visible = !e.alive || spotDisplay(e);
+      // DM 房主: 敌玩家是否看得见我 —— 点阵判定每帧跑太贵, 随本 0.25s 节拍算一次
+      // (六感灯有 3s 延迟, 4Hz 绰绰有余; 目标集与上方点亮同集: 非同阵营敌玩家)
+      if (MP.mode === 'host' && MP.gameMode === 'dm') {
+        dmHostSeesMe = false;
+        for (const t of spotTargets) {
+          if (!t.alive) continue;
+          const d = U.dist2d(p.x, p.z, t.x, t.z);
+          const vrT = t.spec.view || SF.CFG.player.viewRange;   // 对方的视距 × 我的隐蔽
+          if (d < 50 || (d < vrT * (1 - SF.camoOf(p, world)) && SF.losClearAny(world, t, p))) { dmHostSeesMe = true; break; }   // DM 主机: 敌看我用旧口径(难度不变)
+        }
+      }
     }
     let enemySeesMe = false;
     if (MP.mode === 'host') {
       if (MP.gameMode === 'coop') {
         for (const e of world.enemies) if (e.alive && e.ai && aiSeen(e) && aiTargetId(e) === p.netId) { enemySeesMe = true; break; }
       } else {
-        for (const [id, t] of MP.tanks) {
-          if (id === MP.myId || !t.alive || t.team === p.team) continue;   // 队友的注视不算被发现
-          const d = U.dist2d(p.x, p.z, t.x, t.z);
-          const vr = t.spec.view || SF.CFG.player.viewRange;   // 对方的视距 × 我的隐蔽
-          if (d < 50 || (d < vr * (1 - SF.camoOf(p, world)) && SF.losClearAny(world, t.x, t.z, p.x, p.z, SF.bushState(p, world)))) { enemySeesMe = true; break; }
-        }
+        enemySeesMe = dmHostSeesMe;   // DM: 点阵判定按上方 0.25s 节拍的采样值
       }
     } else {
       for (const e of world.enemies) if (e.alive && e.ai && aiSeen(e)) { enemySeesMe = true; break; }
@@ -1563,47 +1606,14 @@ SF.Main = (() => {
   }, 300);
 
   /* ---------- 启动 ---------- */
-  // 小 tip: 每条最多显示 2 次(跨会话记忆), 加载屏与首页各一条
-  const TIPS = [
-    '等缩圈变绿再开炮——每一发都要让敌人付出代价！',
-    '正面打不穿？瞄首下！还不行就绕侧，揍他的软肋！',
-    '歼击车正面是铁板一块——绕到侧面，它就是一盒罐头！',
-    '坡顶卖头只露炮塔：让敌人的炮弹替你敲锣！',
-    '💡 灯泡亮起 = 你被盯上了！马上转移，别站在原地当靶子！',
-    '圈没合拢别扣扳机——喂给泥土的炮弹可不会长眼！',
-    '下坡俯角更狠，上坡打不着坡下——先占位的人先开火！',
-    '按 Tab 点名残敌——知道谁还活着，才知道下一炮打给谁！',
-    '急停对炮是基本功：松油门，稳住，一炮定乾坤！',
-    '倒车伸缩掐好节奏：打一炮退半步，活活气死对面！',
-    '被点亮后敌人的无线电会炸锅——转移要快，履带就是命！',
-    '草丛/树篱/草垛都是软质草本，直接压过去就行：蹲进去还能隐蔽，敌人看不见你，但一开炮就失效 4 秒！软质物不挡炮弹，找石头房子躲弹。',
-    '看不见的敌人=你没点亮它：视距×隐蔽与遮挡说了算——逼近、升观瞄配件，或等它开炮暴露！',
-    '开炮声会出卖你的方位，敌群马上合围——打一枪，换一个地方！',
-    '敌人丢了你会全队搜剿——绕到他们背后放冷炮，才是猎人的打法！',
-    '联机对战：房主 npm start 后把控制台 WS 地址填进联机设置'
-  ];
-  function showTip(elId) {
-    let shown = {};
-    try { shown = JSON.parse(localStorage.getItem('sf_tips') || '{}'); } catch (e) { }
-    const pool = TIPS.map((t, i) => i).filter(i => (shown[i] || 0) < 2);
-    if (!pool.length) return;
-    const i = pool[(Math.random() * pool.length) | 0];
-    shown[i] = (shown[i] || 0) + 1;
-    try { localStorage.setItem('sf_tips', JSON.stringify(shown)); } catch (e) { }
-    const el = document.getElementById(elId);
-    if (el) el.textContent = '💡 ' + TIPS[i];
-  }
-
+  // 小贴士(TIPS 池/每条≤2次跨会话记账)归 SF.Garage.showTip(client/js/garage.js)
   async function start() {
     const bar = document.getElementById('loadBar'), tip = document.getElementById('loadTip');
     // 先恢复上次选择 —— 启动只载所选坦克(懒加载, 其余后台预取)
-    selTank = localStorage.getItem('sf_mp_tank') || selTank;
-    selMap = localStorage.getItem('sf_map') || selMap;
-    if (!SF.CFG.vehicles[selTank]) selTank = 'sherman';
-    if (!SF.CFG.maps.find(m => m.id === selMap)) selMap = 'l01';
-    showTip('tipOnLoad');
+    SF.Garage.restoreSelection();
+    SF.Garage.showTip('tipOnLoad');
     try {
-      await SF.Assets.load(selTank, (done, total) => {
+      await SF.Assets.load(SF.Garage.selTank, (done, total) => {
         bar.style.width = (done / total * 100) + '%';
         tip.textContent = `加载资源 ${done}/${total}`;
       });
@@ -1613,7 +1623,7 @@ SF.Main = (() => {
     }
     document.getElementById('loading').style.display = 'none';
     document.getElementById('titleScreen').style.display = 'flex';
-    showTip('tipOnTitle');
+    SF.Garage.showTip('tipOnTitle');
     // 版本号: CI 部署时写入提交时刻(精确到秒); 本地无此文件则静默隐藏
     fetch('version.txt?v=' + Date.now(), { cache: 'no-store' })
       .then(r => r.ok ? r.text() : Promise.reject())
@@ -1624,8 +1634,8 @@ SF.Main = (() => {
         document.getElementById('verStamp').textContent =
           `v${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
       }).catch(() => { });
-    buildGaragePreview();
-    buildPicker();
+    SF.Garage.buildGaragePreview();
+    SF.Garage.buildPicker();
     buildPve();
     buildGfxPanel();
     bindHScroll();          // 地图/坦克卡行: 滚轮横向滚动
@@ -1639,191 +1649,13 @@ SF.Main = (() => {
     SF.Assets.prefetch();   // 后台预取其余资源(音效/语音/模型), 不阻塞车库
 
     document.getElementById('btnStart').addEventListener('click', () => {
-      disposeGarage();
+      SF.Garage.disposeGarage();
       startBattle();
     });
     document.getElementById('btnExit').addEventListener('click', exitToTitle);
     document.getElementById('btnRetry').addEventListener('click', () => (MP.mode === 'sp' ? startBattle() : backToLobby()));
     // 联机结算: 走"返回房间"保留房间再战; 单机回车库
     document.getElementById('btnToGarage').addEventListener('click', () => (MP.mode !== 'sp' ? backToLobby() : exitToTitle()));
-  }
-
-  /* ---------- 车库 3D 预览: 全屏车库场景 + 展台坦克居中 + 随地图切换风格 ---------- */
-  let garagePV = null;
-  function disposeGarage() {
-    if (!garagePV) return;
-    garagePV.active = false; clearInterval(garagePV.timer);
-    if (garagePV.onResize) removeEventListener('resize', garagePV.onResize);
-    try { garagePV.renderer.dispose(); if (garagePV.renderer.forceContextLoss) garagePV.renderer.forceContextLoss(); } catch (e) { }
-    document.getElementById('garageView').innerHTML = '';
-    garagePV = null;
-  }
-  // 三张地图各配一套同风格车库(地面/墙面/灯光/雾色)
-  const GARAGE_THEMES = {
-    l01: { bg: 0x27301c, ground: 0x363e27, wall: 0x4c4030, wallDark: 0x3b3426, beam: 0x332a1e,
-           lamp: 0xffd9a0, crate: 0x4d4a2e, barrel: 0x5c4028, hemi: [0xcad8a8, 0x222a18, 0.85], key: [0xffe2b0, 1.35], rim: [0x9fc4e8, 0.4] },
-    l02: { bg: 0x1a1b20, ground: 0x43454c, wall: 0x37383e, wallDark: 0x2c2d33, beam: 0x27282e,
-           lamp: 0xe8f0ff, crate: 0x3e4148, barrel: 0x4a4238, hemi: [0xaab6cc, 0x16171c, 0.8], key: [0xeaf0ff, 1.3], rim: [0xffa060, 0.5] },
-    l03: { bg: 0x1b1916, ground: 0x4c4739, wall: 0x3d3a30, wallDark: 0x322f28, beam: 0x2b2923,
-           lamp: 0xcfe2ff, crate: 0x463d2f, barrel: 0x514536, hemi: [0xa8bcc8, 0x1b1915, 0.75], key: [0xdfeaff, 1.3], rim: [0xffc080, 0.45] }
-  };
-
-  function disposeGroup(root) {
-    root.traverse(o => {
-      if (o.geometry) o.geometry.dispose();
-      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
-    });
-  }
-
-  function buildGarageEnv(th) {
-    const g = new THREE.Group();
-    const mat = c => new THREE.MeshLambertMaterial({ color: c });
-    const add = (m, x, y, z) => { m.position.set(x, y, z); g.add(m); return m; };
-    const ground = add(new THREE.Mesh(new THREE.CircleGeometry(60, 48), mat(th.ground)), 0, 0, 0);
-    ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
-    add(new THREE.Mesh(new THREE.BoxGeometry(46, 10, 0.8), mat(th.wall)), 0, 5, -12);
-    add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 8, 30), mat(th.wallDark)), -14, 4, 2);
-    add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 8, 30), mat(th.wallDark)), 14, 4, 2);
-    for (const x of [-12, -4, 4, 12]) add(new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.52, 10, 10), mat(th.beam)), x, 5, -10.4);
-    for (const z of [-7, -1, 5]) add(new THREE.Mesh(new THREE.BoxGeometry(34, 0.55, 0.7), mat(th.beam)), 0, 9.4, z);
-    // 后墙灯带: 深色灯罩 + 自发光灯板(工业灯风格)
-    const lampMat = new THREE.MeshBasicMaterial({ color: th.lamp });
-    const housMat = mat(th.beam);
-    for (const x of [-10, 0, 10]) {
-      add(new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.6, 0.3), housMat), x, 6.85, -11.45);
-      add(new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.34, 0.18), lampMat), x, 6.5, -11.4);
-    }
-    // 车库杂物: 木箱堆 + 油桶(摆在两侧, 不挡展台)
-    const crateMat = mat(th.crate), barrelMat = mat(th.barrel);
-    for (const [x, z, s, ry] of [[-10.6, -6.4, 1.1, 0.35], [-9.3, -7.5, 0.9, -0.2], [-10.0, -6.8, 0.75, 0.1]]) {
-      const c = add(new THREE.Mesh(new THREE.BoxGeometry(1.25 * s, 0.95 * s, 1.25 * s), crateMat), x, 0.48 * s, z);
-      c.rotation.y = ry;
-    }
-    const cTop = add(new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 1.0), crateMat), -10.2, 1.3, -6.9);
-    cTop.rotation.y = 0.6;
-    for (const [x, z] of [[11.4, -5.4], [12.3, -6.9], [11.9, -4.5]]) {
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.15, 10), barrelMat), x, 0.575, z);
-    }
-    return g;
-  }
-
-  function buildGaragePreview() {
-    if (garagePV) return;
-    const holder = document.getElementById('garageView');
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(innerWidth, innerHeight);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    holder.appendChild(renderer.domElement);
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x27301c, 20, 80);
-    const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 160);
-    cam.position.set(9.6, 4.6, 14.2);
-    cam.lookAt(0, 1.05, 0);
-    const hemi = new THREE.HemisphereLight(0xcad8a8, 0x222a18, 0.85);
-    const key = new THREE.DirectionalLight(0xffe2b0, 1.35);
-    key.position.set(4, 8, 3.5);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.left = key.shadow.camera.bottom = -7;
-    key.shadow.camera.right = key.shadow.camera.top = 7;
-    scene.add(hemi, key);
-    const rim = new THREE.DirectionalLight(0x9fc4e8, 0.4);
-    rim.position.set(-6, 4, -5);
-    scene.add(rim);
-    // 展台: 深色圆盘 + 金环
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.05, 3.3, 0.22, 48), new THREE.MeshLambertMaterial({ color: 0x1b1d16 }));
-    disc.receiveShadow = true;
-    scene.add(disc);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(3.08, 3.32, 48), new THREE.MeshBasicMaterial({ color: 0xc8b26a, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.115;
-    scene.add(ring);
-
-    garagePV = { renderer, scene, cam, hemi, key, rim, env: null, tankGroup: null, turret: null, gun: null, active: true, lastT: 0 };
-    const onResize = () => {
-      renderer.setSize(innerWidth, innerHeight);
-      cam.aspect = innerWidth / innerHeight;
-      cam.updateProjectionMatrix();
-    };
-    addEventListener('resize', onResize);
-    garagePV.onResize = onResize;
-    setGarageTheme(selMap);
-
-    const tick = () => {
-      if (!garagePV.active) return;
-      const dt = Math.min(0.05, (performance.now() - garagePV.lastT) / 1000 || 0.033);
-      garagePV.lastT = performance.now();
-      if (garagePV.tankGroup) {
-        garagePV.tankGroup.rotation.y += dt * 0.2;   // 整车一体旋转(炮塔锁定车体, 不再独立慢转)
-        if (garagePV.gun) garagePV.gun.rotation.x = -0.05;
-      }
-      renderer.render(scene, cam);
-    };
-    garagePV.timer = setInterval(tick, 33);
-    tick();
-  }
-
-  function setGarageTheme(id) {
-    if (!garagePV || !garagePV.active) return;
-    const th = GARAGE_THEMES[id] || GARAGE_THEMES.l01;
-    if (garagePV.env) { garagePV.scene.remove(garagePV.env); disposeGroup(garagePV.env); }
-    garagePV.env = buildGarageEnv(th);
-    garagePV.scene.add(garagePV.env);
-    garagePV.scene.fog.color.setHex(th.bg);
-    garagePV.renderer.setClearColor(th.bg);
-    garagePV.hemi.color.setHex(th.hemi[0]); garagePV.hemi.groundColor.setHex(th.hemi[1]); garagePV.hemi.intensity = th.hemi[2];
-    garagePV.key.color.setHex(th.key[0]); garagePV.key.intensity = th.key[1];
-    garagePV.rim.color.setHex(th.rim[0]); garagePV.rim.intensity = th.rim[1];
-  }
-
-  function setGarageTank(type) {
-    if (!garagePV || !garagePV.active) return;
-    garagePV.want = type;   // 竞态防护: 连点切车只渲染最终选择
-    SF.Assets.getModel(type)
-      .then(() => { if (garagePV && garagePV.active && garagePV.want === type) renderGarageTank(type); })
-      .catch(e => console.warn('车库模型加载失败:', e));
-  }
-  function renderGarageTank(type) {
-    if (garagePV.tankGroup) garagePV.scene.remove(garagePV.tankGroup);
-    const parts = SF.Models.makeTank(type);
-    parts.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
-    garagePV.scene.add(parts.root);
-    garagePV.tankGroup = parts.root;
-    garagePV.turret = parts.turret;
-    garagePV.gun = parts.gun;
-    const v = SF.CFG.vehicles[type];
-    const al = v.gun.autoloader;
-    document.getElementById('garageStats').innerHTML =
-      `<b>${v.name}</b><span>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · ${al ? `弹夹 ${al.clip} 发(间隔 ${al.intra}s/整夹 ${al.long}s)` : `装填 ${v.gun.reload}s`}${v.gun.splash ? ` · 溅射 ${v.gun.splash}m` : ''} · 极速 ${Math.round(v.maxSpeed * 3.6)} km/h</span>`;
-    garagePV.renderer.render(garagePV.scene, garagePV.cam);
-  }
-
-  // 出击前车库: 选坦克 + 选地图
-  function buildPicker() {
-    const g = document.getElementById('garageRow'), m = document.getElementById('mapRow');
-    g.innerHTML = ''; m.innerHTML = '';
-    for (const t of SF.CFG.garage) {
-      const v = SF.CFG.vehicles[t.type];
-      const el = document.createElement('div');
-      el.className = 'card' + (t.type === selTank ? ' sel' : '');
-      el.innerHTML = `<b>${v.name}</b><i>${SF.ClsIcon(t.cls)} ${t.tag}</i><span>${t.desc}</span><em>HP ${v.hp} · 穿深 ${v.gun.pen} · 单发 ${v.gun.dmg} · 极速 ${Math.round(v.maxSpeed * 3.6)}</em>`;
-      el.onclick = () => {
-        selTank = t.type; localStorage.setItem('sf_mp_tank', t.type);
-        [...g.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); setGarageTank(t.type);
-        document.dispatchEvent(new CustomEvent('sf-mp-tank', { detail: t.type }));   // 联机在房: 大厅监听上报换车
-      };
-      g.appendChild(el);
-    }
-    for (const mp of SF.CFG.maps) {
-      const el = document.createElement('div');
-      el.className = 'card' + (mp.id === selMap ? ' sel' : '');
-      el.innerHTML = `<b>${mp.name}</b><span>${mp.desc}</span>`;
-      el.onclick = () => { selMap = mp.id; localStorage.setItem('sf_map', mp.id); [...m.children].forEach(c => c.classList.remove('sel')); el.classList.add('sel'); setGarageTheme(mp.id); };
-      m.appendChild(el);
-    }
-    setGarageTank(selTank);   // 初始渲染上次选择的坦克
   }
 
   /* ---------- PVE 修改器面板: 敌军规模 + 配件倍率(仅单机, localStorage 持久化) ---------- */
@@ -1925,25 +1757,25 @@ SF.Main = (() => {
     leaveBattle(false);
     document.getElementById('btnToGarage').textContent = '返 回 车 库';
     document.getElementById('titleScreen').style.display = 'flex';
-    buildGaragePreview();       // 重建车库场景(出击时已销毁)
-    setGarageTank(selTank);
+    SF.Garage.buildGaragePreview();       // 重建车库场景(出击时已销毁)
+    SF.Garage.setGarageTank(SF.Garage.selTank);
   }
   // 联机赛后回车库: 房间与服务端都保留, 换车/重新准备即可再战(替代旧行为"一把后各自重载页面房间解散")
   function backToLobby() {
     leaveBattle(true);
     document.getElementById('btnToGarage').textContent = '返 回 车 库';
     document.getElementById('titleScreen').style.display = 'flex';
-    buildGaragePreview();       // 重建车库场景(战斗时已销毁)
-    setGarageTank(selTank);
+    SF.Garage.buildGaragePreview();       // 重建车库场景(战斗时已销毁)
+    SF.Garage.setGarageTank(SF.Garage.selTank);
     SF.Lobby.reenter();
   }
   async function startBattle() {
     // 按需补载(懒加载): 地图 + 玩家 + 本等级带敌军车型池
-    const pt = TIER_NUM[(SF.CFG.vehicles[selTank] || {}).tier] || 5;
+    const pt = TIER_NUM[(SF.CFG.vehicles[SF.Garage.selTank] || {}).tier] || 5;
     try {
       await withLoading('部署战场', async (onP) => {
-        await SF.Assets.ensureMap(selMap);
-        await SF.Assets.ensureTanks([selTank, ...enemyTypesFor([Math.max(1, pt - 1), Math.min(11, pt + 1)])], onP);
+        await SF.Assets.ensureMap(SF.Garage.selMap);
+        await SF.Assets.ensureTanks([SF.Garage.selTank, ...enemyTypesFor([Math.max(1, pt - 1), Math.min(11, pt + 1)])], onP);
       });
     } catch (err) {
       console.error(err);
@@ -2057,7 +1889,7 @@ SF.Main = (() => {
         if (id === MP.myId) continue;
         if (!t.alive) { spottedLast.delete(t); spotStreak.delete(t); spotLinger.delete(t); continue; }
         const d = U.dist2d(p.x, p.z, t.x, t.z);
-        const vis = d < 50 || (d < vr * (1 - SF.camoOf(t, world)) && SF.losClearAny(world, p.x, p.z, t.x, t.z));
+        const vis = d < 50 || (d < vr * (1 - SF.camoOf(t, world)) && SF.losClearAny(world, p, t, null, SF.playerSpotMargin()));
         if (vis) { if (!spotStreak.has(t)) spotStreak.set(t, world.time); spottedLast.set(t, world.time); }
         else if (spotStreak.has(t)) { spotLinger.set(t, U.clamp(5 + (world.time - spotStreak.get(t)) * 0.5, 5, 10)); spotStreak.delete(t); }
       }
@@ -2185,17 +2017,21 @@ SF.Main = (() => {
     MP.players = init.players;
     MP.mapId = init.map || 'l01';
     MP.gameMode = init.mode === 'coop' ? 'coop' : 'dm';
+    // 每局出生随机源: 服务器 start 广播的 seed(server.js:379) —— 权威端随机、全房同种子各自推导。
+    // 旧服务器/本地调试缺 seed 时回退常数 0: 各端仍一致(退化为固定顺序), 只损失随机性不分裂。
+    const seedRng = mulberry32((typeof init.seed === 'number' && isFinite(init.seed)) ? init.seed * 4294967296 : 0);
     MP.waveInfo = null; MP.aiId = 100;
     MP.tanks.clear(); MP.inputs.clear(); MP.respawn = []; MP.scores.clear();   // 赛后房间再战: 清上一场残留
     for (const pl of MP.players) MP.scores.set(pl.id, 0);
-    selTank = (init.players.find(pl => pl.id === init.you) || {}).tank || 'sherman';
+    SF.Garage.selTank = (init.players.find(pl => pl.id === init.you) || {}).tank || 'sherman';   // 本机选择同步为服务端登记车(选择态归 SF.Garage, 纯改名行为不变)
     // 按需补载(懒加载): 地图 + 参战玩家坦克(+ 合作主机的敌军车型池)
     try {
       const pt0 = Math.max(0, ...MP.players.map(pl => TIER_NUM[(SF.CFG.vehicles[pl.tank] || {}).tier] || 5));
       await withLoading('加入战斗', async (onP) => {
         await SF.Assets.ensureMap(MP.mapId);
         const tanks = MP.players.map(pl => pl.tank);
-        if (MP.gameMode === 'coop' && role === 'host')
+        // coop 敌军车型池: 服务器权威(srvSim)后全员 client, 每角色都需预载敌模(aiWave 幽灵创建不竞态)
+        if (MP.gameMode === 'coop')
           tanks.push(...enemyTypesFor([Math.max(1, pt0 - 1), Math.min(11, pt0 + 1)]));
         await SF.Assets.ensureTanks(tanks, onP);
       });
@@ -2205,14 +2041,14 @@ SF.Main = (() => {
       location.reload();
       return;
     }
-    disposeGarage();
+    SF.Garage.disposeGarage();
     document.getElementById('titleScreen').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
     SF.Audio.init(); SF.Audio.startEngine(); SF.Audio.startAmbient();
 
     const mapSel = SF.CFG.maps.find(m => m.id === MP.mapId) || SF.CFG.maps[0];
-    selMap = mapSel.id;
-    selTank = (init.players.find(pl => pl.id === init.you) || {}).tank || 'sherman';
+    SF.Garage.selMap = mapSel.id;
+    SF.Garage.selTank = (init.players.find(pl => pl.id === init.you) || {}).tank || 'sherman';   // 同上: 选择态归 SF.Garage, 纯改名行为不变
 
     // 场景: coop 主机保留波次流程(主机跑 AI), 其余关闭单机流程
     if (!(MP.gameMode === 'coop' && role === 'host')) { spawnWave = () => { }; checkWave = () => { }; }
@@ -2229,18 +2065,24 @@ SF.Main = (() => {
       if (spot) [sx, sz] = world.covers.collide(spot[0], spot[1], 3);
       MP.spawnPool.push([sx, sz]);
     }
+    // 每局开局随机(全房一致): 池几何仍是上面的确定性 24 点环(各端地图一致→池一致),
+    // 洗的只是取点顺序 —— DM 红蓝各在自己半侧洗, coop 全池洗; 两次半侧洗牌所有客户端都执行,
+    // rng 消耗序列恒同, 不因模式分叉。无坐标广播, 不动输入/快照协议。
+    const half = MP.spawnPool.length >> 1;
+    const poolSide = [seededShuffle(MP.spawnPool.slice(0, half), seedRng),
+                      seededShuffle(MP.spawnPool.slice(half), seedRng)];
+    const poolCoop = seededShuffle(MP.spawnPool, seedRng);
 
     // 移除 buildScene 创建的单机默认玩家
     scene.remove(world.player.group);
 
     // 建坦克: 主机=真实模拟; 客户端=幽灵(不 update); 死斗按服务器阵营红/蓝分侧出生
-    const half = MP.spawnPool.length >> 1;
     const seq = [0, 0];
     for (const pl of MP.players) {
       const team = MP.gameMode === 'coop' ? 0 : (pl.team === 1 ? 1 : 0);
       const sp = MP.gameMode === 'coop'
-        ? MP.spawnPool[(seq[0]++) % MP.spawnPool.length]
-        : MP.spawnPool[team * half + (seq[team]++) % half];   // 己方半侧顺序取点, 20 人内不重叠
+        ? poolCoop[(seq[0]++) % poolCoop.length]
+        : poolSide[team][(seq[team]++) % half];   // 己方半侧洗牌后顺序取点(每局顺序不同、全房一致), 20 人内不重叠
       const isMe = pl.id === MP.myId;
       const t = new SF.Tank(pl.tank, {
         x: sp[0], z: sp[1], yaw: Math.atan2(-sp[0], -sp[1]),   // 朝地图中心(修北半场池点恒朝北背对全场的不对等)

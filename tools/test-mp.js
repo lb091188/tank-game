@@ -26,7 +26,7 @@ function client() {
   return {
     ws,
     open: () => new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); }),
-    send: (t, o) => ws.send(JSON.stringify({ t, ...o })),
+    send: (t, o) => ws.send(JSON.stringify({ t, proto: 2, ...o })),   // 阶段5 协议版本门禁: 测试客户端视为新客户端
     // 等待下一条 t 类型消息 (先查积压)
     wait: (t, ms = 2500) => {
       const i = queue.findIndex(m => m.t === t);
@@ -158,9 +158,8 @@ const redeem = async (key) => (await fetch(BASE + '/key/redeem', {
     c4.send('start', { map: 'l01', mode: 'dm' });
     const s4 = await c4.wait('start');
     check('开战广播送达', !!s4 && s4.players.length === 2, JSON.stringify(s4 && s4.players.length));
-    c4.send('ev', { k: 'kill', d: { id: jNear.you, by: hostId, p: [0, 1, 0] } });   // Noah 击毁 坦克世界
-    await sleep(150);
-    c4.send('end', { scores: [[hostId, 'Noah', 1], [jNear.you, '坦克世界', 0]] });
+    // 阶段3 服务器权威: dm 房由 sim 判定胜负, 客户端 ev/end 不再采信; 结算走 admin 强制结算(sim.scoreRows 为准)
+    await fetch(`http://127.0.0.1:${Number(PORT) + 1}/admin/srv-end?room=${roomA}`, { method: 'POST', headers: { 'X-Steel-Admin': '1' } });
     // c5 的队列里积压了之前 ready 的 lobby 广播, 轮询等到"仅房主就绪"那条复位广播
     const waitLobbyWhere = async (c, pred) => {
       for (let i = 0; i < 6; i++) {
@@ -185,7 +184,8 @@ const redeem = async (key) => (await fetch(BASE + '/key/redeem', {
   try {
     const lines = require('fs').readFileSync(require('path').join(__dirname, '..', 'server', 'records', 'battles.jsonl'), 'utf8').split('\n').filter(l => l.trim());
     const last = JSON.parse(lines[lines.length - 1]);
-    check('战斗记录含击杀时间线', Array.isArray(last.feed) && last.feed.some(f => f.killer === 'Noah' && f.victim === '坦克世界'), JSON.stringify(last.feed));
+    // srvSim 模式: 无真实击杀时时间线为空数组(机制字段保留); 中继房( coop )仍由主机注入
+    check('战斗记录落盘含时间线结构', Array.isArray(last.feed) && last.mode === 'dm', JSON.stringify({ feed: last.feed, mode: last.mode }));
   } catch (e) { check('战斗记录含击杀时间线', false, e.message); }
 
   // ---- ⑬ 阵营: 自动平衡入队 + 自选换队(换队视为未准备) + 模式切换归一 ----
