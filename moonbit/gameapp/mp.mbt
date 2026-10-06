@@ -388,7 +388,8 @@ fn mp_wreck_smoke(ghosts : Array[Ghost], fx : Fx, dt : Double) -> Unit {
 /// (调用方 async fn main 已 set_external_event_loop, 这里直接组任务组)
 async fn mp_main(addr : String) -> Unit {
   // 联机默认 ~30s(GAMEAPP_FRAMES 可覆写; 16ms 定时器 1875 帧 ≈ 30s)
-  let total_frames = env_frames_or(1875)
+  // 未设 GAMEAPP_FRAMES 默认 1_000_000 帧(手动玩语义); 验收脚本显式设
+  let total_frames = env_frames_or(1000000)
   let manual = mp_manual()
   logln(
     "---- gameapp MP 启动: addr=\{addr} room=\{mp_room()} name=\{mp_name()} tank=\{mp_tank()} map=\{mp_map()} frames=\{total_frames} manual=\{manual} ----",
@@ -516,6 +517,26 @@ async fn mp_main(addr : String) -> Unit {
   camera.look_at(cam.eye, cam.look_target(player.val))
   scene.update_matrix_world()
   let state = @input.InputState::new()
+  // FPS 指针锁定(手动模式 + GAMEAPP_MOUSELOCK=1; 自动巡航不开 —— 锁定
+  // 视角会与 autopilot 瞄准打架)。机制/口径同 local_main, 见 main.mbt。
+  let pl : Ref[@input.PointerLock?] = Ref(None)
+  let lock_engaged = Ref(false)
+  let lock_btn1 = Ref(false)
+  let lock_moves = Ref(0)
+  let lock_diag = Ref(false)
+  fn release_lock(reason : String) -> Unit {
+    match pl.val {
+      Some(lock) => {
+        lock.release()
+        lock_engaged.val = false
+        logln("鼠标解锁(\{reason})")
+      }
+      None => ()
+    }
+  }
+  fn mouselock_on() -> Bool {
+    env_mouselock() && manual
+  }
   let drag_x = Ref(0.0)
   let drag_y = Ref(0.0)
   let on_move = fn(x : Double, y : Double) -> Unit {
@@ -568,6 +589,14 @@ async fn mp_main(addr : String) -> Unit {
   window.activate()
   window.on_key_down(fn(kev) {
     let k = @input.keysym_to_keycode(kev.code.to_uint64())
+    if k is Esc && lock_engaged.val {
+      release_lock("ESC")
+      if lock_btn1.val {
+        state.apply(@input.InputEvent::mouse_up(@input.MouseButton::from_yue(1), 0.0, 0.0))
+        lock_btn1.val = false
+      }
+      return false
+    }
     state.apply(@input.InputEvent::key_down(k))
     false
   })
@@ -577,6 +606,31 @@ async fn mp_main(addr : String) -> Unit {
     false
   })
   window.on_mouse_down(fn(me) {
+    if mouselock_on() && me.button == 1 {
+      match pl.val {
+        Some(lock) => {
+          if !lock_engaged.val {
+            if lock.acquire() {
+              lock_engaged.val = true
+              lock_diag.val = false
+              logln("鼠标锁定(点击进入; 移动=视角, LMB=开火, ESC=解锁, 失焦自动释放)")
+            } else {
+              logln("鼠标锁定失败(抓捕未成功), 保持自由光标")
+            }
+            return false
+          }
+          state.apply(
+            @input.InputEvent::mouse_down(
+              @input.MouseButton::from_yue(me.button),
+              me.screen_x,
+              me.screen_y,
+            ),
+          )
+          return false
+        }
+        None => ()
+      }
+    }
     state.apply(
       @input.InputEvent::mouse_down(
         @input.MouseButton::from_yue(me.button),
@@ -626,6 +680,19 @@ async fn mp_main(addr : String) -> Unit {
     )
     xid_hex.val = u32_hex(xid)
     logln("MP 窗口 xid=\{xid_hex.val}, 截图帧 \{shot_frame}")
+    if mouselock_on() {
+      let b0 = host.get_bounds()
+      pl.val = @input.PointerLock::attach(
+        xdisplay,
+        xid,
+        b0.width.to_int(),
+        b0.height.to_int(),
+      )
+      match pl.val {
+        Some(_) => logln("PointerLock 就绪(手动模式; 点击画面进入锁定)")
+        None => logln("PointerLock 不可用(X11 缺失/参数无效), 锁定模式降级关闭")
+      }
+    }
     let renderer = @renderers.WebGPURenderer::from_xlib(
       xdisplay,
       xid.to_uint64(),
@@ -641,6 +708,10 @@ async fn mp_main(addr : String) -> Unit {
     host.on_size_changed(fn() {
       let b = host.get_bounds()
       renderer.resize(b.width.to_uint(), b.height.to_uint())
+      match pl.val {
+        Some(lock) => lock.update_size(b.width.to_int(), b.height.to_int())
+        None => ()
+      }
     })
     match hud {
       Some(h) => h.attach_renderer(renderer)
@@ -649,6 +720,51 @@ async fn mp_main(addr : String) -> Unit {
     logln("MP 渲染器就绪, 进入联机帧循环")
     @yue.set_timer(16, fn() {
       frame.val += 1
+      // ⓪ FPS 锁定态驱动(XQueryPointer 轮询; 口径同 local_main)
+      if lock_engaged.val {
+        match pl.val {
+          Some(lock) => {
+            if !lock_diag.val {
+              lock_diag.val = true
+              logln("锁定焦点链诊断: \{lock.debug_focus_chain()}")
+            }
+            if !lock.focused() {
+              release_lock("失焦自动释放")
+              if lock_btn1.val {
+                state.apply(@input.InputEvent::mouse_up(@input.MouseButton::from_yue(1), 0.0, 0.0))
+                lock_btn1.val = false
+              }
+            } else {
+              let (dx, dy, btn1) = lock.poll()
+              if dx != 0.0 || dy != 0.0 {
+                cam.yaw = cam.yaw - dx * 0.005
+                let mut np = cam.pitch + dy * 0.005
+                if np < -0.12 {
+                  np = -0.12
+                }
+                if np > 1.1 {
+                  np = 1.1
+                }
+                cam.pitch = np
+                lock.recentre()
+                lock_moves.val = lock_moves.val + 1
+                if lock_moves.val <= 3 {
+                  logln("锁定视角增量 #\{lock_moves.val}: dx=\{dx} dy=\{dy} → yaw=\{cam.yaw}")
+                }
+              }
+              if btn1 && !lock_btn1.val {
+                lock_btn1.val = true
+                state.apply(@input.InputEvent::mouse_down(@input.MouseButton::from_yue(1), 0.0, 0.0))
+              }
+              if !btn1 && lock_btn1.val {
+                lock_btn1.val = false
+                state.apply(@input.InputEvent::mouse_up(@input.MouseButton::from_yue(1), 0.0, 0.0))
+              }
+            }
+          }
+          None => ()
+        }
+      }
       // ① 实测帧间 dt(相机平滑/特效/HUD 时钟)
       let now = mono_now()
       let mut dt_real = now - last_t.val

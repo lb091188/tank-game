@@ -11,7 +11,8 @@
 // 光照/雾/天色按 map.json lighting 段; ChaseCamera 追车视角;
 // 本车行驶接 simcore/simengine(WASD → 油门/转向, 固定步长 1/60 tick,
 // 节奏对齐 client/js/main.js tick 的累加器口径);
-// GAMEAPP_FRAMES(FFI getenv)设定时跑满自动退出 rc=0, 未设默认 300 帧。
+// GAMEAPP_FRAMES(FFI getenv)设定时跑满自动退出 rc=0, 未设默认 1_000_000
+// 帧(手动玩语义, 关窗/Ctrl-C 退; 验收脚本一律显式设帧数)。
 // 资产只读自 steel-front 主仓 client/。
 //
 // 输入走 three-native input 抽象(InputState/InputEvent/keysym_to_keycode),
@@ -19,8 +20,14 @@
 // 被进程级因素阻断(three-native input 包 x11.mbt 教训1 + input_test 实录),
 // yue 后端在本机 A9 验收(xdotool 发键实录 /tmp/input_test_app.log)已证可用。
 //
-// three-native 依赖走 moon.work workspace 本地路径(仓根 moon.work members);
+// three-native 依赖双轨: 开发机走 moon.work workspace 本地成员(改引擎即时
+// 生效); 无 workspace 的机器走 moon.mod 引 mooncakes 0.1.1(registry 快照)。
 // yue/wgpu_mbt/moonbit-libyue 是 three-native 声明的依赖, 已装 .mooncakes。
+//
+// GAMEAPP_MOUSELOCK(默认开, 0=关): FPS 式指针锁定 —— 点击进锁定/
+// 锁定中鼠标转视角(XQueryPointer 轮询差分, core grab 抑制 XI2 投递故
+// 不走 yue 事件)+LMB 开火/ESC 先解锁/失焦自动释放; 机制在 three-native
+// input::PointerLock(0.1.1)。MP 模式需配合 GAMEAPP_MP_MANUAL=1。
 import {
   "moonbitlang/async",
   "moonbitlang/async/external_loop_integration",

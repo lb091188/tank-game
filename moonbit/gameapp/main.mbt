@@ -155,6 +155,21 @@ fn env_demo() -> Bool {
 }
 
 ///|
+/// GAMEAPP_MOUSELOCK 环境变量: 默认开, "0"=显式关。FPS 式指针锁定
+/// (常规端游口径 —— 点击进锁定/锁定中鼠标转视角+LMB 开火/ESC 先
+/// 解锁/失焦自动释放; 机制在 three-native input::PointerLock;
+/// 自动演示(DEMO)/MP 自动巡航不启用 —— 看演示不该吞鼠标; MP 手动
+/// 需配合 GAMEAPP_MP_MANUAL=1)。
+fn env_mouselock() -> Bool {
+  let p = c_getenv(b"GAMEAPP_MOUSELOCK\x00")
+  if p == 0UL {
+    true // 默认开:锁定即默认体验, 拖拽模式用 0 显式退回
+  } else {
+    c_atoi(p) != 0
+  }
+}
+
+///|
 /// UInt → "0x..." 十六进制(xid 传给 import/xwininfo 用)
 fn u32_hex(v : UInt) -> String {
   let digits : Array[Char] = [
@@ -855,14 +870,47 @@ async fn main {
 /// 本地模式(单机 PVE 演示/手动): 原 fn main 主体, 退出路径从 @yue.quit()
 /// 改为 gate 闸(GLib 外部循环下没有 yue::run 可退, 保活协程看闸收束)
 async fn local_main() -> Unit {
-  let total_frames = env_frames_or(300)
+  // 未设 GAMEAPP_FRAMES 默认 1_000_000 帧(≈4.6h, 手动玩语义: 玩家关窗/
+  // Ctrl-C 退); 验收/冒烟脚本一律显式设帧数(30/600 等), 不受影响
+  let total_frames = env_frames_or(1000000)
   let demo = env_demo()
+  let mouselock = env_mouselock() && !demo // 自动演示不吞鼠标
   // 退出闸: 帧满/窗口关/渲染失败置位; 保活协程(尾部)据此收束事件循环
   let gate = Ref(false)
+  // FPS 式指针锁定(GAMEAPP_MOUSELOCK=1): 机制在 three-native input
+  // PointerLock(GDK display 上 XGrabPointer+隐形光标+回中差分); 策略
+  // 在此 —— 点击进锁定 / 锁定中鼠标直接转视角+LMB 开火 / ESC 先解锁 /
+  // 失焦自动释放。attach 需窗口 XID, 延到 post_task 取到句柄后做。
+  let pl : Ref[@input.PointerLock?] = Ref(None)
+  let lock_engaged = Ref(false)
+  let lock_moves = Ref(0) // 锁定期增量日志限流(前 3 条,验收取证用)
+  let lock_diag = Ref(false) // 焦点链诊断一次性标志(每次进锁打 1 条)
+  let lock_suppress = Ref(false) // ESC 解锁后抑制自动锁, 失焦重新武装
+  let lock_focus_streak = Ref(0) // 连续聚焦 tick 数(自动锁的迟滞确认)
+  let lock_request = Ref(false) // 锁定请求(点击或激活触发, tick 内兑现)
+  let lock_grab_fails = Ref(0) // 兑现期连续失败计数(限流日志)
+  fn release_lock(reason : String) -> Unit {
+    match pl.val {
+      Some(lock) => {
+        lock.release()
+        lock_engaged.val = false
+        logln("鼠标解锁(\{reason})")
+      }
+      None => ()
+    }
+  }
   fn request_quit(reason : String) -> Unit {
     if !gate.val {
       gate.val = true
       logln("本地模式请求退出: \{reason}")
+      // 退出前若仍锁定, 还原指针(机制幂等)
+      match pl.val {
+        Some(lock) => {
+          lock.release()
+          lock_engaged.val = false
+        }
+        None => ()
+      }
       // 兜底: 保活协程理论上 100ms 内收束, 卡死则 2.5s 硬退
       ignore(
         @yue.set_timeout(2500, fn() {
@@ -873,7 +921,7 @@ async fn local_main() -> Unit {
     }
   }
   logln(
-    "---- gameapp 启动: GAMEAPP_FRAMES=\{total_frames} GAMEAPP_DEMO=\{demo} ----",
+    "---- gameapp 启动: GAMEAPP_FRAMES=\{total_frames} GAMEAPP_DEMO=\{demo} GAMEAPP_MOUSELOCK=\{mouselock} ----",
   )
   // ---- 地图: map.json + 16 位高程 PNG(assets.load_map 的同步版:
   //      先解析 terrain 段拿 resolution/maxHeight, 再解码高程) ----
@@ -1120,8 +1168,11 @@ async fn local_main() -> Unit {
   //       'A'..'Z' 分支重合, A9 验收实录本机 xdotool 发键可达) ----
   let state = @input.InputState::new()
   // 左键拖拽自由视角(差分按 root 坐标, 双挂 host/window 的 move 幂等)
+  // (FPS 锁定态不走此路:core grab 抑制宿主 XI2 投递, 差分/按钮改由
+  //  tick 轮询 XQueryPointer 驱动, 见 set_timer ⓪ 块)
   let drag_x = Ref(0.0)
   let drag_y = Ref(0.0)
+  let lock_btn1 = Ref(false) // 轮询按钮边沿态(按住=开火)
   let on_move = fn(x : Double, y : Double) -> Unit {
     if cam.dragging {
       let dx = x - drag_x.val
@@ -1156,6 +1207,16 @@ async fn local_main() -> Unit {
   window.activate()
   window.on_key_down(fn(kev) {
     let k = @input.keysym_to_keycode(kev.code.to_uint64())
+    // 锁定态 ESC 只解锁(常规端游铁律:ESC 先还光标再谈退出)
+    if k is Esc && lock_engaged.val {
+      release_lock("ESC")
+      lock_suppress.val = true // 尊重解锁意图, 不再自动锁(下次失焦重武装)
+      if lock_btn1.val {
+        state.apply(@input.InputEvent::mouse_up(@input.MouseButton::from_yue(1), 0.0, 0.0))
+        lock_btn1.val = false
+      }
+      return false
+    }
     state.apply(@input.InputEvent::key_down(k))
     logln("KEY down \{k.label()} (VKEY=\{kev.code})")
     false
@@ -1167,6 +1228,31 @@ async fn local_main() -> Unit {
     false
   })
   window.on_mouse_down(fn(me) {
+    // FPS 锁定模式: 首次点击=进锁定(不当作开火/拖拽); 锁定中 LMB=开火
+    // (state 走 fire 路径), 但不启动相机拖拽
+    if mouselock && me.button == 1 {
+      match pl.val {
+        Some(lock) => {
+          if !lock_engaged.val {
+            // 只立请求, 抓捕由 tick 兑现(press 瞬间的隐式抓捕会顶掉
+            // 同步 XGrabPointer, 按钮一松 tick 就能成功)
+            lock_request.val = true
+            lock_suppress.val = false
+            lock_focus_streak.val = 0 // 防 3 tick 阈值立即自动触发歧义
+            return false
+          }
+          state.apply(
+            @input.InputEvent::mouse_down(
+              @input.MouseButton::from_yue(me.button),
+              me.screen_x,
+              me.screen_y,
+            ),
+          )
+          return false
+        }
+        None => ()
+      }
+    }
     state.apply(
       @input.InputEvent::mouse_down(
         @input.MouseButton::from_yue(me.button),
@@ -1223,6 +1309,21 @@ async fn local_main() -> Unit {
     )
     xid_hex.val = u32_hex(xid)
     logln("窗口 xid=\{xid_hex.val}, 截图帧 \{shot_frame}")
+    // 指针锁定机制绑定: 与 from_xlib 同源的 GDK xdisplay/xid(主线程内
+    // 命令型调用, 不碰事件流; 见 input/pointer_lock.mbt 头注)
+    if mouselock {
+      let b0 = host.get_bounds()
+      pl.val = @input.PointerLock::attach(
+        xdisplay,
+        xid,
+        b0.width.to_int(),
+        b0.height.to_int(),
+      )
+      match pl.val {
+        Some(_) => logln("PointerLock 就绪(点击画面进入锁定)")
+        None => logln("PointerLock 不可用(X11 缺失/参数无效), 锁定模式降级关闭")
+      }
+    }
     let renderer = @renderers.WebGPURenderer::from_xlib(
       xdisplay,
       xid.to_uint64(),
@@ -1238,6 +1339,10 @@ async fn local_main() -> Unit {
     host.on_size_changed(fn() {
       let b = host.get_bounds()
       renderer.resize(b.width.to_uint(), b.height.to_uint())
+      match pl.val {
+        Some(lock) => lock.update_size(b.width.to_int(), b.height.to_int())
+        None => ()
+      }
     })
     logln(
       "渲染器就绪, 追车视角启动(本车出生 (\{player.x}, \{player.z}) yaw=\{player.yaw})",
@@ -1252,6 +1357,111 @@ async fn local_main() -> Unit {
     let sim_ticks = Ref(0)
     @yue.set_timer(16, fn() {
       frame.val = frame.val + 1
+      // ⓪ FPS 锁定态驱动(核心: XQueryPointer 轮询 —— core grab 抑制
+      //    宿主 XI2 投递, yue on_mouse_* 在锁定期间不响, 全靠这里):
+      //    窗口激活自动锁定(连续 3 tick 确认, ESC 后抑制到下次失焦) +
+      //    失焦巡检 + 指针差分转视角 + 回中 + 左键边沿开火
+      if mouselock {
+        match pl.val {
+          Some(lock) => {
+            if !lock.focused() {
+              lock_focus_streak.val = 0
+              // 失焦即重新武装(下次激活自动锁) —— 无论失焦时是否处于
+              // 锁定态: ESC 解锁后抑制, 切走再切回要能重新自动锁
+              lock_suppress.val = false
+              lock_request.val = false
+              lock_grab_fails.val = 0
+              if lock_engaged.val {
+                release_lock("失焦自动释放")
+                if lock_btn1.val {
+                  state.apply(
+                    @input.InputEvent::mouse_up(
+                      @input.MouseButton::from_yue(1),
+                      0.0,
+                      0.0,
+                    ),
+                  )
+                  lock_btn1.val = false
+                }
+              }
+            } else {
+              lock_focus_streak.val = lock_focus_streak.val + 1
+              // 激活即锁(用户口径): ESC 解锁的抑制期内不自动锁, 点击仍可
+              if !lock_engaged.val &&
+                !lock_suppress.val &&
+                lock_focus_streak.val >= 3 {
+                lock_request.val = true
+              }
+              // 兑现锁定请求: 抓捕失败多为瞬态(按钮按住的隐式抓捕=
+              // AlreadyGrabbed / 切换动画中=NotViewable), 约 2s(120 tick)
+              // 内持续重试, 失败不永久抑制(松键/动画结束自然成功)
+              if !lock_engaged.val &&
+                lock_request.val &&
+                lock_focus_streak.val <= 120 {
+                if lock.acquire() {
+                  lock_engaged.val = true
+                  lock_diag.val = false
+                  lock_request.val = false
+                  lock_grab_fails.val = 0
+                  logln(
+                    "鼠标锁定(\{if lock_focus_streak.val >= 3 { "窗口激活" } else { "点击" }}; 移动=视角, LMB=开火, ESC=解锁, 失焦自动释放)",
+                  )
+                } else {
+                  lock_grab_fails.val = lock_grab_fails.val + 1
+                  if lock_grab_fails.val == 20 {
+                    logln(
+                      "锁定抓捕连续失败 x20, 最近错误码 \{lock.last_grab_status()}(1=他人抓捕中 3=窗口未显示); 继续重试中",
+                    )
+                  }
+                }
+              }
+            }
+            if lock_engaged.val {
+            if !lock_diag.val {
+              lock_diag.val = true
+              logln("锁定焦点链诊断: \{lock.debug_focus_chain()}")
+            }
+            {
+              let (dx, dy, btn1) = lock.poll()
+              if dx != 0.0 || dy != 0.0 {
+                cam.yaw = cam.yaw - dx * 0.005
+                let mut np = cam.pitch + dy * 0.005
+                if np < -0.12 {
+                  np = -0.12
+                }
+                if np > 1.1 {
+                  np = 1.1
+                }
+                cam.pitch = np
+                lock.recentre()
+                lock_moves.val = lock_moves.val + 1
+                if lock_moves.val <= 3 {
+                  logln(
+                    "锁定视角增量 #\{lock_moves.val}: dx=\{dx} dy=\{dy} → yaw=\{cam.yaw}",
+                  )
+                }
+              }
+              // 左键边沿:grab 期间 yue 不投递 button 事件, 轮询补
+              if btn1 && !lock_btn1.val {
+                lock_btn1.val = true
+                state.apply(
+                  @input.InputEvent::mouse_down(
+                    @input.MouseButton::from_yue(1),
+                    0.0,
+                    0.0,
+                  ),
+                )
+              }
+              if !btn1 && lock_btn1.val {
+                lock_btn1.val = false
+                state.apply(@input.InputEvent::mouse_up(@input.MouseButton::from_yue(1), 0.0, 0.0))
+              }
+            }
+            }
+          }
+          None => ()
+        }
+      }
       // ① 实测帧间 dt(钳 [0, 0.1], JS tick 的 min(0.1, ...) 同式)
       let now = mono_now()
       let mut dt_real = now - last_t.val

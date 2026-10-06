@@ -26,7 +26,7 @@ preferred_target = "native"
 description = ""
 
 import {
-  "NoahLiu/three-native@0.1.0",
+  "NoahLiu/three-native@0.1.2",
   "mizchi/image@0.4.3",
   "moonbitlang/async@0.22.4",
   "Milky2018/moon_rodio@0.3.5",
