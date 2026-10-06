@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" id="metaVp" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>钢铁前沿 · 第一关 遭遇战</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1d17; font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+  #game { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* 加载屏 */
+  #loading { position: fixed; inset: 0; background: #14160f; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+  #loading h1 { color: #c8b26a; letter-spacing: 8px; font-size: 34px; margin-bottom: 26px; }
+  #loadBarBox { width: 320px; height: 8px; background: #2a2d22; border-radius: 4px; overflow: hidden; }
+  #loadBar { height: 100%; width: 0; background: linear-gradient(90deg, #8a7a3e, #c8b26a); transition: width .2s; }
+  #loadTip { color: #7d8070; margin-top: 14px; font-size: 13px; }
+  #tipOnLoad { color: #a8ad97; margin-top: 10px; font-size: 12px; max-width: 460px; text-align: center; padding: 0 20px; }
+  /* 提示行已移到战场卡片正下方(见 #mapPick): 右对齐与卡片对齐, 右侧让位 276px(=参数/房间面板 274 宽+26 边距)避免同列重叠; 空态不渲染免得空框悬在车库 */
+  #tipOnTitle { color: #cdd3b4; font-size: 13px; margin: 6px 276px 0 auto; max-width: 480px; min-height: 18px; text-align: right; padding: 6px 16px; background: rgba(12, 14, 9, .62); border: 1px solid rgba(200, 178, 106, .22); border-radius: 6px; text-shadow: 0 1px 2px rgba(0, 0, 0, .65); box-sizing: border-box; }
+  #tipOnTitle:empty { display: none; }
+
+  /* 标题屏: 全屏车库(3D 场景铺满视口, 坦克压在屏幕底部) */
+  #titleScreen { position: fixed; inset: 0; background: #14160f; display: none; z-index: 90; overflow: hidden; }
+  #garageView { position: absolute; inset: 0; }
+  #garageView canvas { position: absolute; inset: 0; display: block; }
+  #garageUI { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+  #garageUI #titleTop, #garageUI #bottomDock, #garageUI #roomPanel, #garageUI #specPanel { pointer-events: auto; }
+  #titleTop { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 30px 0; gap: 20px; }
+  /* 左栏: 标题 + PVE修改器 + 画质 竖排(给底部与坦克展示区让位) */
+  #titleLeft { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 340px; }
+  #titleBrand h1 { color: #d8c887; font-size: 34px; letter-spacing: 10px; margin-bottom: 2px; text-shadow: 0 2px 10px #000; }
+  #titleBrand h2 { color: #9aa08a; font-weight: normal; letter-spacing: 3px; font-size: 14px; text-shadow: 0 1px 6px #000; }
+  #garageStats { padding: 8px 14px; text-align: left; width: max-content; max-width: 42vw; }
+  #garageStats b { display: block; color: #e8dcae; font-size: 17px; letter-spacing: 1px; }
+  #garageStats span { color: #a8ad99; font-size: 12px; }
+  #pvePanel { padding: 6px 12px; text-align: left; align-self: flex-start; }
+  #pvePanel .pveTitle { color: #8b9080; font-size: 13px; margin-bottom: 4px; cursor: pointer; white-space: nowrap; }
+  #pvePanel .pveTitle b { color: #e8dcae; font-size: 13px; letter-spacing: 1px; }
+  #pvePanel .pveTitle.mod b { color: #ffd97a; text-shadow: 0 0 8px rgba(255,215,120,.5); }
+  #pvePanel .pveSum { color: #ffd97a; font-size: 12px; margin-left: 6px; font-style: normal; }
+  #pvePanel .pveTitle span { color: #767b6b; font-size: 11px; margin-left: 6px; }
+  #pvePanel .pveTitle::after { content: ' ▾'; color: #8b9080; }
+  #pvePanel.collapsed .pveTitle::after { content: ' ▸'; }
+  #pvePanel.collapsed .pveBody { display: none; }
+  #pvePanel .pveRow { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+  #pvePanel .pveRow label { color: #a8ad99; font-size: 12px; width: 96px; }
+  #pvePanel select { background: #23261c; color: #d8c887; border: 1px solid #5c6244; border-radius: 3px; font-size: 12px; padding: 2px 4px; cursor: pointer; }
+  /* 画质面板: 复用 pvePanel 的标题/行样式 */
+  #gfxPanel { padding: 6px 12px; text-align: left; align-self: flex-start; }
+  #gfxPanel .pveTitle { color: #8b9080; font-size: 13px; margin-bottom: 4px; cursor: pointer; white-space: nowrap; }
+  #gfxPanel .pveTitle b { color: #e8dcae; font-size: 13px; letter-spacing: 1px; }
+  #gfxPanel .pveTitle span { color: #767b6b; font-size: 11px; margin-left: 6px; }
+  #gfxPanel .pveTitle::after { content: ' ▾'; color: #8b9080; }
+  #gfxPanel.collapsed .pveTitle::after { content: ' ▸'; }
+  #gfxPanel.collapsed .pveBody { display: none; }
+  #gfxPanel .pveRow { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+  #gfxPanel .pveRow label { color: #a8ad99; font-size: 12px; width: 96px; }
+  #gfxPanel select { background: #23261c; color: #d8c887; border: 1px solid #5c6244; border-radius: 3px; font-size: 12px; padding: 2px 4px; cursor: pointer; }
+  #gfxPanel .pveNote { color: #767b6b; font-size: 11px; }
+
+  /* 触屏操控(仅 TOUCH 设备由 JS 挂载): 左半屏摇杆 / 右半屏瞄准 / 右下开炮·开镜 / 左侧副开炮 */
+  #touchUI { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
+  #touchUI > * { pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  #tStickZone { position: absolute; left: 0; top: 12%; bottom: 0; width: 45%; }
+  #tAimZone { position: absolute; right: 0; top: 0; bottom: 0; width: 55%; }
+  #tStickBase { position: absolute; width: 110px; height: 110px; border: 2px solid rgba(200,178,106,.45); border-radius: 50%; background: rgba(14,16,11,.35); display: none; pointer-events: none !important; }
+  #tStickNub { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px; border-radius: 50%; background: rgba(216,200,135,.55); box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+  #tBtns { position: absolute; right: 18px; bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  #tFire, #tFireL { width: 84px; height: 84px; border-radius: 50%; border: 2px solid rgba(226,58,42,.65); background: rgba(120,26,18,.5); color: #ffd9c9; font-size: 19px; letter-spacing: 2px; font-weight: bold; }
+  #tFire.on, #tFireL.on { background: rgba(190,40,26,.75); }
+  #tFireL { position: absolute; left: 22px; bottom: 158px; width: 72px; height: 72px; font-size: 16px; }
+  #tScope { width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(200,178,106,.5); background: rgba(14,16,11,.5); color: #d8c887; font-size: 14px; letter-spacing: 1px; }
+  #tFull { position: absolute; top: 16px; right: 328px; width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(200,178,106,.4); background: rgba(14,16,11,.5); color: #d8c887; font-size: 18px; }
+  #tZoomBox { position: absolute; bottom: 108px; left: 50%; transform: translateX(-50%); width: min(62vw, 420px); text-align: center; display: none; pointer-events: auto; touch-action: none; }
+  #tZoom { width: 100%; height: 30px; accent-color: #c8b26a; background: rgba(14,16,11,.5); border-radius: 15px; border: 1px solid rgba(200,178,106,.35); }
+  #tZoomVal { color: #e8dcae; font-size: 13px; text-shadow: 0 1px 3px #000; margin-top: 2px; letter-spacing: 1px; }
+  #hud { touch-action: none; }
+  #mapPick { text-align: right; max-width: 50vw; }
+  #mapPick .pickLabel { margin: 0 0 8px; }
+  #bottomDock { padding: 0 26px; }
+  #dockRow { display: flex; align-items: flex-end; gap: 18px; padding-bottom: 8px; flex-wrap: wrap; }
+  #bottomDock > .pickLabel { margin: 0 0 6px; text-shadow: 0 1px 4px #000; }
+  .pickLabel { color: #8b9080; font-size: 13px; letter-spacing: 3px; margin: 12px 0 8px; }
+  /* 坦克筛选(类型×国家): '坦 克' 标签与两组按钮同一条单行; 必须 DOM 按钮组 —— 内嵌浏览器 webview
+     不渲染原生 <select> 弹层, 真人点不开(同 roomModeSel 8d49333 的教训); flex-wrap 兜底窄屏不破版 */
+  #tankFilterRow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  #tankFilterRow .pickLabel { margin: 0; }
+  .cards { display: flex; gap: 10px; }
+  .hscroll { overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; scrollbar-width: thin; scrollbar-color: #6f6230 rgba(14,16,11,.55); }
+  .hscroll::-webkit-scrollbar { height: 8px; }
+  .hscroll::-webkit-scrollbar-track { background: rgba(14,16,11,.55); border-radius: 4px; }
+  .hscroll::-webkit-scrollbar-thumb { background: #6f6230; border-radius: 4px; }
+  .hscroll::-webkit-scrollbar-thumb:hover { background: #c8b26a; }
+  #garageRow { padding: 8px 12px; background: rgba(10,12,8,.4); border: 1px solid rgba(200,178,106,.14); border-bottom: none; border-radius: 8px 8px 0 0; }
+  #garageRow .card { flex: 0 0 auto; width: 150px; padding: 8px 10px; }
+  #mapRow { justify-content: flex-start; padding: 4px; }   /* 首卡 margin-left:auto 右对齐; 放不下时 auto 归零 → 左起排列, 溢出可横向滚动(flex-end 溢出方向朝左不可滚) */
+  #mapRow .card:first-child { margin-left: auto; }
+  #mapRow .card { flex: 0 0 auto; width: 200px; padding: 8px 12px; background: rgba(10,12,8,.5); }
+  #btnRow { display: flex; gap: 14px; justify-content: flex-end; margin: 0 0 0 auto; }   /* margin-left:auto: 提示行移走后仍把出击按钮顶到最右 */
+  #btnStart { font-size: 19px; padding: 12px 58px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
+  #verStamp { color: #6a6f5e; font-size: 11px; letter-spacing: 1px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  #titleBrand #btnMp { display: none; margin: 14px 0 0; font-size: 14px; padding: 8px 24px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 3px; cursor: pointer; }
+  #titleBrand #btnFs { display: none; margin: 14px 0 0 10px; font-size: 14px; padding: 8px 18px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 2px; cursor: pointer; }
+  #titleBrand #btnFs:hover { background: #2e3325; color: #e8dcae; }
+  #titleBrand #btnMp:hover { background: #2e3325; }
+  #titleBrand #btnMp.on { display: inline-block; }
+  .card { width: 170px; padding: 12px 14px; background: rgba(255,255,255,.045); border: 1px solid rgba(200,178,106,.25); border-radius: 6px; cursor: pointer; text-align: left; transition: all .12s; }
+  .card:hover { background: rgba(255,255,255,.08); }
+  .card.sel { border-color: #c8b26a; background: rgba(200,178,106,.14); box-shadow: 0 0 12px rgba(200,178,106,.25); }
+  .card b { display: block; color: #e6ddba; font-size: 15px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card i { display: inline-block; font-style: normal; font-size: 11px; color: #14160f; background: #c8b26a; border-radius: 3px; padding: 1px 7px; margin-bottom: 6px; }
+  .card span { display: block; color: #b3b8a5; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card em { display: block; font-style: normal; color: #7f8574; font-size: 11px; margin-top: 5px; }
+  #controls { color: #b8bda9; font-size: 15px; line-height: 2; background: rgba(255,255,255,.04); padding: 18px 34px; border-radius: 8px; margin-bottom: 36px; }
+  #controls b { color: #e0d6a8; display: inline-block; min-width: 130px; }
+  #btnStart:hover { filter: brightness(1.15); }
+  #lobbyScreen { display: none; position: fixed; inset: 0; background: rgba(14,16,11,.92); z-index: 95; align-items: center; justify-content: center; }
+  #lobbyBox { width: min(480px, 94vw); max-height: 94vh; overflow-y: auto; padding: 24px 26px; }
+  #lobbyBox h3 { color: #d8c887; letter-spacing: 6px; margin-bottom: 10px; text-align: center; }
+  #connState { text-align: center; font-size: 12px; color: #7d8070; letter-spacing: 1px; margin-bottom: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #connState.on { color: #8fd98f; }
+  #connState.off { color: #e06c5a; }
+  #lobbyBox .row { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
+  #lobbyBox label { color: #8b9080; font-size: 13px; min-width: 52px; flex: 0 0 auto; }
+  #lobbyBox input, #lobbyBox select { flex: 1; min-width: 0; background: #14160f; border: 1px solid #3a3e2c; color: #d8dbcc; padding: 8px 10px; border-radius: 4px; font-size: 14px; }
+  #lobbyBox #roomInput { flex: 0 0 76px; text-align: center; letter-spacing: 3px; }
+  #keyState { color: #6a6f5e; font-size: 11px; margin: 2px 0 0 60px; }
+  #mpTierHint { color: #c8a35a; font-size: 11px; margin: 2px 0 0 60px; min-height: 0; }
+  #mpTierHint:empty { display: none; }
+  .mbtn { background: #2c2f22; color: #d8c887; border: 1px solid #8a7a3e; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; letter-spacing: 1px; white-space: nowrap; }
+  .mbtn:hover { background: #3a3e2c; }
+  .mbtn.gold { background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; }
+  .grp { border: 1px dashed #3a3e2c; border-radius: 6px; padding: 10px 12px 8px; margin: 12px 0; }
+  .grpT { color: #c8b26a; font-size: 13px; letter-spacing: 2px; margin-bottom: 8px; }
+  .grpT em { font-style: normal; color: #6a6f5e; font-size: 11px; letter-spacing: 0; margin-left: 8px; }
+  #lobbyTip { color: #7d8070; font-size: 12px; margin: 8px 0; min-height: 16px; }
+  #roomCodeShow { color: #e8dcae; font-size: 20px; text-align: center; letter-spacing: 4px; margin: 10px 0; }
+  #playerList { margin: 10px 0; min-height: 60px; }
+  #playerList .pl { color: #b9bfa8; font-size: 14px; line-height: 2; border-bottom: 1px dashed #2a2d22; }
+  #playerList .pl.me { color: #e8dcae; }
+  #playerList .ok { color: #8fd98f; margin-left: 8px; }
+  #playerList .no { color: #9c8f6a; margin-left: 8px; }
+  #hostPanel { display: none; margin-top: 10px; }
+  #mpBar { display: none; position: absolute; top: 16px; left: 50%; transform: translateX(-50%); padding: 7px 18px; color: #d8dbcc; font-size: 14px; letter-spacing: 1px; }
+
+  #roomPanel { display: none; position: absolute; right: 26px; top: 122px; width: 274px; max-height: 54vh; overflow-y: auto; padding: 10px 12px 12px; z-index: 5; }
+
+  /* 参数面板(车库右侧一列, 每参数一行名左值右): 定位/互斥同房间面板 —— 进房时 lobby.js 把本面板隐藏给房间面板让位 */
+  #specPanel { position: absolute; right: 26px; top: 122px; width: 274px; max-height: 54vh; overflow-y: auto; padding: 8px 12px; z-index: 5; }
+  #specPanel:empty { display: none; }   /* 首车模型异步载入前不渲染空框 */
+  #specPanel .srow { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 1px 0; }
+  #specPanel .srow label { color: #8b9080; font-size: 12px; flex: 0 0 auto; }
+  #specPanel .srow b { color: #d8dbcc; font-size: 12px; font-weight: normal; font-variant-numeric: tabular-nums; text-align: right; }   /* 长值(弹夹/精度)窄屏自动折行, 不 nowrap */
+  #specPanel .srow.sep { border-top: 1px dashed rgba(200,178,106,.18); margin-top: 4px; padding-top: 3px; }   /* 火力/机动/观瞄 分组的细分隔线 */
+  #roomHead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  #roomHead b { color: #e8dcae; font-size: 15px; letter-spacing: 1px; }
+  #roomHead #roomCnt { color: #8b9080; font-size: 11px; margin-left: auto; white-space: nowrap; }
+  .modeBtns { display: inline-flex; gap: 4px; }
+  .modeBtns button { background: #23261c; color: #8b9080; border: 1px solid #5c6244; border-radius: 3px; font-size: 10px; padding: 2px 6px; cursor: pointer; letter-spacing: 1px; }
+  .modeBtns button.on { color: #e8dcae; border-color: #b9a55c; background: rgba(200,178,106,.15); }
+  #roomModeLbl { color: #a8ad99; font-size: 12px; }
+  #roomCols { display: flex; gap: 8px; }
+  .teamCol { flex: 1; min-width: 0; }
+  .teamHead { display: flex; align-items: center; justify-content: space-between; font-size: 12px; letter-spacing: 2px; padding: 3px 6px; border-radius: 3px; margin-bottom: 4px; }
+  .teamCol.red .teamHead { color: #ff8d7e; background: rgba(160,50,40,.25); }
+  .teamCol.blue .teamHead { color: #8db4ff; background: rgba(50,90,160,.25); }
+  .teamHead button { background: none; border: 1px solid rgba(255,255,255,.25); color: inherit; font-size: 10px; border-radius: 3px; padding: 1px 6px; cursor: pointer; letter-spacing: 1px; }
+  .teamHead button:hover { background: rgba(255,255,255,.12); }
+  .teamHead button.mine { background: rgba(255,255,255,.18); border-color: transparent; cursor: default; }
+  .plist { display: flex; flex-direction: column; gap: 2px; }
+  .pl2 { font-size: 12px; color: #b9bfa8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 2px 4px; border-radius: 3px; }
+  .pl2.me { color: #ffe9a8; background: rgba(200,178,106,.12); }
+  .pl2 .ok { color: #8fd98f; }
+  .pl2 .no { color: #9c8f6a; }
+  .pl2 .tk { color: #767b6b; font-size: 10px; }
+  #roomFoot { color: #6a6f5e; font-size: 11px; margin-top: 8px; border-top: 1px dashed #3a3e2c; padding-top: 6px; }
+  #mpDock { display: none; gap: 12px; }
+  #btnMpAction { font-size: 19px; padding: 12px 54px; background: linear-gradient(#8a7a3e, #6f6230); color: #f4eecb; border: 1px solid #c8b26a; border-radius: 4px; letter-spacing: 8px; cursor: pointer; }
+  #btnMpAction:hover { filter: brightness(1.15); }
+  #btnMpAction.ready { background: linear-gradient(#4a6f3e, #37522e); border-color: #8fd98f; }
+  #btnMpExit { font-size: 13px; padding: 8px 16px; background: #23261c; color: #b9c4a4; border: 1px solid #5c6244; border-radius: 4px; letter-spacing: 2px; cursor: pointer; align-self: center; }
+  #btnMpExit:hover { background: #2e3325; color: #e8dcae; }
+  @media (orientation: landscape) and (max-height: 500px) {
+    #roomPanel { top: 96px; width: 232px; max-height: 38vh; }
+    .pl2 { font-size: 11px; }
+    #btnMpAction { font-size: 15px; padding: 9px 34px; letter-spacing: 5px; }
+  }
+
+  /* HUD */
+  #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+  .panel { background: rgba(14, 16, 11, 0.55); border: 1px solid rgba(200,178,106,.25); border-radius: 5px; }
+
+  #msg { position: absolute; top: 14%; width: 100%; text-align: center; color: #e8dcae; font-size: 24px; letter-spacing: 4px; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .4s; }
+  #fpsMeter { position: fixed; left: 10px; top: 8px; font: 12px/1.5 monospace; color: #9fe08a; text-shadow: 0 1px 2px #000; display: none; z-index: 60; pointer-events: none; }
+  #log { position: absolute; left: 18px; bottom: 158px; font-size: 14px; text-shadow: 0 1px 3px #000; }
+  #dmgLayer, #markers { position: absolute; inset: 0; pointer-events: none; }
+  .dmg { position: absolute; font-size: 17px; font-weight: bold; text-shadow: 0 1px 3px #000, 0 0 6px #000; transform: translate(-50%, -50%); white-space: nowrap; }
+  .emark { position: absolute; width: 64px; transform: translate(-50%, -100%); text-align: center; }
+  .emark b { display: block; font-size: 11px; font-weight: normal; color: #f0e9d0; text-shadow: 0 1px 3px #000, 0 0 4px #000; white-space: nowrap; margin-bottom: 2px; }
+  .emark b { color: #ff6a58; }
+  .emark.locked { border: 1px solid rgba(255,255,255,.85); padding: 2px 3px; border-radius: 3px; }
+  .emark.locked b::before { content: '🎯 '; }
+  .emark i { display: block; height: 5px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.4); }
+  .emark u { display: block; font-size: 10px; line-height: 1.2; color: #ffd0c8; text-decoration: none; text-shadow: 0 1px 3px #000, 0 0 4px #000; margin-top: 1px; }
+  .emark i em { display: block; height: 100%; background: linear-gradient(90deg, #5d9e4e, #7fc468); font-style: normal; }   /* 绿条=剩余血量, 随损伤缩短 */
+  #missionBar { position: absolute; left: 16px; top: 16px; padding: 8px 14px; color: #d8dbcc; font-size: 14px; letter-spacing: 1px; }
+  #missionBar .sym { margin-right: 8px; }
+  /* 补给增益条(PVE 空投): 任务条下方一行彩色芯片, 图标与 3D 浮标同源 */
+  #buffBar { position: absolute; left: 16px; top: 56px; display: flex; gap: 8px; }
+  #buffBar .buff { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 13px; letter-spacing: 1px;
+    background: rgba(14,16,11,.66); border: 1px solid; border-radius: 4px; text-shadow: 0 1px 2px #000; }
+  #buffBar .buff img { width: 15px; height: 15px; }
+  #buffBar .buff i { font-style: normal; opacity: .85; font-variant-numeric: tabular-nums; font-size: 12px; }
+  #missionDetail { position: absolute; left: 16px; top: 58px; width: 230px; padding: 12px 16px; display: none; color: #c9cdbb; font-size: 13px; line-height: 2; }
+  #missionDetail h4 { color: #e8dcae; letter-spacing: 2px; margin-bottom: 6px; font-size: 14px; }
+  #missionDetail .row { display: flex; justify-content: space-between; }
+  #missionDetail .k { color: #8b9080; margin-top: 6px; font-size: 12px; }
+
+  /* 准星 */
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: #f2ecd8; border-radius: 50%; box-shadow: 0 0 3px #000; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(242,236,216,.75); }
+  #crosshair::before { left: -14px; right: -14px; top: 1px; height: 1px; background: transparent; border-top: 1px dashed rgba(242,236,216,.35); }
+  #hitFeedback { position: absolute; left: 50%; top: 57%; transform: translateX(-50%); font-size: 26px; font-weight: bold; letter-spacing: 3px; text-shadow: 0 1px 4px #000, 0 0 10px rgba(0,0,0,.8); opacity: 0; }
+  #alarm { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #ff6b5a; text-shadow: 0 1px 4px #000, 0 0 12px rgba(200,40,20,.6); opacity: 0; transition: opacity .15s; }
+  #reloadRing { position: absolute; left: 50%; top: 50%; margin: -38px; display: none; }
+  #reloadText { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-size: 15px; color: #c8b26a; text-shadow: 0 1px 3px #000; display: none; font-variant-numeric: tabular-nums; }
+  #distText { position: absolute; left: 50%; top: calc(50% + 66px); transform: translateX(-50%); font-size: 13px; color: #9aa0a6; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; }
+  #armorInfo { position: absolute; left: 50%; top: calc(50% + 84px); transform: translateX(-50%); font-size: 14px; font-weight: bold; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+  #lockTag { position: absolute; left: 50%; top: calc(50% + 104px); transform: translateX(-50%); font-size: 12px; letter-spacing: 2px; color: #ffd97a; text-shadow: 0 1px 3px #000; opacity: 0; pointer-events: none; }   /* 自动瞄准锁定指示: 准星下方一行小字, 不挡视野 */
+  #bigMap { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 2px solid rgba(200,178,106,.5); border-radius: 6px; box-shadow: 0 6px 40px rgba(0,0,0,.7); pointer-events: auto; cursor: crosshair; }
+  #aimCircle { position: absolute; border: 1.5px solid rgba(255,255,255,.8); border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,.6), inset 0 0 4px rgba(0,0,0,.4); }
+  #aimCircle.aimed { border-color: rgba(150,230,140,.9); }
+
+  /* 受击方向 */
+  #detectLamp { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); font-size: 32px; opacity: 0; transition: opacity .25s; filter: drop-shadow(0 0 10px rgba(255,220,90,.9)); animation: lampPulse 1s infinite; }
+  #bushTag { position: absolute; left: 50%; top: 33.5%; transform: translateX(-50%); font-size: 15px; letter-spacing: 3px; color: #9fe08a; opacity: 0; transition: opacity .25s; text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 10px rgba(70,140,55,.7); pointer-events: none; }
+  @keyframes lampPulse { 0%,100% { filter: drop-shadow(0 0 6px rgba(255,220,90,.6)); } 50% { filter: drop-shadow(0 0 14px rgba(255,220,90,1)); } }
+  #hitDir { position: absolute; left: 50%; top: 50%; width: 240px; height: 240px; margin: -120px; opacity: 0; }
+  #shotDir { position: absolute; left: 50%; top: 50%; width: 190px; height: 190px; margin: -95px; opacity: 0; }
+  #shotDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -26px; border-left: 26px solid transparent; border-right: 26px solid transparent; border-top: 15px solid rgba(255,170,80,.9); }
+  #hitDir::before { content: ''; position: absolute; left: 50%; top: 0; margin-left: -34px; border-left: 34px solid transparent; border-right: 34px solid transparent; border-top: 20px solid rgba(226,58,42,.85); border-radius: 8px; }
+
+  /* 底部状态: WoT 式左下角玩家卡片(车型/血量/装填/弹夹/挡位速度/模块损伤 一张卡) */
+  #bottomBar { position: absolute; bottom: 16px; left: 16px; padding: 10px 12px 8px; display: flex; gap: 12px; align-items: center; }
+  #cardCol { width: 212px; }
+  /* 指向仪(WoT 式): 罗盘上车体剪影+炮塔炮管, 屏幕上方=镜头方向; 下方挡位灯 */
+  #dirWidget { width: 96px; height: 96px; display: block; }
+  #gearRow { display: flex; gap: 2px; justify-content: center; margin-top: 4px; }
+  #gearRow span { width: 15px; line-height: 17px; text-align: center; font-size: 10px; font-weight: bold; color: #5b6052; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.25); border-radius: 3px; }
+  #gearRow span.on[data-g^="D"] { color: #14160f; background: #7fc468; border-color: #7fc468; }
+  #gearRow span.on[data-g="N"] { color: #14160f; background: #e8c977; border-color: #e8c977; }
+  #gearRow span.on[data-g^="R"] { color: #14160f; background: #e07a6a; border-color: #e07a6a; }
+  #hpBar { height: 14px; background: #23261d; border-radius: 3px; overflow: hidden; border: 1px solid rgba(255,255,255,.15); }
+  #hpFill { height: 100%; width: 100%; background: linear-gradient(90deg, #5d9e4e, #7fc468); transition: width .2s; }
+  #hpText { color: #cfd3c0; font-size: 12px; text-align: center; margin: 3px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #reloadBar { height: 6px; background: #23261d; border-radius: 3px; overflow: hidden; margin-top: 2px; }
+  #reloadFill { height: 100%; width: 100%; background: #c8b26a; }
+  #reloadFill.loading { background: repeating-linear-gradient(45deg, #6f6230 0 8px, #8a7a3e 8px 16px); }
+  #cardRow { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; min-height: 20px; }
+  #clipInfo { display: flex; gap: 4px; align-items: center; }
+  #clipInfo i { width: 9px; height: 9px; border-radius: 50%; background: rgba(200,178,106,.15); border: 1px solid rgba(200,178,106,.55); }
+  #clipInfo i.full { background: #c8b26a; box-shadow: 0 0 4px rgba(200,178,106,.6); }
+  #clipInfo em { font-style: normal; color: #c8b26a; font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  #speedText { color: #d8dbcc; font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+  #moduleTags { margin-top: 4px; min-height: 0; }
+  .mod { background: rgba(160,50,40,.8); color: #ffd9d0; font-size: 12px; padding: 2px 8px; border-radius: 3px; margin-right: 6px; }
+
+  /* 小地图 */
+  #minimapBox { position: absolute; right: 16px; top: 16px; pointer-events: auto; cursor: crosshair; }
+  /* 鹰眼模式虚拟光标(指针锁定时浏览器光标被隐藏, 自绘替代) */
+  #vcursor { position: fixed; left: 0; top: 0; z-index: 90; pointer-events: none; display: none; will-change: transform; }
+  #vcursor svg { display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,.75)); }
+  #vcursor path { fill: #f2eede; stroke: #1d211a; stroke-width: 1.4; stroke-linejoin: round; transition: fill .1s; }
+  #vcursor.act path { fill: #ffd97a; }
+  #btnExit { position: absolute; top: 16px; right: 226px; padding: 8px 14px; color: #b9c4a4; font-size: 13px; letter-spacing: 2px; cursor: pointer; pointer-events: auto; background: rgba(14,16,11,.55); border: 1px solid rgba(200,178,106,.3); border-radius: 5px; }
+  #btnExit:hover { color: #e8dcae; background: rgba(40,44,32,.75); }
+
+  /* 强制横屏: 触屏设备竖屏时全屏遮罩提示旋转(仅 body.touch 显示, 桌面窄窗不受影响) */
+  #rotateMask { display: none; position: fixed; inset: 0; z-index: 200; background: #14160f; color: #e8dcae;
+    align-items: center; justify-content: center; flex-direction: column; gap: 18px; font-size: 20px; letter-spacing: 5px; text-align: center; }
+  #rotateMask .ic { font-size: 64px; animation: rotHint 2.2s infinite; }
+  @keyframes rotHint { 0%, 25% { transform: rotate(0); } 65%, 100% { transform: rotate(90deg); } }
+  @media (orientation: portrait) { body.touch #rotateMask { display: flex; } }
+
+  /* 手机横屏(矮视口, 系统显示缩放大时 CSS 高度仅 ~370px): 压缩车库布局, 保证坦克列表完整可见 */
+  @media (orientation: landscape) and (max-height: 500px) {
+    #titleTop { padding: 10px 20px 0; gap: 14px; }
+    #titleBrand h1 { font-size: 26px; letter-spacing: 5px; }
+    #titleBrand h2 { font-size: 12px; }
+    #verStamp { font-size: 11px; }
+    #btnMp { padding: 6px 16px; font-size: 13px; margin-top: 8px; }
+    #garageStats { padding: 5px 10px; max-width: 44vw; }
+    #garageStats b { font-size: 14px; }
+    #garageStats span { font-size: 11px; }
+    #btnStart { font-size: 15px; padding: 9px 36px; letter-spacing: 5px; }
+    #tipOnTitle { display: none; }
+    .pickLabel { margin: 6px 0 4px; font-size: 11px; letter-spacing: 2px; }
+    .card b { font-size: 13px; margin-bottom: 2px; }
+    .card i { margin-bottom: 3px; font-size: 10px; }
+    .card span { font-size: 11px; }
+    .card em { font-size: 11px; }
+    #mapRow .card, #garageRow .card { width: 150px; padding: 5px 9px; }
+    #dockRow { gap: 12px; padding-bottom: 4px; position: relative; z-index: 6; padding-right: 240px; }   /* 出击行抬到参数面板上层并让出右栏带(面板 232 宽+dock 边距), 矮屏不再被面板盖住 */
+    #garageRow { padding-right: 240px; }   /* 车卡滚动带同样让位: 卡片不再钻到半透明面板后面 */
+    #tankFilterRow { gap: 5px; }                                            /* 筛选行压缩进单行(~24px), 放不下靠 flex-wrap 折行 */
+    #tankFilterRow .modeBtns button { padding: 2px 4px; }
+    #specPanel { top: 96px; width: 232px; max-height: 38vh; padding: 5px 9px; }   /* 与房间面板同款矮屏定位 */
+    #specPanel .srow label, #specPanel .srow b { font-size: 11px; }
+    #titleLeft { gap: 8px; }
+    #pvePanel { padding: 4px 10px; }
+    #pvePanel .pveTitle { font-size: 12px; }
+    #pvePanel .pveSum, #pvePanel .pveTitle span { font-size: 11px; }
+    /* 手机横屏: 左下玩家卡片压缩(给摇杆/视野让位) */
+    #bottomBar { padding: 7px 10px 5px; gap: 8px; }
+    #dirWidget { width: 74px; height: 74px; }
+    #gearRow span { width: 12px; line-height: 14px; font-size: 8px; border-radius: 2px; }
+    #hpBar { height: 11px; }
+    #hpText { font-size: 11px; margin: 2px 0 3px; }
+    #speedText { font-size: 12px; }
+    #tFireL { bottom: 138px; width: 64px; height: 64px; font-size: 14px; }
+  }
+  #endBtns { display: flex; gap: 14px; justify-content: center; margin-top: 26px; }
+  #minimap { display: block; border-radius: 4px; }
+  #minimapBox .cap { color: #8b9080; font-size: 11px; text-align: center; margin-top: 3px; letter-spacing: 2px; }
+
+  /* 狙击镜 */
+  #sniperOverlay { display: none; position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 55%, rgba(0,0,0,.4) 88%); }
+  #sniperOverlay::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(20,20,20,.8); }
+  #sniperOverlay::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(20,20,20,.8); }
+
+  /* 结算 */
+  #overlay { display: none; position: fixed; inset: 0; background: rgba(8, 10, 6, .78); z-index: 80; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: opacity .4s ease; }
+  #overlay.on { opacity: 1; }
+  /* 结算入场: 背景渐暗 + 标题/按钮/战报依次上浮 */
+  #overlay.on #endTitle { animation: endIn .5s .06s cubic-bezier(.2, .8, .3, 1) both; }
+  #overlay.on #endBtns { animation: endIn .5s .2s cubic-bezier(.2, .8, .3, 1) both; }
+  #overlay.on #endStats { animation: endIn .5s .34s cubic-bezier(.2, .8, .3, 1) both; }
+  @keyframes endIn { from { opacity: 0; transform: translateY(26px); } }
+  /* 兜底: 内嵌浏览器/节流环境下动画可能不推进, both 填充会让内容永久卡在
+     from(全透明) → 1 秒后 JS 挂 .settled 强制落定可见(见 hud.showOverlay) */
+  #overlay.settled #endTitle, #overlay.settled #endBtns, #overlay.settled #endStats { animation: none; opacity: 1; transform: none; }
+  #endTitle { font-size: 46px; letter-spacing: 10px; margin-bottom: 22px; }
+  #endStats { color: #b9bfa8; font-size: 16px; line-height: 2; text-align: center; }
+  #endStats b { color: #e0d6a8; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+  <div id="hud">
+  <div id="msg"></div>
+  <div id="fpsMeter"></div>
+  <div id="log"></div>
+  <div id="dmgLayer"></div>
+  <div id="markers"></div>
+  <div id="aimCircle"></div>
+  <canvas id="reloadRing" width="76" height="76"></canvas>
+  <div id="distText"></div>
+  <div id="armorInfo"></div>
+  <canvas id="bigMap" width="430" height="430"></canvas>
+  <div id="reloadText"></div>
+  <div id="crosshair"></div>
+  <div id="lockTag">🎯 锁定中</div>
+  <div id="detectLamp">💡</div>
+  <div id="bushTag">🌿 隐蔽中</div>
+  <div id="hitFeedback"></div>
+  <div id="alarm"></div>
+  <div id="hitDir"></div>
+  <div id="shotDir"></div>
+  <div id="vcursor"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 2 L4 19 L9 14.6 L12.4 21.4 L15.3 19.9 L12 13.4 L19 13 Z"/></svg></div>
+  <div id="bottomBar" class="panel">
+    <div id="dirBox">
+      <canvas id="dirWidget" width="192" height="192"></canvas>
+      <div id="gearRow"><span data-g="D1">D1</span><span data-g="D2">D2</span><span data-g="D3">D3</span><span data-g="N">N</span><span data-g="R1">R1</span><span data-g="R2">R2</span></div>
+    </div>
+    <div id="cardCol">
+      <div id="hpText">900 / 900</div>
+      <div id="hpBar"><div id="hpFill"></div></div>
+      <div id="reloadBar"><div id="reloadFill"></div></div>
+      <div id="cardRow">
+        <div id="clipInfo"></div>
+        <div id="speedText">0 km/h</div>
+      </div>
+      <div id="moduleTags"></div>
+    </div>
+  </div>
+  <div id="minimapBox" class="panel"><canvas id="minimap" width="180" height="180"></canvas><div class="cap">战场态势</div></div>
+  <button id="btnExit" title="鹰眼模式: 虚拟光标点击; 其他模式: Esc 释放鼠标后点击">⏻ 退出</button>
+  <div id="missionBar" class="panel"></div>
+  <div id="buffBar"></div>
+  <div id="missionDetail" class="panel"></div>
+  <div id="mpBar" class="panel"></div>
+  <div id="sniperOverlay"></div>
+</div>
+
+<div id="lobbyScreen">
+  <div id="lobbyBox" class="panel">
+    <h3>联 机 对 战</h3>
+    <div id="connState">● 连接服务器…</div>
+    <div class="row"><label>昵称</label><input id="mpName" maxlength="12" placeholder="独一无二的车长名"></div>
+    <div class="row"><label>坦克</label><select id="mpTank"></select></div>
+    <div id="mpTierHint"></div>
+    <div class="row"><label>钥匙</label><input id="keyInput" placeholder="建房授权钥匙（加入房间不需要）" maxlength="10" style="text-transform:uppercase"><button id="btnRedeem" class="mbtn">授权</button></div>
+    <div id="keyState"></div>
+    <div id="lobbyTip">同服务器网页打开即自动连接, 无需填地址 · 出击界面选的坦克即联机用车</div>
+    <div id="joinBox">
+      <div class="grp">
+        <div class="grpT">创建房间<em>需钥匙 · 房主执掌战局</em></div>
+        <div class="row"><input id="roomPassInput" placeholder="房间密码（选填）" maxlength="24"><button id="btnCreate" class="mbtn gold">创建房间</button></div>
+      </div>
+      <div class="grp">
+        <div class="grpT">加入房间</div>
+        <div class="row"><input id="roomInput" placeholder="房间号" maxlength="4" inputmode="numeric"><input id="joinPassInput" placeholder="密码（选填）" maxlength="24"><button id="btnJoin" class="mbtn">加入</button></div>
+      </div>
+    </div>
+    <div class="row" style="justify-content:center;margin-top:14px">
+      <button id="btnMpBack" class="mbtn">返回</button>
+    </div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="endTitle"></div>
+  <div id="endBtns">
+    <button id="btnRetry" class="mbtn gold">再 战 一 局</button>
+    <button id="btnToGarage" class="mbtn">返 回 车 库</button>
+  </div>
+  <div id="endStats"></div>
+</div>
+
+<div id="loading">
+  <h1>钢 铁 前 沿</h1>
+  <div id="loadBarBox"><div id="loadBar"></div></div>
+  <div id="loadTip">准备加载…</div>
+  <div id="tipOnLoad"></div>
+</div>
+
+<div id="titleScreen">
+  <div id="garageView"></div>
+  <div id="garageUI">
+    <div id="titleTop">
+      <div id="titleLeft">
+        <div id="titleBrand">
+          <h1>钢 铁 前 沿</h1>
+          <h2>单机战役 · 选择你的坦克与战场</h2>
+          <div id="verStamp"></div>
+          <button id="btnMp">⚔ 联机对战</button>
+        </div>
+        <div id="pvePanel" class="panel"></div>
+        <div id="gfxPanel" class="panel">
+          <div class="pveTitle"><b>画质</b><span>帧率不够就降档 · F3 看帧率</span></div>
+          <div class="pveBody"><div class="pveRow">
+            <label>画质档位</label>
+            <select id="gfxSel">
+              <option value="high">高 · 原画质</option>
+              <option value="mid">中 · 均衡</option>
+              <option value="low">低 · 核显流畅</option>
+            </select>
+          </div><div class="pveRow" id="gfxNote"></div></div>
+        </div>
+      </div>
+      <div id="mapPick">
+        <div class="pickLabel">战 场</div>
+        <div id="mapRow" class="cards hscroll"></div>
+        <!-- 提示行(💡小贴士/联机错误提示): 从 dockRow 整行移到战场卡片正下方; id 不变, main.showTip/lobby.garageTip 照常命中 -->
+        <div id="tipOnTitle"></div>
+      </div>
+    </div>
+    <!-- 联机房间面板: 进房后挂在车库右侧(双列=死斗红蓝阵营; 合作单列车组) -->
+    <div id="roomPanel" class="panel">
+      <div id="roomHead">
+        <b id="roomTitle">房间 0000</b>
+        <span id="roomModeSel" class="modeBtns" style="display:none"><button data-mode="dm">阵营死斗</button><button data-mode="coop">合作闯关</button></span>
+        <span id="roomModeLbl" style="display:none"></span>
+        <span id="roomCnt"></span>
+      </div>
+      <div id="roomCols">
+        <div class="teamCol red"><div class="teamHead"><span class="tn">红军</span><button data-team="0">＋加入</button></div><div class="plist"></div></div>
+        <div class="teamCol blue"><div class="teamHead"><span class="tn">蓝军</span><button data-team="1">＋加入</button></div><div class="plist"></div></div>
+      </div>
+      <div id="roomFoot"></div>
+    </div>
+    <!-- 参数面板: 车库右栏一列(main.js renderSpecPanel 每次切车重写); 与房间面板同位互斥, 进房时 lobby.js 隐藏本面板 -->
+    <div id="specPanel" class="panel"></div>
+    <div id="bottomDock">
+      <div id="dockRow">
+        <div id="garageStats" class="panel"></div>
+        <div id="btnRow">
+          <button id="btnStart">出 击</button>
+          <!-- 联机在房: 出击替换为 开始(房主)/准备(成员) + 退出房间 -->
+          <div id="mpDock">
+            <button id="btnMpAction">准 备</button>
+            <button id="btnMpExit">退出房间</button>
+          </div>
+        </div>
+      </div>
+      <!-- 坦克筛选: 类型/国家两组 DOM 按钮组(main.js buildTankFilters 填充), 全部=不筛 -->
+      <div id="tankFilterRow">
+        <div class="pickLabel">坦 克</div>
+        <span id="clsFilter" class="modeBtns"></span>
+        <span id="natFilter" class="modeBtns"></span>
+      </div>
+      <div id="garageRow" class="cards hscroll"></div>
+    </div>
+  </div>
+</div>
+
+<div id="rotateMask"><div class="ic">📱</div><div>请横屏游玩</div><div style="font-size:13px; letter-spacing:1px; color:#8b9080">旋转设备以获得完整视野</div></div>
+
+<script src="js/vendor/three.min.js?v=${V//:/_}"></script>
+<script src="js/vendor/GLTFLoader.js?v=${V//:/_}"></script>
+<script src="edition.js" onerror="window.SF_EDITION='full'"></script>
+  <script src="js/config.js?v=${V//:/_}"></script>
+<script src="js/simcore.js?v=${V//:/_}"></script>
+<script src="js/sim-engine.js?v=${V//:/_}"></script>
+<script src="js/assets.js?v=${V//:/_}"></script>
+<script src="js/terrain.js?v=${V//:/_}"></script>
+<script src="js/models.js?v=${V//:/_}"></script>
+<script src="js/vehicle.js?v=${V//:/_}"></script>
+<script src="js/combat.js?v=${V//:/_}"></script>
+<script src="js/pickups.js?v=${V//:/_}"></script>
+<script src="js/ai.js?v=${V//:/_}"></script>
+<script src="js/hud.js?v=${V//:/_}"></script>
+<script src="js/net.js?v=${V//:/_}"></script>
+<script src="js/lobby.js?v=${V//:/_}"></script>
+<script src="js/audio.js?v=${V//:/_}"></script>
+<script src="js/garage.js?v=${V//:/_}"></script>
+<script src="js/main.js?v=${V//:/_}"></script>
+<script>
+if (SF.CFG.multiplayer) { document.getElementById('btnMp').classList.add('on'); SF.Lobby.bind(); }
+</script>
+</body>
+</html>
