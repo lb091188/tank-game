@@ -2,7 +2,7 @@
 // steel-ws-test.js — 阶段5 重写: 服务器权威协议回归(覆盖阶段3/4 权威路径) + 信令回归
 //
 // 阶段3/4 后架构: dm/coop 全部服务器权威(srvSim) —— 服务器 60Hz 跑车辆模拟(sim-engine)+coop AI,
-// 20Hz 下发快照(tn 12 字段行), 客户端 30Hz 上行输入(clamp), 房主只是普通玩家(掉线不灭队);
+// 20Hz 下发快照(tn 14 字段行, 路尾 bodyPitch/bodyRoll 供幽灵贴地形), 客户端 30Hz 上行输入(clamp), 房主只是普通玩家(掉线不灭队);
 // 旧协议(主机 relay input/snap/end)已退役: sim 房内客户端伪装主机包不采信。
 // 必含三条新用例(阶段5 ask②): 房主中途断开后对局继续 / 快照由服务器下发 / 超幅 input 被 clamp。
 // 其余: 钥匙/令牌门禁、proto 版本门禁(旧客户端拒+强刷提示)、建房/加入、昵称唯一、等级锚、
@@ -78,7 +78,7 @@ async function collectSnaps(ws, ms) {
     ok(!(await rd('ZZZZZZZZ')).ok, '野钥匙被拒');
   }
 
-  /* —— proto 版本门禁(阶段5 新增): 旧客户端拒 + 升级提示 —— */
+  /* —— proto 版本门禁(≥3 = 快照 14 字段含 bodyPitch/bodyRoll): 旧客户端拒 + 升级提示 —— */
   {
     const ws = await connect();
     ws.send(JSON.stringify({ t: 'create', name: '旧版客', token: token }));   // 无 proto → 旧客户端
@@ -87,17 +87,20 @@ async function collectSnaps(ws, ms) {
     ws.send(JSON.stringify({ t: 'create', name: '旧版客', token: token, proto: 1 }));
     const e2 = await wait(ws, 'err');
     ok(e2.msg.includes('版本过旧'), 'proto=1 同样被拒');
+    ws.send(JSON.stringify({ t: 'create', name: '旧版客', token: token, proto: 2 }));   // proto=2(12 字段旧协议)同样被拒
+    const e3 = await wait(ws, 'err');
+    ok(e3.msg.includes('版本过旧'), 'proto=2(旧快照协议)同样被拒');
     ws.close();
   }
 
   /* —— 带密码建房 + 密码进房(proto=2) —— */
   const host = await connect();
-  host.send(JSON.stringify({ t: 'create', name: '甲', tank: 'tiger2', token: token, pass: 'pw123', proto: 2 }));
+  host.send(JSON.stringify({ t: 'create', name: '甲', tank: 'tiger2', token: token, pass: 'pw123', proto: 3 }));
   const joined = await wait(host, 'joined');
   const room = joined.room;
   ok(/^\d{4}$/.test(room), `建房成功 房间号 ${room}`);
   ok(joined.pass === 'pw123', 'joined 回显房间密码');
-  ok(joined.srvSimCap === true && joined.proto === 2, 'joined 带 srvSimCap/proto 观测字段');
+  ok(joined.srvSimCap === true && joined.proto === 3, 'joined 带 srvSimCap/proto 观测字段');
   ok(joined.players[0].host === true && joined.players[0].name === '甲', '建房者即房主');
 
   {
@@ -114,7 +117,7 @@ async function collectSnaps(ws, ms) {
   }
 
   const guest = await connect();
-  guest.send(JSON.stringify({ t: 'join', room, pass: 'pw123', name: '乙', tank: 'tiger1', proto: 2 }));
+  guest.send(JSON.stringify({ t: 'join', room, pass: 'pw123', name: '乙', tank: 'tiger1', proto: 3 }));
   const j2 = await wait(guest, 'joined');
   ok(j2.you > joined.you && j2.players.length === 2, '凭房间号+密码加入成功');
   const lob = await wait(host, 'lobby');
@@ -127,14 +130,14 @@ async function collectSnaps(ws, ms) {
   const s1 = await wait(host, 'start'), s2 = await wait(guest, 'start');
   ok(s1.srvSim === true && s2.srvSim === true, '开局广播 srvSim=true(双端服务器权威)');
 
-  /* —— 新用例1: 快照由服务器下发(20Hz, tn 12 字段) —— */
+  /* —— 新用例1: 快照由服务器下发(20Hz, tn 14 字段含 bodyPitch/bodyRoll) —— */
   const c0 = guest.queue.filter(m => m.t === 'snap').length;
   await sleep(1000);
   const snaps = guest.queue.filter(m => m.t === 'snap');
   ok(snaps.length - c0 >= 15, `服务器 20Hz 快照 (1s 实测 ${snaps.length - c0} 条, 期望 ≥15)`);
   const snap0 = snaps[snaps.length - 1];
   const rows = Object.values(snap0.tn || {});
-  ok(rows.length === 2 && rows.every(r => r.length === 12 && r.every(v => typeof v === 'number' && Number.isFinite(v))), 'tn 两车 12 字段全数值');
+  ok(rows.length === 2 && rows.every(r => r.length === 14 && r.every(v => typeof v === 'number' && Number.isFinite(v))), 'tn 两车 14 字段全数值(含路尾 bodyPitch/bodyRoll)');
   ok(snap0.st !== undefined && snap0.sc !== undefined, '快照带 st 时限 + sc 击杀表');
 
   /* —— 新用例2: 超幅 input 被 clamp(恶意值不炸、数值有界) —— */
@@ -206,10 +209,10 @@ async function collectSnaps(ws, ms) {
   /* —— 未开局房: 房主解散语义保留(信令层) —— */
   {
     const h2 = await connect();
-    h2.send(JSON.stringify({ t: 'create', name: '解散测', token: await mint(2), proto: 2 }));
+    h2.send(JSON.stringify({ t: 'create', name: '解散测', token: await mint(2), proto: 3 }));
     const jh = await wait(h2, 'joined');
     const g2 = await connect();
-    g2.send(JSON.stringify({ t: 'join', room: jh.room, name: '解散乙', tank: 'pz4', proto: 2 }));
+    g2.send(JSON.stringify({ t: 'join', room: jh.room, name: '解散乙', tank: 'pz4', proto: 3 }));
     await wait(g2, 'joined');
     h2.close();   // 未开局房无 sim → 房主解散语义保留
     const dis = await wait(g2, 'err');

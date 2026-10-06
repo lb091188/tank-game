@@ -1823,11 +1823,13 @@ SF.Main = (() => {
     if (MP.snapT > 0) return;
     MP.snapT = 0.05;
     const tn = {};
-    // 尾部 [reloadT, reloadTotal, clipLeft]: 客户端幽灵不跑模拟, 装填读条/弹夹余弹全靠快照对账
-    // 量化(x/z/y 0.1m, 角度 0.01rad): 20 人房快照 ~1.1KB@20Hz, 4 房满载出向 ≈ 14Mbps < 40Mbps
+    // 尾部 [reloadT, reloadTotal, clipLeft, bodyPitch, bodyRoll]: 客户端幽灵不跑模拟,
+    // 装填读条/弹夹余弹靠快照对账; bodyPitch/bodyRoll=车体俯仰/侧滚(sim-engine 已算,
+    // 联机早期不随快照下发 → 幽灵坦克 this.pitch/roll 恒 0 → 远程坦克永远水平不贴地形)
+    // 量化(x/z/y 0.1m, 角度 0.01rad, 俯仰/侧滚 0.001rad): 20 人房快照 ~1.1KB@20Hz, 4 房满载出向 ≈ 14Mbps < 40Mbps
     for (const [id, t] of MP.tanks)
       tn[id] = [+t.x.toFixed(1), +t.z.toFixed(1), +t.y.toFixed(1), +t.yaw.toFixed(2), +t.turretYaw.toFixed(2), +t.gunPitch.toFixed(2), +t.speed.toFixed(1), Math.round(t.hp), t.alive ? 1 : 0,
-        +t.reloadT.toFixed(1), +(t.reloadTotal || 0).toFixed(1), t.clipLeft | 0];
+        +t.reloadT.toFixed(1), +(t.reloadTotal || 0).toFixed(1), t.clipLeft | 0, +t.pitch.toFixed(3), +t.roll.toFixed(3)];   // 14 字段行(路尾追加, 前 12 布局不变)
     const sc = {};
     for (const [id, k] of MP.scores) sc[id] = k;
     const msg = { t: 'snap', st: Math.max(0, Math.round(MP.timeLeft)), tn, sc };

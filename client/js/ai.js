@@ -268,7 +268,6 @@ function teamMemo(world) {
   for (const e of list) byK[keyOf(e, world)] = e;
   const keys = Object.keys(byK).map(Number);
   const slotMemo = (M && M.slotMemo) || {};   // 槽位记忆跨重算持久(键=keyOf)
-  const lineWant = Math.max(1, Math.round(n * RO.lineMinFrac));
   const lineKeys = [], flankKeys = [], secondKeys = [];
   const nTD = list.filter(e => (e.spec.cls || 'MT') === 'TD').length;
   for (const e of list) {
@@ -279,6 +278,12 @@ function teamMemo(world) {
     else if (cls === 'SPG') { roles[k] = 'second'; secondKeys.push(k); }                // 火炮也二线, 纵深×1.3
     else { roles[k] = 'flank'; flankKeys.push(k); }                                     // MT/LT 翼侧
   }
+  /* 小队全顶线(role.squadLineN): 前线车(非二线 TD/SPG)≤此数时全员顶线 —— 2 车分 顶线+翼侧
+     会退化成"顶线单进、残血让位再送一台"的逐个上节奏(顶位补防时序); 全员顶线沿敌向环位
+     分站, 配合以大欺小强推(trade.strong)才有小队合力 */
+  const frontN = lineKeys.length + flankKeys.length;
+  const lineWant = frontN > 0 && frontN <= (RO.squadLineN || 2)
+    ? frontN : Math.max(1, Math.round(n * RO.lineMinFrac));
   // 顶线不足 → 从 flank 按 hp% 提拔(血量高的先顶, 挨得起; 排序键=keyOf 保稳定)
   if (lineKeys.length < lineWant && flankKeys.length) {
     flankKeys.sort((a, b) => (byK[b].hp / byK[b].spec.hp) - (byK[a].hp / byK[a].spec.hp));
@@ -992,8 +997,11 @@ SF.AI = class {
        战术离开高地局即弃授权(转进闩锁 _hillCommit 另管, 见战斗导航段)。 */
     if (tac === 'hillAssault') {
       if (this._role === 'second') this._hillAuth = false;
-      else this._hillSync(world, ref);
-    } else this._hillAuth = false;
+      else { this._hillSync(world, ref); this._hillT = world.time; }
+    } else if (world.time - (this._hillT || -99) > ((TC.hill && TC.hill.authHoldS) || 2)) this._hillAuth = false;
+    /* 集结授权迟滞(hill.authHoldS): 敌露头开窗会把战术拍甩到 standFight(路由 0.3s 一评), 旧版
+       每拍清 _hillAuth → 集结权反复归零, 配合 shy 就是"钉在坡脚当固定靶"。现在离开高地局
+       authHoldS 秒内不清权, 战术一回来即续(_hillCommit 闩锁只保转进后, 这里补集结期的抗闪摆) */
     /* 绕掩体掏侧后(G9-④): 敌蹲硬掩体只露头, 正面窗口持续打不开 —— 找到挡窗的那块掩体,
        沿缘侧绕(合围舷定侧: 多车天然分两侧对绕=钳形), 绕过缘即得侧/尾射界, blk 归 0 本战术
        自动退场。守位单位(hold)不绕: 掉锚去追掩体缘是 TD 送死, 它的"够不着"由换位脉冲兜。
@@ -1314,18 +1322,48 @@ SF.AI = class {
     if (player && player.alive)
       rel = Math.abs(U.angDiff(player.yaw, toPlayerYaw + Math.PI));
 
-    /* --- 换血判断(trade.on): 血账记忆 + 残血压制/劣势转保守 --- */
-    let enemyLow = false, shy = false;
+    /* --- 换血判断(trade.on): 血账记忆 + 残血压制/劣势转保守/以大欺小强推 --- */
+    let enemyLow = false, shy = false, strong = false;
     if (TRADE.on && this._gGate && player && player.alive) {   // 难度闸: level≥0.6 才启用
       const pid = player.netId || 0;
       const memo = this.hpMemo[pid] || (this.hpMemo[pid] = { hp: player.hp, max: player.hp });
       memo.hp = player.hp;
       if (player.hp > memo.max) memo.max = player.hp;   // 见过更高血即抬上限(满血路过一次就记住了)
       enemyLow = player.hp <= t.spec.gun.dmg * TRADE.killMult;   // ≤我1-2发可收 → 值得换血
-      // 劣势换血转保守: 我方血量% 明显低于敌(敌%按血账 max 估计) → 缩着打
-      shy = !enemyLow && t.hp / t.spec.hp < (memo.hp / Math.max(memo.max, 1)) * TRADE.shyRatio;
+      /* 以大欺小(trade.bullyMargin): 换血收益不再只看血量% —— 装甲/穿深/射速/人数三账同算,
+         综合占优 → strong(带内压上换血 + 压制 shy)。旧版两台中坚打一台轻坦也只会蹲带内站桩,
+         因为"装甲更硬/射速不慢/人多"没有一项进得了账。三账粗估(够判强弱, 不追求精确):
+         ①装甲账: 我pen/敌类等效甲 vs 敌pen/我类等效甲(穿深门同表 clsArmor, 双向比值)
+         ②射速账: 单发/装填 的 DPM 比 ③人数账: 我方存活 AI vs 敌方存活人类(mpTargets, sp=1)
+         判优 = 装甲或射速任一维 ≥margin 且无任何一维亏过 1/margin(人数只要求不劣势) */
+      const myCls = t.spec.cls || 'MT', foeCls = player.cls || (player.spec && player.spec.cls) || 'MT';
+      const CA = SF.CFG.ai.clsArmor || {}, gFoe = (player.spec && player.spec.gun) || {};
+      const penMine = (t.spec.gun.pen || 0) / Math.max(CA[foeCls] || 95, 1);
+      const penFoe = (gFoe.pen || 0) / Math.max(CA[myCls] || 95, 1);
+      const dpmMine = (t.spec.gun.dmg || 0) / Math.max(t.spec.gun.reload || 1, 0.1);
+      const dpmFoe = (gFoe.dmg || 0) / Math.max(gFoe.reload || 1, 0.1);
+      let myN = 0; for (const e of world.enemies) if (e.alive && e.ai) myN++;
+      let foeN = 1;
+      if (world.mpTargets && world.mpTargets.length) { foeN = 0; for (const h of world.mpTargets) if (h && h.alive) foeN++; }
+      else if (world.player && !world.player.alive) foeN = 0;
+      const mg = TRADE.bullyMargin || 1.08;
+      const rArm = penMine / Math.max(penFoe, 1e-3), rDpm = dpmMine / Math.max(dpmFoe, 1e-3), rCnt = myN / Math.max(foeN, 1);
+      /* 判优: 装甲账与人数账是硬否决(打得穿我才欺负得动 / 人不能少); DPM 小亏可被装甲与人数
+         的净值抵掉 —— 轻坦纸面 DPM 常更高, 但打不穿我的 DPM 是无效 DPM(综合分按乘积)。
+         例: pz4×2 vs bt7: rArm=3.3 rDpm=0.92 rCnt=2 → 综合 6.1 ≥ bullyScore → 强推 ✓;
+             pz4 vs tiger1: rArm=0.43(打不穿) → 否决 → 不推 ✓ */
+      strong = !enemyLow && rCnt >= 1 / mg && rArm >= 1 / mg
+        && (rDpm >= mg || rArm * rDpm * rCnt >= (TRADE.bullyScore || 1.6));
+      // 劣势换血转保守: 我方血量% 明显低于敌(敌%按血账 max 估计) → 缩着打。
+      // 两道豁免: strong(优势不缩) / shyMaxS 止损(连缩 N 秒血量未崩到撤退线 = 藏相没保住血,
+      // 继续缩只是慢性死, 恢复正常打法 —— 防蹲坑螺旋: 越挨打越缩→越像固定靶→挨更多打)
+      shy = !enemyLow && !strong && t.hp / t.spec.hp < (memo.hp / Math.max(memo.max, 1)) * TRADE.shyRatio;
+      if (shy) {
+        if (!this._shySince) this._shySince = world.time;
+        if (world.time - this._shySince > (TRADE.shyMaxS || 12) && t.hp / t.spec.hp > P.retreatHp + 0.1) shy = false;
+      } else this._shySince = 0;
     }
-    this._shy = shy;   // 帧内缓存: _coverStep 的有炮塔车劣势藏点门读它(跨函数传参省一个)
+    this._shy = shy; this._strong = strong;   // 帧内缓存: _coverStep 的有炮塔车劣势藏点门读 _shy; _strong 备查
 
     /* --- 状态转移 --- */
     if (this.seenNow && this.state !== 'retreat') {
@@ -1531,7 +1569,7 @@ SF.AI = class {
         const inBand = distP >= lo && distP <= hi;
         const blindHold = this._station && this._gWin && FD.on && !this._winState.open
           && t.reloadT <= 0 && this.seenNow && inBand;   // 就绪+窗口关=熄火傻站(迟滞主源)
-        const linePush = blindHold && (this._role === 'line' || this._role === 'fallback');
+        const linePush = blindHold && (this._role === 'line' || this._role === 'fallback') && distP > hi * 0.85;   // 限定带外: 前压公式 k=(distP-hi·0.85)/distP 在带内为负(倒着走, 油门空置); 带内熄火交给 strong 压上/找射界脉冲
         /* --- 高地强袭驾驶(G9-⑦): 授权(共享计划 ≥minN 车登记)后接管交战导航 ---
            集结窗内(goT 未到): 坡脚待命, 不前压不拉开 —— 就位等着, 就近掩体的 G2 照旧藏探。
            到点全队同拍转进: navigate 直插威胁位, BFS 自会沿可爬坡度绕行(陡坡回避仍生效,
@@ -1566,6 +1604,11 @@ SF.AI = class {
         } else if (distP < lo) {                                 // 太近: 拉开(混合带口径 —— 二线纵深的主要执行者)
           const k = (lo * 1.15 - distP) / Math.max(distP, 1);
           navX = t.x - (ref.x - t.x) * k; navZ = t.z - (ref.z - t.z) * k;
+        } else if ((enemyLow || strong) && distP > lo * 1.1) {   // 敌残血/以大欺小(strong 换血占优): 带内压上(压到带下沿, 不贴脸换炮)。
+          // 必须排在站位分支之前 —— 旧版在站位分支之后, 有站位的车永远走不到这条(死分支:
+          // 残血该收的头也缩在站位上), 全员有站位时"带内压上"整体失效, 是蹲坑观感的成因之一
+          const k = (distP - lo) / distP;
+          navX = t.x + (ref.x - t.x) * k; navZ = t.z + (ref.z - t.z) * k;
         } else if (this._station && blindHold && !linePush) {
           if (this.repositionT <= 0) {
             this.repositionT = 2 + Math.random() * 2;   // 找射界脉冲: 同半径弧上横移, keyOf 奇偶定方向
@@ -1582,9 +1625,6 @@ SF.AI = class {
             this.repositionT = (9 + Math.random() * 8) * (shy ? TRADE.shyHoldMul : 1);
             navX = this._station.x + (Math.random() - 0.5) * 16; navZ = this._station.z + (Math.random() - 0.5) * 16;
           }
-        } else if (enemyLow && distP > lo * 1.1) {               // 敌残血: 带内压上(压到带下沿, 不贴脸换炮)
-          const k = (distP - lo) / distP;
-          navX = t.x + (ref.x - t.x) * k; navZ = t.z + (ref.z - t.z) * k;
         } else if (this.repositionT <= 0) {                      // 距离合适: 时不时换位/绕侧
           this.repositionT = (5 + Math.random() * 6) * (shy ? TRADE.shyHoldMul : 1);   // 劣势: 藏相延长
           if (Math.random() < P.flankChance) {

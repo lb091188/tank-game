@@ -1,8 +1,10 @@
 // srv-sim.js — 服务器权威死斗仿真房实例(阶段3; 零 THREE/零 DOM, Node vm 与浏览器双栖)
 //
 // 服务端权威的核心: 每间 dm 房一个实例, 60Hz 定步长跑车辆数值模拟(sim-engine)+部位 OBB 判伤
-// (阶段2), 20Hz 出同构快照(tn 12 字段行 + sc + st, 与 main.js hostSnapshot 逐字段一致,
-// 客户端 net.js interpolate 零改动)。玩家只上行 30Hz 输入(net.js 30Hz 5 元组原样, 这里 clamp:
+// (阶段2), 20Hz 出同构快照(tn 14 字段行 + sc + st, 与 main.js hostSnapshot 逐字段一致,
+// 路尾两字段 bodyPitch/bodyRoll = 车体俯仰/侧滚: 联机早期快照不透传这俩, 客户端幽灵
+// this.pitch/roll 恒 0 导致远程坦克永远水平不贴地形; net.js interpolate 补 lerp)。
+// 玩家只上行 30Hz 输入(net.js 30Hz 5 元组原样, 这里 clamp:
 // 油门/舵机 ∈[-1,1], 瞄准角归一 [-π,π], 俯仰钳到车 spec 射界 —— 设计 §3.4)。
 // 死斗重生队列/时限/计分/结算条件都在实例内; 房主掉线不再影响对局(这是本次迁移的目的)。
 // 阶段4: coop 全权威段 —— 波次生成(main.js spawnWave/checkWave 权威子集)/波间维修 repairT/
@@ -516,7 +518,7 @@ SF.SrvSim = (() => {
         const tn = {};
         for (const [id, t] of tanks)
           tn[id] = [+t.x.toFixed(1), +t.z.toFixed(1), +t.y.toFixed(1), +t.yaw.toFixed(2), +t.turretYaw.toFixed(2), +t.gunPitch.toFixed(2), +t.speed.toFixed(1), Math.round(t.hp), t.alive ? 1 : 0,
-            +t.reloadT.toFixed(1), +(t.reloadTotal || 0).toFixed(1), t.clipLeft | 0];   // 12 字段行, 与 main.js hostSnapshot 同构
+            +t.reloadT.toFixed(1), +(t.reloadTotal || 0).toFixed(1), t.clipLeft | 0, +t.pitch.toFixed(3), +t.roll.toFixed(3)];   // 14 字段行(路尾追加 bodyPitch/bodyRoll, 前 12 与 main.js hostSnapshot 同构)
         const sc = {};
         for (const [id, k] of scores) sc[id] = k;
         const snap = { t: 'snap', st: Math.max(0, Math.round(timeLeft)), tn, sc };

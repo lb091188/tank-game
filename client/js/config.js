@@ -1162,8 +1162,12 @@ SF.CFG = {
     weakpoint: { on: 1, frontDeg: 45, sideDeg: 110, lowY: 0.6, sideY: 1.0, rearY: 0.9, trackY: 0.35, trackQuotaS: 2 },
     // 换血判断: 敌残血(≤我单发×killMult)→压制撤退阈值并带内压上抢收人头;
     // 我方血量% < 敌血量%×shyRatio→转保守(换位间隔×shyHoldMul 藏相延长, 前压步长减半)。
+    // bullyMargin=以大欺小判优比(硬否决线: 装甲/人数任一亏过 1/此值即不推);
+    // bullyScore=三账综合分(装甲比×DPM比×人数比 的乘积)≥此值也判优 —— 轻坦纸面 DPM 高但打不穿
+    // 是无效 DPM, 不该一票否决(pz4×2 vs bt7: 3.3×0.92×2≈6.1 → 强推)。
+    // shyMaxS=劣势止损秒数: 缩了这么久血量未崩到撤退线 = 藏相没保住血, 恢复正常打法(防蹲坑螺旋)。
     // on=0 或 skill.level<0.6 关闭全部换血行为
-    trade: { on: 1, killMult: 1.2, shyRatio: 0.85, shyHoldMul: 1.6 },
+    trade: { on: 1, killMult: 1.2, shyRatio: 0.85, shyHoldMul: 1.6, bullyMargin: 1.08, bullyScore: 1.6, shyMaxS: 12 },
     // 车类等效正面装甲经验值(穿深门用: 我pen < 此值×0.95 视为打不穿正面, 触发侧向换位链)
     // —— 车类量级估计, 不逐部位抄 build-models 装甲表
     clsArmor: { LT: 55, MT: 95, TD: 120, HT: 160, SPG: 40 },
@@ -1215,8 +1219,10 @@ SF.CFG = {
     // yieldHpPct=line 残血让位阈值(触发 fallback+flank 提拔补位); lineMinFrac=顶线最少占比
     // (不足按 hp% 从 flank 提拔); bandMix=性格带与车型带的插值比; tdRankBias/htRankBias=alert
     // 突入排位修正(TD 不抢首亮+2, HT 先顶−1)
+    // squadLineN: 前线车(非二线 TD/SPG)≤此数时全员顶线 —— 2 车再分 顶线+翼侧 会退化成
+    // "顶线单进、残血让位再送一台"的逐个上节奏(顶位补防时序), 小队合力才有以大欺小
     role: { on: 1, recomputeS: 0.8, yieldHpPct: 0.3, lineMinFrac: 0.34, bandMix: 0.5,
-            tdDepth: [60, 110], tdRankBias: 2, htRankBias: -1 },
+            tdDepth: [60, 110], tdRankBias: 2, htRankBias: -1, squadLineN: 2 },
     // 掩体伸缩循环(G2): 装填期藏进掩体背敌侧/反斜面口袋, 上膛从掩体缘/棱线探出打, 打完回藏。
     // 藏点验收一律点阵口径(25 柱全遮, 与敌方点亮同源)——只挡眼高中线的"半藏"照旧被点亮
     // 挨打, 压不出全藏位的候选直接弃(S1 平地实测 40m 内零点阵藏位 → 全程不进循环留摆角)。
@@ -1256,7 +1262,7 @@ SF.CFG = {
     // (_tactic 恒 legacy, 各模块走原条件)。有炮塔车的伸缩循环随路由恢复: 窗口关着(或劣势
     // 保守)才藏, 开窗对炮期归停车即射/摆角 —— 修"实战不找掩体"(旧标定把 HT/MT 整类关了)。
     tactics: { on: 1, recheckS: 0.3,
-      hill: { minAdv: 1.5, minN: 2, rallyS: 3, planS: 8 },  // 高地强袭: 窗口被地形挡+敌高于我≥minAdv m;
+      hill: { minAdv: 1.5, minN: 2, rallyS: 3, planS: 8, authHoldS: 2 },  // 高地强袭: 窗口被地形挡+敌高于我≥minAdv m;
       coverFlank: { afterS: 2.5 },                         // 车数(孤车不强袭); rallyS=集结窗(建计划到全队同拍转进,
       lane: { on: 1, gap: 18 },                            // 到点一起上); planS=计划无人登记即废弃重建。coverFlank:
       coverChain: { on: 1, hopMax: 45, stepMin: 12 } },    // afterS=窗口被硬掩体挡持续秒数才起绕侧心。lane=同路集中

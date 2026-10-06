@@ -5,7 +5,7 @@
 // 退出码 0 = 全过。
 //
 // 用例清单(评审#6 要求的消息级覆盖):
-//   ① dm 开局: start 载荷带 srvSim=true; 20Hz 快照节拍(1s ≥15 条); tn 行 12 字段全数值; st 时限倒计
+//   ① dm 开局: start 载荷带 srvSim=true; 20Hz 快照节拍(1s ≥15 条); tn 行 14 字段全数值; st 时限倒计
 //   ② 输入驱动: 30Hz 上行 throttle=1 → 本车 tn 位移 > 0(服务器在跑模拟的直接证据)
 //   ③ input clamp: throttle=99/aimYaw=1e9 恶意值 → 快照不断、数值有界、无 NaN(clamp 生效)
 //   ④ 房主断线续战: 关闭房主连接 → 快照仍持续 ≥3s(≥40 条)且无解散广播(本次迁移要消除的行为)
@@ -82,7 +82,7 @@ async function collectSnaps(ws, ms) {
     const rooms = [];
     for (let i = 0; i < 4; i++) {
       const a = await connect();
-      a.send(JSON.stringify({ t: 'create', name: '测' + i, tank: 'tiger1', token, proto: 2 }));
+      a.send(JSON.stringify({ t: 'create', name: '测' + i, tank: 'tiger1', token, proto: 3 }));
       const j = await wait(a, 'joined');
       a.send(JSON.stringify({ t: 'start', map: 'l01', mode: 'dm' }));
       await wait(a, 'start', 4000, m => m.srvSim === true);
@@ -101,10 +101,10 @@ async function collectSnaps(ws, ms) {
   /* —— ⑥ coop 权威段(阶段4): srvSim + AI 波次 + 判伤 + coop 快照字段 + 房主断线 AI 继续 —— */
   {
     const a = await connect();
-    a.send(JSON.stringify({ t: 'create', name: '合甲', tank: 'pz4', token, proto: 2 }));   // 对等车位: 一炮秒杀 AI 会使其来不及还击命中人类
+    a.send(JSON.stringify({ t: 'create', name: '合甲', tank: 'pz4', token, proto: 3 }));   // 对等车位: 一炮秒杀 AI 会使其来不及还击命中人类
     const ja = await wait(a, 'joined');
     const b0 = await connect();
-    b0.send(JSON.stringify({ t: 'join', room: ja.room, pass: '', name: '合乙', tank: 'pz4', proto: 2 }));
+    b0.send(JSON.stringify({ t: 'join', room: ja.room, pass: '', name: '合乙', tank: 'pz4', proto: 3 }));
     const jb0 = await wait(b0, 'joined');
     const b0id = jb0.you;
     a.send(JSON.stringify({ t: 'start', map: 'l01', mode: 'coop' }));   // l01 村庄波: 实证 AI 20s 内接敌开火命中
@@ -205,11 +205,11 @@ async function collectSnaps(ws, ms) {
 
   /* —— ①-⑤ dm 服务器权威主流程 —— */
   const c1 = await connect();
-  c1.send(JSON.stringify({ t: 'create', name: '甲', tank: 'tiger1', token, pass: 'pw', proto: 2 }));
+  c1.send(JSON.stringify({ t: 'create', name: '甲', tank: 'tiger1', token, pass: 'pw', proto: 3 }));
   const j1 = await wait(c1, 'joined');
   ok(j1.srvSimCap === true, 'joined 载荷带 srvSimCap 能力标记');
   const c2 = await connect();
-  c2.send(JSON.stringify({ t: 'join', room: j1.room, pass: 'pw', name: '乙', tank: 'tiger1', proto: 2 }));
+  c2.send(JSON.stringify({ t: 'join', room: j1.room, pass: 'pw', name: '乙', tank: 'tiger1', proto: 3 }));
   const j2 = await wait(c2, 'joined');
   const room = j1.room;
 
@@ -218,13 +218,14 @@ async function collectSnaps(ws, ms) {
   const s2 = await wait(c2, 'start', 4000);
   ok(s1.srvSim === true && s2.srvSim === true, 'dm start 载荷带 srvSim=true(双端)');
 
-  // ① 20Hz 快照 + tn 12 字段 + st 倒计
+  // ① 20Hz 快照 + tn 14 字段 + st 倒计
   const { got, snaps } = await collectSnaps(c2, 1000);
   ok(got >= 15, `20Hz 快照节拍 (1s 实测 ${got} 条, 期望 ≥15)`);
   const snap = snaps[snaps.length - 1];
   const rows = Object.values(snap.tn || {});
   ok(snap.tn && Object.keys(snap.tn).length === 2, 'tn 覆盖两辆参战车');
-  ok(rows.every(r => r.length === 12 && r.every(v => typeof v === 'number' && Number.isFinite(v))), 'tn 行 12 字段全数值');
+  ok(rows.every(r => r.length === 14 && r.every(v => typeof v === 'number' && Number.isFinite(v))), 'tn 行 14 字段全数值(含 bodyPitch/bodyRoll)');
+  ok(rows.every(r => Math.abs(r[12]) < 1.0 && Math.abs(r[13]) < 1.0), '路尾 bodyPitch/bodyRoll 数值在合理俯仰/侧滚范围');
   ok(typeof snap.st === 'number' && snap.st > 170 && snap.st <= 180, `st 时限倒计 (st=${snap.st})`);
   ok(snap.sc && Object.keys(snap.sc).length === 2, 'sc 击杀表存在');
 

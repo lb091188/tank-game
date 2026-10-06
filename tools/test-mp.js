@@ -26,7 +26,7 @@ function client() {
   return {
     ws,
     open: () => new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); }),
-    send: (t, o) => ws.send(JSON.stringify({ t, proto: 2, ...o })),   // 阶段5 协议版本门禁: 测试客户端视为新客户端
+    send: (t, o) => ws.send(JSON.stringify({ t, proto: 3, ...o })),   // 阶段5 协议版本门禁: 测试客户端视为新客户端
     // 等待下一条 t 类型消息 (先查积压)
     wait: (t, ms = 2500) => {
       const i = queue.findIndex(m => m.t === t);

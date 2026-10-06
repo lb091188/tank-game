@@ -7,6 +7,10 @@ SF.Net = (() => {
   const handlers = {};
   const snaps = [];           // 快照缓冲 [{recvT, data}]
   let inputTimer = null;
+  // 快照 20Hz(50ms 周期)。到达时刻差低于此值一律视为投递伪影(TCP 合批/浏览器任务合帧),
+  // 非服务器节奏: 若照抄 performance.now() 当 recvT, 紧邻两包的 span 被 max(1,·) 兜底成 1ms,
+  // 插值 k 在 0/1 硬跳 → 幽灵位置 20Hz 台阶, 与正常对交替出现 = 肉眼可见的移动抖动。
+  const SNAP_MIN_GAP = 40;
 
   function on(t, fn) { (handlers[t] = handlers[t] || []).push(fn); }
   function emit(t, d) { const l = handlers[t]; if (l) for (const fn of l) fn(d); }
@@ -42,7 +46,13 @@ SF.Net = (() => {
       ws.onmessage = (e) => {
         let m;
         try { m = JSON.parse(e.data); } catch (_) { return; }
-        if (m.t === 'snap') snaps.push({ recvT: performance.now(), data: m });
+        if (m.t === 'snap') {
+          // 防坍缩: 相邻快照按上一包 recvT + SNAP_MIN_GAP 单调上轴(超大间隔是真实网络抖动照抄到达时刻),
+          // 保证插值 span 恒 ≥ SNAP_MIN_GAP, 消掉硬跳台阶; 代价: 突发时插值时间轴最多提前一拍, 仍 < 20Hz 延迟预算。
+          const now = performance.now();
+          const last = snaps.length ? snaps[snaps.length - 1].recvT : 0;
+          snaps.push({ recvT: now > last + SNAP_MIN_GAP ? now : last + SNAP_MIN_GAP, data: m });
+        }
         else emit(m.t, m);
       };
       ws.onclose = () => { if (curAddr === url) emit('disconnect', {}); };
@@ -52,9 +62,9 @@ SF.Net = (() => {
 
   // 大厅操作 (建房带通行令牌+可选密码; 进房凭房间号+密码)
   const getToken = () => localStorage.getItem('sf_token') || '';
-  // proto: 客户端协议版本(阶段3 服务器权威=2)。旧客户端不带此字段, 服务器按版本门禁拒绝并提示强刷
-  const createRoom = (name, tank, pass) => send({ t: 'create', name, tank, pass: pass || undefined, token: getToken() || undefined, proto: 2 });
-  const joinRoom = (room, pass, name, tank) => send({ t: 'join', room: String(room).trim(), pass: pass || undefined, name, tank, proto: 2 });
+  // proto: 客户端协议版本(=3 = 快照 14 字段行含 bodyPitch/bodyRoll)。旧客户端服务器按版本门禁拒绝并提示强刷
+  const createRoom = (name, tank, pass) => send({ t: 'create', name, tank, pass: pass || undefined, token: getToken() || undefined, proto: 3 });
+  const joinRoom = (room, pass, name, tank) => send({ t: 'join', room: String(room).trim(), pass: pass || undefined, name, tank, proto: 3 });
   // 钥匙兑换: POST 到 WS 同源的 HTTP 端点 (ws://x:8342 → http://x:8342)
   async function redeemKey(key) {
     const base = curAddr.replace(/^ws/, 'http');
@@ -83,7 +93,8 @@ SF.Net = (() => {
   function stopInputLoop() { if (inputTimer) { clearInterval(inputTimer); inputTimer = null; } }
 
   // 快照插值: 取 now-delay 时刻各坦克姿态 {id: {x,z,y,yaw,tur,pitch,speed,hp,alive}}
-  // 行布局(量化后 12 字段): [x,z,y, yaw,tur,pitch,speed, hp,alive, reloadT,reloadTotal,clipLeft]
+  // 行布局(量化后 14 字段): [x,z,y, yaw,tur,pitch,speed, hp,alive, reloadT,reloadTotal,clipLeft, bodyPitch, bodyRoll]
+  // 快照节奏见上方 SNAP_MIN_GAP(到达时刻防坍缩); bodyPitch/bodyRoll 路尾追加, 旧客户端被 proto 门禁拒
   function interpolate(delay = 120) {
     if (snaps.length < 2) return null;
     const target = performance.now() - delay;
@@ -103,6 +114,7 @@ SF.Net = (() => {
         y: SF.Util.lerp(pa[2], pb[2], k), yaw: pa[3] + dy * k,
         tur: (() => { let d2 = pb[4] - pa[4]; if (d2 > Math.PI) d2 -= Math.PI * 2; if (d2 < -Math.PI) d2 += Math.PI * 2; return pa[4] + d2 * k; })(),
         pitch: SF.Util.lerp(pa[5], pb[5], k), speed: SF.Util.lerp(pa[6], pb[6], k),
+        bodyPitch: SF.Util.lerp(pa[12] || 0, pb[12] || 0, k), bodyRoll: SF.Util.lerp(pa[13] || 0, pb[13] || 0, k),   // 小角度直接 lerp, 无需环绕
         hp: pb[7], alive: !!pb[8],
         reloadT: +pb[9] || 0, reloadTotal: +pb[10] || 0, clipLeft: pb[11] | 0   // 装填状态取最新帧(不需插值)
       };

@@ -102,6 +102,7 @@ SF.Tank = class {
     if (!this.alive) { this._deathFx(dt); return; }
     this.x = pose.x; this.z = pose.z; this.y = pose.y;
     this.yaw = pose.yaw; this.turretYaw = pose.tur; this.gunPitch = pose.pitch;
+    this.pitch = pose.bodyPitch; this.roll = pose.bodyRoll;   // 车体俯仰/侧滚随快照下发(14 字段路尾), 否则幽灵永远水平不贴地形
     this.speed = pose.speed; this.hp = pose.hp;
     this.animateTracks(dt);
     this._syncNode();

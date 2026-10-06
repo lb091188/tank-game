@@ -398,7 +398,7 @@ wss.on('connection', (ws) => {
     switch (m.t) {
       case 'create': {
         if (!OPEN && !tokenOk(m.token)) { fail(ws, '建房需要通行令牌 — 请先在联机大厅用钥匙授权'); break; }
-        if ((parseInt(m.proto || '0', 10) || 0) < 2) {   // 协议版本门禁(设计 §6.3 强升): 旧客户端 err→alert→reload 拉新包
+        if ((parseInt(m.proto || '0', 10) || 0) < 3) {   // 协议版本门禁(设计 §6.3 强升): ≥3 = 快照 14 字段含 bodyPitch/bodyRoll; 旧客户端 err→alert→reload 拉新包
           fail(ws, '客户端版本过旧 — 请强制刷新页面(Ctrl+Shift+R)后重进(服务器权威战斗)'); break;
         }
         if (rooms.size >= MAX_ROOMS) { fail(ws, `服务器满载(${MAX_ROOMS} 个房间对局中), 请稍后再试`); break; }
@@ -414,7 +414,7 @@ wss.on('connection', (ws) => {
         rooms.set(code, room0);
         ws._room = room0; ws._code = code;
         room0.players.set(ws, { id: nextPid, name, tank, ready: true, host: true, team: 0 });
-        sendJson(ws, { t: 'joined', room: code, you: nextPid, players: roomState(room0), pass: room0.pass || undefined, tier: room0.tier, mode: room0.mode, srvSimCap: true, proto: 2 });
+        sendJson(ws, { t: 'joined', room: code, you: nextPid, players: roomState(room0), pass: room0.pass || undefined, tier: room0.tier, mode: room0.mode, srvSimCap: true, proto: 3 });
         nextPid++;
         console.log(`[房间${code}] 创建 by ${m.name}${room0.pass ? ' (带密码)' : ''} (${rooms.size}/${MAX_ROOMS} 房)`);
         break;
@@ -428,7 +428,7 @@ wss.on('connection', (ws) => {
         if (nameOnline(name, ws)) { fail(ws, `昵称「${name}」已在线 — 一人一名, 请换一个`); break; }
         const tank = saneTank(m.tank);
         if (m.tank && tank !== m.tank) console.log(`[消毒] ${name} 请求不可用车型 ${m.tank} → ${tank}`);
-        if ((parseInt(m.proto || '0', 10) || 0) < 2) {   // 协议版本门禁(同 create)
+        if ((parseInt(m.proto || '0', 10) || 0) < 3) {   // 协议版本门禁(同 create; ≥3 = 快照 14 字段)
           fail(ws, '客户端版本过旧 — 请强制刷新页面(Ctrl+Shift+R)后重进(服务器权威战斗)'); break;
         }
         const tErr = tierCheck(r, tank, ws);   // 等级匹配: 房主车位 ±1 级(按消毒后的车)
@@ -439,7 +439,7 @@ wss.on('connection', (ws) => {
         leaveRoom(ws);
         ws._room = r; ws._code = String(m.room).trim();
         r.players.set(ws, { id: nextPid, name, tank, ready: false, host: false, team: r.mode === 'coop' ? 0 : balancedTeam(r) });
-        sendJson(ws, { t: 'joined', room: ws._code, you: nextPid, players: roomState(r), tier: r.tier, mode: r.mode, srvSimCap: true, proto: 2 });
+        sendJson(ws, { t: 'joined', room: ws._code, you: nextPid, players: roomState(r), tier: r.tier, mode: r.mode, srvSimCap: true, proto: 3 });
         broadcast(r, lobbyMsg(r), ws);
         nextPid++;
         console.log(`[房间${ws._code}] 加入 ${m.name} (红${[...r.players.values()].filter(p => p.team === 0).length}/蓝${[...r.players.values()].filter(p => p.team === 1).length})`);
