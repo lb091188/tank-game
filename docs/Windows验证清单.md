@@ -1,7 +1,7 @@
 # Windows 验证清单(steel-front MoonBit 桌面迁移 · 阶段0 Windows 专项)
 
 > 用途:《MoonBit桌面端全量迁移规划》中 R1/R1b 的 Windows 未定项在此逐项实证。**验证环境:Windows 机,本清单自包含**;每项跑完把结果填进文末模板,带回后更新规划(风险表/阶段0/工作量)。
-> 排序即优先级:V1–V5 = 3D 嵌入链路(核心),V6–V7 = 联机,V8–V9 = 音频/图像,V10 可选。
+> 排序即优先级:V1–V5 = 3D 嵌入链路(核心),V6–V7 = 联机,V8–V9 = 音频/图像,V10 可选;V11 = 2026-10-06 新增(原生联机端到端,Linux 已单端验通后的 Windows 复验)。
 > 标注【零改动】的项不需要动任何源码;V3/V4 需要打两个小补丁——这本来就是规划里认定的"Windows 铺开要补的两件事",补丁草图已给出。
 >
 > **2026-10-05 Windows 机实证完成:P1–P2、V1–V10 全部执行,11/11 项 PASS(V8 带架构备注)。** 逐项证据见文末「实证详录」,汇总表见「回填模板」。改动分支(未推 main,待审):
@@ -93,7 +93,16 @@
 
 - `moon add Milky2018/gamepad@0.4.7`,插手柄枚举设备。网页版未用手柄,此项纯加分,失败不影响。
 
+## V11 原生客户端联机端到端冒烟【中高,2026-10-06 新增】
+
+- 背景:2026-10-06 Linux 侧已用原生 gameapp 客户端真机跑通单端链路「连接→建房(create)→房主开战(start)→服务器权威仿真→20Hz 快照→客户端插值渲染」4 轮,server 日志完整「创建 by e2e-native → 开战 l01(dm/srvSim) → 离开」周期,客户端日志 snaps 快照消费实证,截图 `docs/e2e_联机冒烟.png`(详见规划 §0.5)。Windows 侧是 D3D12 surface(V4)与 IOCP async(V6)两条已验链路的合流,需整体复验一次。
+- 步骤:①Windows 本机起服:`set STEEL_OPEN=1 && node server/server.js 8342`(建房门禁需该环境变量,server.js:34);②steel-front moonbit/ 工作区 `moon build gameapp --target native`;③运行原生客户端并以 GAMEAPP_MP 触发联机入口(moonbit/gameapp/mp.mbt:389 `mp_main` → moonbit/netclient/client.mbt:186 `run_session`:连 ws→create→等 joined→房主 start→30Hz 上行输入);④观察 server 日志与客户端控制台。
+- 通过标准:server 日志出现完整「创建 → 开战 → 离开」周期;客户端日志快照消费计数(snaps>0)与状态迁移(连接→进房→开战);窗口渲染雾天地图+HUD(Linux 参照 `docs/e2e_联机冒烟.png`)。
+- 备注:Linux 侧外部键盘驾驶与开火取证因 X 服务器冻结未采到(规划 §0.5 卡点),Windows 人工驾驶可顺带补「移动+开火」证据;`e2e_联机冒烟_窗口几何.txt` 为 Linux 侧窗口几何存档。
+
 ## 回填模板(验证完填这张表带回来)
+
+> **回填状态(2026-10-05,Windows 机完成)】:V1–V10 **11/11 全部 PASS**(逐项证据见下表与「实证详录」);three-native `win/from-hwnd` 两提交(dbe4845/9f151c0)已并入 master 并推送(fe5b9e3);V3 游戏侧采用 FindWindowA 绕行方案(零 libyue 改动),shim 补丁 `native_handle_window` 留在 libyue 分支 1a9f815 备并;V11(2026-10-06 新增)待 Windows 复验。
 
 | 项 | 结果 PASS/FAIL | 现象/报错(关键行) | 备注 |
 |---|---|---|---|
@@ -108,10 +117,11 @@
 | V8 rodio 三格式 | **PASS**(带架构备注) | 解码层:wav looped/ogg(ch=2,48k,3.58s)/mp3(ch=1,44.1k,0.784s)元数据全对;**组合层实测:cannon.ogg 455 回调/240240 帧(5s@48k 满速)、mp3 34848 帧=0.79s 与元数据精确到帧 drained=true、engine-loop 1.5x 变调循环 3s 墙钟 143616/144000 帧满速供数** | **moon_rodio 0.3.5 的 MixerDeviceSink/Sink 集成层 Windows 双缺陷**(0.11.8/0.3.5 实测):① `Sink::sleep_until_end` 纯忙等(moon_rodio sink.mbt:344-354 空循环体,100% 单核);② Sink 队列在 Windows 不被渲染线程消费(pos 恒 0/empty 恒 false,无错误回调)——**但 moon_cpal WASAPI 层健康**(作者 cmd/wasapi_stream_smoke 全过,output callbacks=93)→ **游戏音频走「cpal 原始通路(build_output_stream)+ rodio 解码/效果器」自管 PCM 队列**,与规划 §2 预设的"解码 PCM 上等价实现"完全一致,C2 工作量不变 |
 | V9 image 高程/纹理 | **PASS** | asphalt/rust 尺寸 1024×662、1024×256 全 MATCH;**decode_png 直吃 16 位灰度 raise `UnsupportedFeature: unsupported color type/bit depth: Grayscale/16`**;@zlib+自写 5 种滤波 PNG16 路径:**8/8 采样点与 Linux PIL 期望逐位相等**(l01: 60129/6706/60243/23949,l06: 57966/4946/57864/6892) | 语义钉死(规划 §4.2"PNG16 两条路径"):mizchi/image 走不了 16 位 → **迁移侧用「@zlib + 自写反滤波」精确 16 位路径,约 80 行**,真机已验;Python 预演交叉验证逐位一致 |
 | V10 gamepad(可选) | **PASS** | `Gil::new_native()` 构建成功,枚举 `gamepads connected: 0`(本机未插手柄),API 健康 | 纯加分项 |
+| V11 原生客户端联机端到端冒烟 | ⬜ 未执行 | — | 2026-10-06 新增;Linux 侧单端链路已验通(规划 §0.5,协议已同步 proto:3/快照 14 字段),Windows 待复验(步骤见上方 V11 节) |
 
 环境:Windows 版本 **Win10 专业版 22H2(10.0.19045 Build 19045)** / MSVC **VS2022 BuildTools 17.14.37628.2(MSVC 19.44, SDK 10.0.26100)** / GPU **Intel Iris Xe Graphics(核显,AdapterRAM 1GB)** / 驱动 **27.20.100.8439** / MoonBit **moon 0.1.20260904 (moonc v0.10.12+1634b282e)**。
 
-**总体结论栏**:Windows 3D 链路(V1–V5)全过 → **规划 R1 撤销、阶段0#1 关闭、Windows 排期确立**(补丁已在分支,审阅合并即收口);async(V6/V7)过 → **R1b 撤销**(README 表述过时,以实测为准);V8 需按"自管 PCM 队列"架构落地(规划本就如此预设);V9 确定 PNG16 走自写滤波路径。
+**总体结论栏**:Windows 3D 链路(V1–V5)全过 → **规划 R1 撤销、阶段0#1 关闭、Windows 排期确立**(from_hwnd 已并入 three-native master fe5b9e3,Linux 侧 #cfg 门控 136/136 测试绿);async(V6/V7)过 → **R1b 撤销**(README 表述过时,以实测为准);V8 需按"自管 PCM 队列"架构落地(规划本就如此预设;后记 2026-10-06:Linux/PulseAudio 侧 moon_cpal ALSA 后端经 PipeWire 亦现缺陷,真机出声待上游——两侧统一走该架构);V9 确定 PNG16 走自写滤波路径;V11(2026-10-06 新增)待 Windows 复验。
 
 ## 实证详录(2026-10-05,命令与输出关键行)
 

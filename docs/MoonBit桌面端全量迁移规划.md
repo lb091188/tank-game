@@ -1,6 +1,6 @@
 # steel-front → MoonBit 桌面端全量迁移规划(规划与统计,不含实现)
 
-> 状态:**规划稿** —— 2026-10-05 只做盘点/规划/工作量统计,不动代码。
+> 状态:**规划稿 + 实施中** —— 2026-10-05 起按 §6 路线图实施(进度见 §0.5);2026-10-06 马拉松推进至阶段5 联机冒烟(单端链路端到端验通,外部驾驶取证与 RSS 采集卡 X 冻结,见 §0.5)。
 > 目标:把本游戏全量迁移到 MoonBit 桌面端,技术栈 = **moonbit-libyue**(原生窗口与控件)+ **three-native**(three.js 的 MoonBit/WebGPU 移植),不用浏览器/WebView 混合方案。
 > 依据:游戏侧逐文件依赖盘点(带行号)、three-native 覆盖矩阵与渲染器源码、mooncakes.io 生态检索(2026-10-05 实查)。
 
@@ -9,14 +9,34 @@
 ## 0. 结论先行
 
 1. **可行,但工程性质是"补引擎"而非"翻译游戏"。** three-native 当前渲染能力(Basic + Lambert/Phong 直照管线)只覆盖本游戏所需渲染面的约 1/3;纹理采样、GLB 加载、阴影、雾、Line/粒子/Sprite 管线、透明混合全部缺失,需在 three-native 里补齐后游戏才搬得动。游戏逻辑层(`simcore/sim-engine/ai/srv-sim`,~3,180 行)已零 THREE/零 DOM,可对照直译,且有 `tools/golden-trace.js` 黄金轨迹可做 JS↔MoonBit 等价性验证。
-2. **"局部渲染 three 画面"——可以,且已验证。** three-native `examples/cube3d` 就是标准形态:yue 窗口内放 `Container` 子区域 → `native_handle_view` 取 GtkWidget → X11 XID → `WebGPURenderer::from_xlib` 建 surface,`host.on_size_changed` 接 resize。3D 视图可以是窗口任意子矩形,与原生控件并存。**Windows 侧 2026-10-05 已实证趟通(清单 V3–V5 全过):整窗形态取顶层 HWND → `WebGPURenderer::from_hwnd` → D3D12 硬件 surface,R1 的两处缺口补丁在两仓库分支待审合并**;两条限制:① macOS 路径仍未实现(wgpu_mbt 已备 API,照 from_hwnd 模式补即可);② 原生控件**叠加在 3D 画面上方**三平台都不可行(airspace/X11 子窗口层级)。
+2. **"局部渲染 three 画面"——可以,Linux/Windows 双平台均已真机验证。** Linux:cube3d(Container→XID→`from_xlib`);**Windows:from_hwnd + cube3d_win 已在 Win10 19045 + Iris Xe 真机端到端验证(2026-10-05,D3D12、resize 跟随、渲染循环中输入 10/10 滚轮 5/5),并入 three-native master(fe5b9e3)**,HWND 用 FindWindowA 取(零 libyue 改动);两个 Windows 时序坑已记档(WM_SIZE 内 configure 被拒→resize 须 post_task 延后+pending 跳帧;滚轮挂 Container 而非 Window)。剩余:macOS 待铺。限制:原生控件**叠加在 3D 画面上方**三平台都不可行(airspace/X11 子窗口层级)。
 3. **UI 架构决策(2026-10-05 复核):全自渲染。** 原生控件叠 3D 不跨平台 → 按约定不做;多窗口覆盖窗方案被否决(libyue 有 frameless/transparent/always_on_top 但**没有点击穿透 API**,FPS 视角与 HUD 按钮点击无法共存,补齐需改 yue C++ 三平台);结论:**单窗口单 wgpu surface,游戏所有画面(3D+HUD+车库+大厅+结算)全部自渲染**,libyue 降级为窗口壳/事件循环/原生模态对话框(玩家名中文输入用系统 IME 的模态框解决)。详见 §3 D1。
-3. **总工作量统计:约 186~282 人日(中位 ≈234,≈11 人月,单人;A15 按 Windows 机实测校准后),其中 three-native 引擎补齐约占 45%。** 明细见 §5。
-4. **好消息(削减范围):** 游戏全项目 grep 证实**零 AnimationMixer/SkinnedMesh/InstancedMesh/后处理**——"动画系统/蒙皮/实例化"三项**不需要**给 three-native 补(坦克炮塔炮管是手动改 rotation,掩体 411 个靠手工几何合批已是静态十几个 Mesh);"粒子/线/Sprite"三项**必须补**(曳光拖尾、烟/闪光、空投图标全在用)。
+4. **总工作量统计:约 122~187 人日(中位 ≈155,≈7.4 人月,单人;A15 亦已随 fe5b9e3 收官计 0),其中 three-native 引擎补齐约占 26%。** 已完成不再计费:Windows 3D 链路、A1 纹理、A2 GLB、A3 材质降级、A4 半球光、A5 阴影、A6 雾、A7 线条、A8 粒子/精灵(2026-10-05/06 实证并入库)+ B1 内核直译与四路轨迹对拍(2026-10-06 全绿)。明细见 §5。
+5. **好消息(削减范围):** 游戏全项目 grep 证实**零 AnimationMixer/SkinnedMesh/InstancedMesh/后处理**——"动画系统/蒙皮/实例化"三项**不需要**给 three-native 补(坦克炮塔炮管是手动改 rotation,掩体 411 个靠手工几何合批已是静态十几个 Mesh);"粒子/线/Sprite"三项**必须补**(曳光拖尾、烟/闪光、空投图标全在用)。
 
 ---
 
-## 0.5 当前进度快照(2026-10-05,阶段0 收口后)
+## 0.5 实施进度(倒序)
+
+- **2026-10-06(马拉松·e2e 联机冒烟)**:**部分完成,全程真机**。①服务端按 server/server.js:32-34 口径启动(`STEEL_OPEN=1 node server/server.js 8342`,建房门禁需环境变量)监听成功;②联机入口无需补代码:moonbit/gameapp/mp.mbt:389 `mp_main`(GAMEAPP_MP 触发)+ moonbit/netclient/client.mbt:186 `run_session`(连 ws→create→等 joined→房主 start→30Hz 上行输入),`moon build gameapp --target native` 已编;③原生客户端真机 4 轮,每轮 server 日志均有完整「创建 by e2e-native → 开战 l01(dm/srvSim) → 离开」周期(房间 3599/8152/9713/1197),客户端日志实证快照消费(run#2:frame=3000/3000 snaps=1113 ghosts=1)与状态迁移(连接→进房→开战),1 张 800×600 裁窗截图存档 `docs/e2e_联机冒烟.png`(雾天+橄榄绿地形+HUD 真实渲染,md5 与源自抓文件一致)+ 窗口几何 `docs/e2e_联机冒烟_窗口几何.txt`;**④卡点如实记**:第 3 轮客户端退出后 Xorg 停摆(疑似 wgpu surface 销毁与窗口管理器/GPU Present 交叠;Xorg CPU 时间零增长、新连接握手永无回包),致三项取证未竟——xdotool 外部驾驶+开火证据(shot/hit=0)、3 张截图之后 2 张、峰值 RSS(time -v 输出被后续轮次 rm 误删,现存 0 字节)——均如实未造假;无 sudo 无法重启显示服务,需用户 TTY 登录 `sudo systemctl restart lightdm` 或重启机器恢复。**结论:联机链路本体(连接→建房→房主开战→服务器权威仿真→20Hz 快照→客户端插值渲染→自动裁窗取证)端到端已验通;阶段5 里程碑「两台桌面端+现有服务器对战」未达,D1 联机端到端未关。**
+- **2026-10-06(马拉松·net 联机接入)**:**验收通过**。`docs/联机接入验收.png`:追尾视角驾驶本车(画面中央十字准星),左下 HUD 面板「SHERMAN HP 900/900」+血条,中景敌车带橙红击毁/受击标记——原生客户端联机形态(快照消费+HUD)可用。
+- **2026-10-06(马拉松·hud)**:**HUD 自渲染验收通过**。`docs/HUD_自渲染验收.png`:HUD 绘入同一 wgpu 画面(无 DOM/无原生控件叠加),D1「全自渲染」架构在战斗画面落地。
+- **2026-10-06(马拉松·battle 战斗闭环)**:**验收通过**。`docs/战斗闭环验收.png`:追尾视角本车,中景敌车带橙红击毁/起火指示,远山脊另有载具轮廓(该帧无 HUD,HUD 单独验收见上一条)。
+- **2026-10-06(马拉松·app 场景装配/驾驶)**:**验收通过**。`docs/gameapp_场景装配.png`(+`_全景.png`):雾天地形+草丛/掩体/远处山脊轮廓渐隐入雾(无坦克入镜);`docs/gameapp_驾驶验收_before.png`/`_after.png`:同视角坦克驾驶前后对照。
+- **2026-10-06(马拉松·pipe 管线)**:moonbit/audio + moonbit/assets 已合入(moonbit/ 工作区内模块,audio 附 fixtures 与 audio_smoke 冒烟包)。
+- **2026-10-06(马拉松·kernel 内核全家)**:**四路轨迹比对全部通过**——simcore(+tracecheck 黄金轨迹逐帧对拍)、simengine(+traceengine)、ai(+traceai)、srvsim(+tracesrv)四模块对拍全绿,moonbit/{simcore,simengine,ai,srvsim} 落位;对拍夹具(fixtures/golden 黄金轨迹数据、fontatlas 字形图集)就绪。**阶段2 里程碑「轨迹零偏差」达成。**
+- **2026-10-06(马拉松·render 渲染四件)**:**A5 阴影/A7 线条/A8 精灵粒子/A9 输入相机 合入 three-native(f0f0933,已推送 a1ad9dd..f0f0933)**。四新示例真机跑至自然退出+截图+PIL 像素断言:A5 影区/受照 G 通道比 0.47(与阴影实现者扫描线 0.475 一致)——`docs/A5_shadow验收.png`;A7 琥珀三角 363px+青色折线 66px 非背景成立——`docs/A7_lines验收.png`;A8 暖色精灵盘 4028px+纹理粒子簇 27787px——`docs/A8_sprite验收.png`;A9 输入相机 STATE 遥测:W 前进(z −1.9→−3.65)/拖拽转 Orbit(eye 转 (−7.79,3,−4.5))/滚轮半径×0.95/D 右移(x 0.4→3.4)/ESC 退出——`docs/A9_input验收.png`。46 files +6108/−265,moon test 214/214。**注:「A9 输入相机」是示例编号,对应本规划 C1 输入面;§5 表内 A9(透明排序)未动。**
+- **2026-10-06(马拉松·stage1 收官)**:**A3 材质降级 + 阶段1 里程碑示例 map_lightup 合入 three-native(a1ad9dd,已推送 351e1b1..a1ad9dd)**。A3:Standard→Phong 降级(shininess=clamp((1−rough)²·250+5,5,250) 等);map_lightup:png16 解码→heightfield→贴地坦克→光照+雾,两示例顺序真机跑至自然退出(pbr_check 300 帧/map_lightup 180 帧)+PIL 断言:右箱近白 18716px 左箱 0、草地绿 70.3%、坦克暗色簇 74.5%(对照框 0.1%)、雾梯度远带差 0.1/近带差 104.0——`docs/pbr_check_A3验收.png`、`docs/map_lightup_阶段1里程碑.png`。12 files +1094/−6,moon test 151/151(基线 143+A3 4+heightfield 4)。**阶段1(A1–A4,A6)至此收官,里程碑「一张地图的地形+掩体+坦克点亮」达成(无阴影无特效口径)。**
+- **2026-10-05(夜)**:**V8 音频通过 —— 阶段0 全部收官**。moon_rodio 三格式(ogg/mp3/wav)+ 循环 + 1.5 倍速变调真机全通(插曲:本机 apt 源 9/29 被清空致 jack 头装不上,恢复 ubuntu.sources 即解;moon_cpal 在 Linux 硬依赖 jack 无开关,记档为上游改进建议)。
+- **2026-10-05(深夜·二)**:**A4 HemisphereLight + A6 雾完成**(three-native 97042d3/351e1b1)。半球光:SceneLights 增槽、uniform 416B、WGSL mix(ground,sky,0.5+0.5·n.y)(three.js 同式)。雾:Fog/FogExp2(线性 smoothstep/指数 1-exp(-d²·z²))、Material.fog 开关、uniform 512B(view 矩阵算雾深);textured_plane 真机验证远处褪雾色/近处保绿。**阶段1 的 A1/A2/A4/A6 四块已落地,剩 A3 材质分发的 Standard→Phong 降级。**
+- **2026-10-05(深夜)**:**A2 GLB 加载器完成**(three-native c78f7b1):glTF2 容器/accessor 三组合/节点树+TRS+extras(Object3D 新增 extras 字段)/内嵌贴图/COLOR_0 顶点色→Lambert;find_node_by_name 装配查找。真机验收:bt7.glb(582KB/4904 三角形/28 节点)迷彩·履带·炮塔·炮管全部正确,转台动画截图 `docs/glb_viewer_A2验收.png`;143/143 测试。**坑记档:Double::reinterpret_as_int64 是位模式重解释,JSON 数值转 Int 必须用 Double::to_int。**
+- **2026-10-05(晚)**:**A1 纹理管线完成**(three-native bd42e72):数据层(TextureSource/mip 链/map/vertex_colors/几何 colors+UV)+ GPU 层(逐 mip 上传/采样器/白回退)+ lit 采样乘色;141/141 测试;textured_plane 验收(草地 63% 像素+视觉确认,截图 `docs/textured_plane_A1验收.png`)。坑记档:双 BGL 布局下 Basic 也必须绑 group(1);look_at 签名是 (eye,target)。
+- **2026-10-05(午后)**:阶段0 Linux 侧清完——V9 自写 PNG16 解码器逐位命中(mizchi/image 不支持 16 位);V7 async/websocket 连真服往返通;JSON 1.7MB≈30ms;X11 叠加反证成立(示例 x11_overlay_probe,截图存档)。V8 音频卡 jack 头(待 `sudo apt install libjack-jackd2-dev`)。实验包:`moonbit/v9_image|v7_ws|json_bench|v8_audio`。
+- **2026-10-05(午前)**:win/from-hwnd 并入 master+Linux 门控(136/136);libyue 合 async-pump 调研;yue 推 2 个 CI 修复;Windows验证清单回填 V1–V6 全过;R1/R1b 撤销;D1 全自渲染定稿(三方案对比)。
+
+---
+
+## 0.5 当前进度快照(历史存档:2026-10-05 阶段0 收口时点;其"剩余工作"量表已被 §5 与上方倒序超越,留作基线对照)
 
 - **已完成**:阶段0 全部验证项(Windows 清单 P2/V1–V10 共 11 项 + 并发架构 3 项补充实验)全 PASS;R1/R1b 撤销、D4 落位、§5 A15 校准(附录含全部实测纪律)。两处 Windows 缺口补丁 + 两个集成示例(yue_async_int / ai_ipc)交付在两仓库分支(**均已推送远端,待审合并**):moonbit-libyue `win/native-handle`(3 提交)、three-mbt `win/from-hwnd`(含 from_hwnd + cube3d_win + 集成示例)。
 - **剩余工作(人日,按里程碑;与 §5 一致,中位口径)**:
@@ -51,9 +71,10 @@
 - 场景图 Object3D/Scene/BufferGeometry(位置/法线/UV/索引)、Mesh;
 - 相机 Perspective/Orthographic(WebGPU 深度域 z∈[0,1] —— HUD 手工投影数学要按此适配);
 - 光照数据层 5 种;**渲染管线两条**:basic(纯色)与 lit(Lambert/Phong,ambient+单平行光+单点光,WGSL,公式照搬 three ShaderChunk)——游戏只需 Directional+Hemisphere,映射到 lit 管线需补 hemisphere 项;
-- WebGPURenderer:wgpu surface、逐 mesh GPU 资源缓存、深度附着、resize;**嵌入已验证**(cube3d:Container→XID→from_xlib;input_diag:host.on_mouse_down/on_wheel 在渲染循环运行时事件通道可用)。
+- **纹理管线(2026-10-05,A1)**:TextureSource(RGBA8+CPU mip 链)/Material.map+vertex_colors/几何 colors+UV;GPU 逐 mip 上传+采样器(环绕/过滤/aniso8)+1×1 白回退;lit WGSL 采样乘色(uv_tr=repeat/offset);textured_plane 验收通过;
+- WebGPURenderer:wgpu surface、逐 mesh GPU 资源缓存、深度附着、resize;**双平台构造器已真机验证**:`from_xlib`(Linux/X11,cube3d)+ `from_hwnd`(Windows/D3D12,Win10 19045+Iris Xe,cube3d_win;2026-10-05 并入 master,Win32 部分 `#cfg(platform="windows")` 门控,Linux 测试 136/136 绿);**渲染循环中输入事件双平台已验证**(input_diag / cube3d_win 计数 10/10、5/5)。另有两个并发集成示例:`yue_async_int`(async external_loop_integration 嵌 yue 主循环,Windows IOCP 实测)、`ai_ipc`(AI 独立进程 stdio JSON-L,RTT avg 7.6ms)。
 
-缺失(对照游戏需求,全部要补):纹理 GPU 上传与采样、GLTF/GLB 加载器、阴影、雾(Fog/FogExp2)、Line(基本/虚线/顶点色/加法混合)、Points 粒子、Sprite 公告板、透明排序与 depthWrite 控制、自定义着色器注入、Raycaster、Extrude+Shape/Icosahedron/Ring/Circle 几何、渲染统计出口。~~from_win32/macOS surface~~ **Windows 侧已补(`WebGPURenderer::from_hwnd`,2026-10-05 真机趟通,分支 win/from-hwnd dbe4845);macOS 后置**。
+缺失(对照游戏需求):~~纹理 GPU 上传与采样、GLTF/GLB 加载器、阴影、雾(Fog/FogExp2)、Line、Points 粒子、Sprite 公告板~~ **已于 2026-10-05/06 补齐**(A1–A8,见 §0.5/§5);仍缺:透明排序与 depthWrite/Test/blending 控制、自定义着色器注入、Raycaster、Extrude+Shape/Icosahedron/Ring/Circle 几何、渲染统计出口;~~from_win32 surface~~ **已补(`WebGPURenderer::from_hwnd`,fe5b9e3,Win10 真机)**;macOS surface 后置。
 
 ### 1.3 moonbit-libyue(本地,`moon add NoahLiu/moonbit-libyue`)
 
@@ -69,8 +90,8 @@
 | **音频播放+解码** | **Milky2018/moon_rodio 0.3.5**(6,638 下载) | Rust rodio 的 native 移植:播放管线、源效果、**WAV/MP3/FLAC/Vorbis/MP4A 全解码**——一包覆盖游戏全部音频格式(wav/ogg/mp3)。与 three-native 同依赖 wgpu-mbt 作者生态。**Windows 实测(2026-10-05):解码层(wav looped/ogg/mp3)与 speed/looped 效果器可用;但其 MixerDeviceSink/Sink 集成层在 Windows 有双缺陷(队列不被渲染线程消费 + sleep_until_end 纯忙等,sink.mbt:344)→ 播放走 moon_cpal 原始通路 + rodio 解码/效果器 + 自管 PCM 队列(=本表下方 C2 预设,已实测 5s ogg 满速供数、mp3 帧数与元数据逐帧吻合、1.5x 循环正常)** | moon_cpal 0.11.8(设备层,WASAPI 实测健康)、CorvusCinereus/miniaudio 0.4.0、纯解码:LL728/moonvorbis、enanandesu/mp3、bw448/moon-wav |
 | 声像/滤波 | moon_rodio 源效果 + 自写 biquad | 游戏 WebAudio 用法很浅:手写距离衰减+sin(relYaw) 立体声像、引擎音 lowpass、playbackRate 变调、loop——全部可在解码 PCM 上等价实现,无需 PannerNode/HRTF | moondsp(DSP 引擎) |
 | **图像解码** | **mizchi/image 0.4.3**(21,374 下载) | PNG/BMP/JPEG 解码+缩放——覆盖 8 张 JPG 纹理 + 16 位灰度 PNG 高程图。**Windows 实测(2026-10-05):JPG 尺寸全对(1024×662/1024×256);但 decode_png 对 Grayscale/16 直接 raise UnsupportedFeature → 高程图走「@zlib(mizchi/zlib)+ 自写 5 种滤波反演」精确 16 位路径,实测 ~80 行、8/8 采样点与 PIL 逐位一致,不必手写 zlib** | riantr/moonbit_image、shunge/image(纯 MoonBit 六格式)、mizchi/zlib(DEFLATE,实测可用) |
-| **WebSocket 客户端** | **moonbitlang/async/websocket 0.22.4(官方,主选,已核实可用)** | RFC 6455 客户端+服务端;`Conn::connect(url)` 支持 ws/wss/代理/自定义头,`send_text`/`recv()→Message(Text/Binary)`,native 目标。游戏协议是纯 JSON 文本帧(net.js `send(JSON)`),一一映射。**Windows 实测(2026-10-05,V6/V7):IOCP 后端编译+运行全通,TCP ping/pong 与连本机 server.js 的 create/joined、err JSON 往返均成功——README "only Linux/macOS" 过时,以特性清单/实测为准** | 备选:tonyfettes/soup(libsoup3);最坏自实现 RFC6455 客户端(几百行)。⚠ zdu881/webmocket 是 JS FFI 包装器,**仅浏览器目标不可用** |
-| 事件循环共存 | **moonbitlang/async/external_loop_integration 0.22.4** | 官方支持把 async 嵌进外部事件循环(`set_external_event_loop`+`ExternalEventLoop`)——WS 收发跑在 yue/GTK 主循环里的官方通道,网络消息→`@yue.post_task`→游戏主线程 | 后备:async 跑独立 OS 线程+队列回投(需验证 native 线程) |
+| **WebSocket 客户端** | **moonbitlang/async/websocket 0.22.4(官方,主选,已核实可用)** | RFC 6455 客户端+服务端;`Conn::connect(url)` 支持 ws/wss/代理/自定义头,`send_text`/`recv()→Message(Text/Binary)`,native 目标。游戏协议是纯 JSON 文本帧(net.js `send(JSON)`),一一映射。**Windows 实测(2026-10-05,V6/V7):IOCP 后端编译+运行全通,TCP ping/pong 与连本机 server.js 的 create/joined、err JSON 往返均成功——README "only Linux/macOS" 过时,以特性清单/实测为准**;2026-10-06 马拉松 netclient 已用其在 Linux 真机完成完整游戏协议链路(联机接入验收,§0.5) | 备选:tonyfettes/soup(libsoup3);最坏自实现 RFC6455 客户端(几百行)。⚠ zdu881/webmocket 是 JS FFI 包装器,**仅浏览器目标不可用** |
+| 事件循环共存 | **moonbitlang/async/external_loop_integration 0.22.4** | 官方支持把 async 嵌进外部事件循环(`set_external_event_loop`+`ExternalEventLoop`)——**已实证**:three-native `examples/yue_async_int` 在 Windows(IOCP)真机跑通"async 网络+定时器 与 yue 鼠标事件三线并行、干净退出";Linux 侧 2026-10-06 马拉松 gameapp 联机模式亦按此形态落地(GLib 五步单步泵,详见 §0.5 联机条目 glib 2.80 pending_dispatches 坑记档) | 已有现成参考实现,风险极低 |
 | HTTP(钥匙兑换 POST) | moonbitlang/async/http | net.js:59-67 `POST /key/redeem`,与 WS 同栈 | moonbitstack/moonhttp |
 | **GLTF 解析参考** | hzfhzf89/moonbit-gltf-tools 0.1.2 | GLB 读取/校验/节点树遍历,可作 three-native GLTF 加载器的解析层参考或直接依赖 | 自写(GLB=JSON chunk+bin chunk,游戏只消费静态网格/材质/extras/顶点色/内嵌贴图,面不宽) |
 | 动画参考(不需要) | mizchi/anim3d 0.6.0 | 游戏**不用**骨骼/关键帧动画,不引入 | — |
@@ -117,7 +138,7 @@
 12. **Raycaster**(CPU 数学,math3d 已有 Ray,三角求交+face normal);
 13. **几何补齐**:Extrude+Shape(山墙)、Icosahedron(岩石,顶点扰动+重算法线)、Ring/Circle;
 14. 渲染统计(info.calls/triangles 给 F3 角标)、画质档(dpr/MSAA/shadowRes)、每场销毁重建语义;
-15. **from_win32 surface(Windows 支持的硬前提)**,macOS 后置。
+15. ~~from_win32 surface~~ **已完成(2026-10-05)**:from_hwnd + cube3d_win 真机验证并入 master;macOS surface 后置。
 
 **不需要补**:AnimationMixer/AnimationClip/SkinnedMesh/morph(游戏零使用)、InstancedMesh(手工合批已覆盖)、后处理(零使用)、WebXR、Points 之外的 GPU 粒子。
 
@@ -128,7 +149,7 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 网页版 AI 在 Web Worker 33ms 独立时钟跑,主线程降级路径已存在(main.js:116-142)。桌面端顺序:① 先用主线程分帧跑(降级路径行为等价,AI 是 30Hz 思考+每帧只消费输入缓存,不卡渲染的可行性要在真机测);② 帧预算不够则换**独立进程**(async.process 已在 Windows 实测:spawn/管道/行协议 60/60 往返,RTT 稳态 0~16ms ≪ 33ms 节拍;协议与 ai-worker.js 同形,见附录「并发架构落位」);③ C 线程不用于游戏逻辑(仅音频等 C 库自管线程场景)。兜底的独立线程跑 async 方案不再需要——external_loop_integration 嵌 yue 主循环已实测可用(附录纪律 5)。**此项不再阻塞任何阶段。**
 
 ### D5. 联机:协议不动,服务端不迁(第一阶段)
-桌面客户端连现有 Node 服务器(JSON 文本 WS,proto:2)。客户端侧用 soup/ws_session/自实现 RFC6455。服务器迁 MoonBit(moonback/async 生态已备)列为远期可选,不在本次统计内。
+桌面客户端连现有 Node 服务器(JSON 文本 WS,proto:2)。客户端 WS = **官方 async/websocket**(`Conn::connect/send_text/recv`),事件循环集成形态 = **yue_async_int 已实证的 external_loop_integration 嵌入**(§2 表);TCP 层与 IOCP 在 Windows 已实测,仅剩"WS 握手连真服"一步归入阶段0#3 常规验证。服务器迁 MoonBit(moonback/async 生态已备)列为远期可选,不在本次统计内。
 
 ### D6. 明确裁剪项
 触摸虚拟摇杆/双指捏合(移动端形态,桌面版不需要,后续要触屏再补)、speechSynthesis TTS 兜底(43 条语音 mp3 已打包齐,缺一补一即可)、`?v=` 版本戳(本地文件无需)、竖屏遮罩/orientation lock(桌面无此态)、Fullscreen API(libyue 窗口原生全屏)。
@@ -169,35 +190,35 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 
 | # | 项 | 预估 |
 |---|---|---|
-| A1 | 纹理管线(解码集成/上传/mipmap/采样/repeat/vertexColors) | 8–12 |
-| A2 | GLB 加载器(解析+节点树+extras+内嵌贴图;参考 moonbit-gltf-tools) | 10–15 |
-| A3 | 材质管线分发(Lambert 贴图主力/Basic/Standard→Phong 降级) | 6–10 |
-| A4 | Hemisphere 进 lit 管线 | 2–3 |
-| A5 | 阴影(深度 pass/PCF/shadow camera/按需重绘) | 10–15 |
-| A6 | 雾 FogExp2/Fog | 2 |
-| A7 | Line 管线(基本/虚线/顶点色/加法) | 4–6 |
-| A8 | Points 粒子 + Sprite 公告板 | 8–12 |
+| A1 | ~~纹理管线~~ **已完成(2026-10-05,three-native bd42e72)**:TextureSource+mip 链(CPU 盒式滤波)/Material.map+vertex_colors/几何 colors+box/plane UV/loaders 图像解码;GPU 逐 mip 上传+采样器(环绕/过滤/aniso)+group(1) 布局+1×1 白回退;lit WGSL 采样乘色(uv_tr=repeat/offset);141/141 测试;textured_plane 验收(草地 63% 像素+视觉确认,截图 docs/textured_plane_A1验收.png) | 0 |
+| A2 | ~~GLB 加载器~~ **已完成(2026-10-05,three-native c78f7b1)**:glTF2 容器+accessor+节点树/TRS/extras+内嵌贴图+COLOR_0;bt7.glb 真机验收(4904 三角形/炮塔枢轴/迷彩),143/143 测试;截图 docs/glb_viewer_A2验收.png | 0 |
+| A3 | ~~材质管线分发(Lambert 贴图主力/Basic/Standard→Phong 降级)~~ **已完成(2026-10-06,three-native a1ad9dd)**:pbr_check 像素断言+map_lightup 里程碑全 PASS,取证见 §0.5/§8.1 | 0 |
+| A4 | ~~Hemisphere 进 lit 管线~~ **已完成(97042d3)** | 0 |
+| A5 | ~~阴影(深度 pass/PCF/shadow camera/按需重绘)~~ **已完成(2026-10-06,three-native f0f0933)**:shadow_test 真机 240 帧自然退出,影区/受照 G 通道比 0.47 与实现者 0.475 一致 | 0 |
+| A6 | ~~雾 FogExp2/Fog~~ **已完成(351e1b1)** | 0 |
+| A7 | ~~Line 管线(基本/虚线/顶点色/加法)~~ **已完成(2026-10-06,three-native f0f0933)**:lines_test 真机 300 帧自然退出,琥珀三角+青色折线断言成立 | 0 |
+| A8 | ~~Points 粒子 + Sprite 公告板~~ **已完成(2026-10-06,three-native f0f0933)**:sprite_test 真机 240 帧自然退出,精灵盘+纹理粒子簇断言成立 | 0 |
 | A9 | 透明排序 + 状态控制(depthWrite/Test/blending) | 3–5 |
 | A10 | 着色器注入点(天空穹/轮廓壳/草透明) | 5–8 |
 | A11 | 2D overlay 管线 + 基础自绘控件层(正交+图元+文字图集+按钮/列表/面板/排版,支撑 D1 全自渲染) | 14–20 |
 | A12 | Raycaster | 3–5 |
 | A13 | 几何补齐(Extrude+Shape/Icosahedron/Ring/Circle) | 4–6 |
 | A14 | 统计/画质档/上下文销毁重建 | 3–5 |
-| A15 | from_win32 surface(**实测校准:2026-10-05 Windows 机已从零做完——`from_hwnd` 构造器 ~60 行照 from_xlib 仿写 + GetModuleHandleW 一行 + adapter 优先 D3D12 回退,含 WM_SIZE 时序坑调试半天内端到端跑通,见清单 V4**) | 1–2 |
-| | **小计** | **79–121** |
+| ~~A15~~ | ~~from_win32 surface~~ **已完成(2026-10-05 Windows 机从零做完:from_hwnd 构造器 ~60 行照 from_xlib 仿写 + adapter 优先 D3D12 回退,含 WM_SIZE 时序坑调试,清单 V4;原估 5–10 经实测校准为 1–2,再随 fe5b9e3 并入 master 归零)** | 0 |
+| | **小计(A1–A8、A15 已完成计 0)** | **32–49** |
 
 ### B. 游戏本体
 
 | # | 项 | 预估 |
 |---|---|---|
-| B1 | 逻辑内核直译(3,180 行)+ 黄金轨迹对拍验收 | 15–20 |
+| B1 | ~~逻辑内核直译(3,180 行)+ 黄金轨迹对拍验收~~ **已完成(2026-10-06)**:simcore/sim-engine/ai/srv-sim 四路轨迹比对(tracecheck 黄金轨迹+traceengine/traceai/tracesrv)全部通过 | 0 |
 | B2 | config 拆分与数据外置(1.7MB→JSON) | 3–5 |
 | B3 | main(场景/相机/输入/主循环/波次) 2,092 行重写 | 15–20 |
 | B4 | models(装配/掩体/合批/碰撞表) | 10–15 |
 | B5 | terrain + vehicle + combat + pickups 表现层 | 10–14 |
 | B6 | 战斗 HUD(2D overlay 重写,四块 canvas 语义平移) | 12–18 |
 | B7 | 车库/大厅/结算(自绘控件组装,534 行 CSS/DOM + 630 行 js;玩家名输入走原生模态框) | 8–12 |
-| | **小计** | **75–107** |
+| | **小计(B1 已完成计 0)** | **58–84** |
 
 ### C. 平台层
 
@@ -219,28 +240,30 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 | D3 | 打包发布(Windows/Linux 产物) | 3–5 |
 | | **小计** | **13–21** |
 
-**总计:186–282 人日(中位约 234,≈11 人月;A15 按 Windows 机实测 5–10→1–2 校准,其余不变)。** 注:A11 扩入自绘控件层 +4~5、B7 改自绘 −2~3、C5 用官方 ws −1~2,总账与首版基本持平。占比:A 引擎 ~45%、B 游戏 ~36%、C 平台 ~10%、D 收尾 ~8%。
+**总计:122–187 人日(中位约 155,≈7.4 人月;与各小计 32–49+58–84+19–33+13–21 逐项自洽)。** 较上稿核减:A3 材质降级、A5 阴影、A7 线条、A8 粒子/精灵(three-native a1ad9dd/f0f0933,已推送)与 B1 内核直译+四路轨迹对拍(moonbit/ 内核模块,2026-10-06)完成入库;A15 经 Windows 实测校准(5–10→1–2)后随 fe5b9e3 收官计 0。调账与首版持平项:A11 扩入自绘控件层 +4~5、B7 改自绘 −2~3、C5 用官方 ws −1~2。占比:A 引擎 ~26%、B 游戏 ~46%、C 平台 ~17%、D 收尾 ~11%。
 
-> 压缩空间的三个杠杆:① 先只做 Linux(A15 已实测仅 1–2 人日,后置收益缩水为 −1–2);② 联机后置先出单机版(C5/D1 后置,−10–18);③ 2D overlay 管线做最小集(先矩形+文字,圆弧/罗盘降级) −3–5。全开可到 ~155–245 人日。反之,要 macOS 再 +10–15。
+> 2026-10-06 马拉松另有已验收但**未在表中归零**的进展(保守计费,完成口径未逐项核实):输入事件面(input_test 遥测全生效,C1 一部)、moonbit/audio+assets 管线合入(C2/C3 一部)、gameapp 场景装配/驾驶/战斗闭环/HUD 自渲染/联机接入验收留证(B3–B7/C5 各一部)、端到端联机冒烟部分完成(D1 一部,卡 X 冻结,见 §0.5)。
+
+> 压缩空间的三个杠杆:① 联机后置先出单机版(C5/D1 后置,−9~16);② 2D overlay 管线做最小集(先矩形+文字,圆弧/罗盘降级)−3–5;③ macOS 不做(默认,要做再 +10–15)。全开可到 ~100–170 人日。
 
 ---
 
 ## 6. 分阶段路线图
 
-- **阶段0|验证与选型(1–2 周)**——每项都是小实验,失败即调整规划。**Windows 专项(V1–V5/V6/V7 等)已于 2026-10-05 在 Windows 机逐项实证完毕、11/11 PASS → [Windows验证清单.md](Windows验证清单.md)(含逐项证据);据此更新:**
-  1. ~~**Windows 3D 嵌入链路**~~ **✅ 关闭(R1 撤销)**:shim `yue_mbt_window_get_hwnd` + three-mbt `from_hwnd`/cube3d_win 均已真机趟通,补丁在两仓库分支待审合并;新增两个 Windows 时序坑记录(WM_SIZE 同步 reconfigure 被拒、Window 级 on_wheel 错位强转),实现阶段直接按 cube3d_win 的模式写;
-  2. ~~mizchi/image 16 位灰度~~ **✅ 关闭(结论=不支持)**:decode_png 对 Grayscale/16 直接 raise UnsupportedFeature → 迁移侧走「@zlib + 自写反滤波」精确 16 位路径(实测 ~80 行,8/8 采样点与 PIL 逐位一致),不必手写整条 zlib;
+- **阶段0|验证与选型(1–2 周)**——每项都是小实验,失败即调整规划。**已于 2026-10-05 全部收官:Windows 专项 V1–V10 于 Windows 机逐项实证 11/11 PASS → [Windows验证清单.md](Windows验证清单.md)(含逐项证据);Linux 侧同日清完(§0.5)。据此更新:**
+  1. ~~**Windows 3D 嵌入链路**~~ **✅ 关闭(R1 撤销)**:shim `yue_mbt_window_get_hwnd` + three-mbt `from_hwnd`/cube3d_win 均已真机趟通;from_hwnd 已并入 three-native master(fe5b9e3),libyue 补丁留在分支备并(游戏侧以 FindWindowA 绕行,零 libyue 改动);新增两个 Windows 时序坑记录(WM_SIZE 同步 reconfigure 被拒、Window 级 on_wheel 错位强转),实现阶段直接按 cube3d_win 的模式写;
+  2. ~~mizchi/image 16 位灰度~~ **✅ 关闭(结论=不支持)**:decode_png 对 Grayscale/16 直接 raise UnsupportedFeature → 迁移侧走「@zlib + 自写反滤波」精确 16 位路径(实测 ~80 行,Linux/Windows 双侧 8/8 采样点与 PIL 逐位一致),不必手写整条 zlib;
   3. ~~**官方 async/websocket 连通实验**~~ **✅ 关闭(R1b 撤销)**:Windows IOCP 实测可用,TCP echo 与 websocket JSON 往返全通;`external_loop_integration` 嵌 yue 主循环**亦已实测可用**(2026-10-05 补充实验 A:async 网络+定时器与 yue GUI 事件三线并行,见清单「补充实验」),阶段0#3 全部关闭;
-  4. ~~moon_rodio~~ **✅ 关闭(结论=解码/效果层可用,Sink 集成层 Windows 有双缺陷)**:三格式解码元数据全对、speed/looped 效果器可用;rodio 的 MixerDeviceSink/Sink 在 Windows 不被渲染线程消费且 sleep_until_end 纯忙等(moon_rodio sink.mbt:344)→ **按规划 C2 预设走「moon_cpal 原始通路 + rodio 解码/效果器 + 自管 PCM 队列」**(绕过层实测 5s ogg 满速 455 回调、mp3 帧数与元数据精确吻合、1.5x 循环 3s 满速供数);
+  4. ~~moon_rodio~~ **✅ 关闭(结论=解码/效果层可用,Sink 集成层 Windows 有双缺陷)**:三格式解码元数据全对、speed/looped 效果器可用;rodio 的 MixerDeviceSink/Sink 在 Windows 不被渲染线程消费且 sleep_until_end 纯忙等(moon_rodio sink.mbt:344)→ **按规划 C2 预设走「moon_cpal 原始通路 + rodio 解码/效果器 + 自管 PCM 队列」**(绕过层实测 5s ogg 满速 455 回调、mp3 帧数与元数据精确吻合、1.5x 循环 3s 满速供数);Linux/PulseAudio 侧 2026-10-05 亦过(§0.5;后记 2026-10-06:Linux 上 moon_cpal ALSA 后端经 PipeWire 亦现 writei 即败缺陷,真机出声待上游,见 §0.5 audio 线 notes 归档);
   5. AI 主线程分帧真机帧率(AI 15 敌 + 渲染同跑)——未测(不在 Windows 清单,属阶段3 联调);
-  6. X11 子窗口上叠原生控件的最小反证实验(10 分钟,给 D1 定案存档;结论已按"不可行"规划,实验仅留证据);
-  7. 1.7MB JSON 运行时加载的启动耗时。
-- **阶段1|引擎底座(≈A1–A4,A6)**:纹理→GLB→材质分发→hemi/雾。里程碑:一张地图的地形+掩体+坦克在窗口里点亮(无阴影无特效)。
-- **阶段2|逻辑内核(≈B1–B2)**:四模块直译,golden-trace 逐帧对拍全绿。里程碑:`moon test` + 轨迹零偏差。
-- **阶段3|战斗可玩(≈A5,A7–A10,A12–A14 + B3–B5)**:阴影/雾/线/粒子/Sprite/Raycaster/注入点 + main/models/terrain/vehicle/combat/pickups。里程碑:单机关卡全程可玩、F3 统计可用。
-- **阶段4|HUD 与外围(≈A11,B6,B7,C1–C4)**:2D overlay + 车库/大厅 libyue + 输入/音频/存档。里程碑:完整单机版。
-- **阶段5|联机(C5,D1)**:WS 客户端 + 房间流程 + 快照插值。里程碑:两台桌面端 + 现有服务器对战。
-- **阶段6|跨平台与发布(A15,D2–D3)**:~~Windows surface~~(已随阶段0 实测完成,分支待合并)、性能对齐、打包。macOS 视需求后置。
+  6. ~~X11 子窗口上叠原生控件的最小反证实验~~ **✅ 完成(反证成立)**:three-native `examples/x11_overlay_probe`,按钮完全被 3D 画面盖住,D1 全自渲染定案存档(截图 `docs/x11_overlay_probe_证据.png`);
+  7. ~~1.7MB JSON 运行时加载的启动耗时~~ **✅ 完成(PASS)**:partBoxes 抽出 1,728,739 字节/129 车型,core/json 解析 ≈30ms、顶层键全对——数据外置 JSON 运行时加载定案(D3/B2 落地依据,产物 `moonbit/partboxes.json`)。
+- **阶段1|引擎底座(≈A1–A4,A6)**:纹理→GLB→材质分发→hemi/雾。里程碑:一张地图的地形+掩体+坦克在窗口里点亮(无阴影无特效)。**已完成(2026-10-06)**:A1/A2/A4/A6(2026-10-05)+ A3 + 里程碑示例 map_lightup(three-native a1ad9dd),断言与截图见 §0.5/§8.1。
+- **阶段2|逻辑内核(≈B1–B2)**:四模块直译,golden-trace 逐帧对拍全绿。里程碑:`moon test` + 轨迹零偏差。**B1 已完成(2026-10-06)**:simcore/simengine/ai/srvsim 四路轨迹比对全部通过;B2 数据外置可行性阶段0 已证(partboxes.json 运行时加载),拆分手译完成口径未在本次事实中单独验收。
+- **阶段3|战斗可玩(≈A5,A7–A10,A12–A14 + B3–B5)**:阴影/雾/线/粒子/Sprite/Raycaster/注入点 + main/models/terrain/vehicle/combat/pickups。里程碑:单机关卡全程可玩、F3 统计可用。**现状(2026-10-06)**:A5/A7/A8 已合入(three-native f0f0933)+ 输入事件面验通;gameapp 场景装配/驾驶/战斗闭环验收留证(`docs/gameapp_*`、`docs/战斗闭环验收.png`);A9 透明排序/A10 注入点/A12 Raycaster/A13 几何/A14 统计未完,F3 统计未涉及——阶段未关。
+- **阶段4|HUD 与外围(≈A11,B6,B7,C1–C4)**:2D overlay + 车库/大厅 libyue + 输入/音频/存档。里程碑:完整单机版。**现状(2026-10-06)**:HUD 自渲染验收留证(`docs/HUD_自渲染验收.png`)、moonbit/audio+assets 管线已合入、输入事件面验通;A11 自绘控件层/B7 车库大厅/C4 存档等未在本次事实中验收——阶段未关。
+- **阶段5|联机(C5,D1)**:WS 客户端 + 房间流程 + 快照插值。里程碑:两台桌面端 + 现有服务器对战。**现状(2026-10-06)**:联机接入验收留证(`docs/联机接入验收.png`);端到端联机冒烟部分完成——单端链路(连接→建房→开战→权威仿真→20Hz 快照→插值渲染)真机 4 轮验通(`docs/e2e_联机冒烟.png`),外部驾驶/开火取证与峰值 RSS 卡 X 服务器冻结未竟(见 §0.5);两台对战未验——阶段未关。
+- **阶段6|跨平台与发布(D2–D3)**:性能对齐、双平台打包(Windows 3D 链路已通,无额外铺垫)。macOS 视需求后置。
 
 依赖关系:阶段1↔2 可并行;3 依赖 1;4 依赖 3(HUD 要投影数学)与 1(A11);5 依赖 4;6 依赖 5。
 
@@ -282,8 +305,8 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 
 | # | 风险 | 影响 | 缓解 |
 |---|---|---|---|
-| R1 | Windows 3D 嵌入两处缺口:libyue `native_handle_view` 返回 0 + three-native 无 from_hwnd | Windows 版整个不可用 | **已实证解决(2026-10-05 Windows 机,清单 V1–V5 全过 → [Windows验证清单.md](Windows验证清单.md)):** ① shim 补 `yue_mbt_window_get_hwnd`(顶层窗口 HWND,实测自报句柄==外部 MainWindowHandle 逐位相等、IsWindow=True)——libyue 分支 `win/native-handle` 1a9f815;② three-native 补 `WebGPURenderer::from_hwnd`(内部 create_surface_windows_hwnd + adapter 优先 D3D12)+ `examples/cube3d_win` 端到端(yue 窗口→HWND→D3D12 硬件 surface→旋转立方体,截图像素取证,15s 干净退出)——three-mbt 分支 `win/from-hwnd` dbe4845;两分支**未推 main,审阅合并后即可发版**;⚠ 实测出的两个 Windows 时序坑已随分支记录:WM_SIZE 同步栈内 configure 被拒(须 post_task 延出)、Window 级 on_wheel 错位强转收不到(滚轮挂容器) |
-| R1b | async 在 Windows 的实况不明(IOCP 特性勾选 vs README"仅 Linux/macOS") | 联机功能 Windows 缺席 | **已实测撤销(2026-10-05,清单 V6/V7 全过):** async 0.22.4 的 IOCP 后端(iocp.c/io_windows.c)在 MSVC 编译通过且 TCP ping/pong 全往返,websocket 连本机 server.js create/joined+err 完整 JSON 往返——**Windows 支持为真,README "only Linux/macOS" 过时**;小坑:本机核心(moonc 0.10.12)无 `eprintln`,async 包内 6 处调用需等价替换(上游随新核心重写); Soup 备选路线无需启用 |
+| ~~R1~~ | ~~Windows 3D 嵌入两处缺口~~ **已解决(2026-10-05)** | — | **V1–V5 全过并回填([Windows验证清单.md](Windows验证清单.md))**:from_hwnd + cube3d_win 在 Win10 19045 + Iris Xe 真机端到端验证(D3D12 硬件适配器、resize 跟随、渲染中输入 10/10 与 5/5、15s 干净退出);HWND 用 FindWindowA 取(零 libyue 改动;shim 版 `native_handle_window` 留在 libyue 分支 1a9f815 备并);已并入 three-native master(fe5b9e3,Win32 部分 #cfg 门控,Linux 136/136 测试绿)。两个 Windows 时序坑已记档:WM_SIZE 内 configure 会被拒→resize 须 post_task 延后+pending 跳帧;滚轮挂 Container 而非 Window |
+| ~~R1b~~ | ~~async 在 Windows 实况不明~~ **已解决(2026-10-05)** | — | **V6/V7 全过**:async 0.22.4 的 IOCP 后端(iocp.c/io_windows.c)MSVC 编译+运行全通,TCP ping/pong 与 websocket 连本机 server.js 的 create/joined+err 完整 JSON 往返——**Windows 支持为真,README "only Linux/macOS" 过时**;`external_loop_integration` 嵌 yue 主循环亦实测可用(补充实验 A);小坑:本机核心(moonc 0.10.12)无 `eprintln`,async 包内 6 处调用需等价替换(上游随新核心重写);Soup 备选路线无需启用 |
 | R2 | 原生控件无法叠 3D 上(三平台 airspace) | HUD 架构 | 已按**全自渲染**规划(D1 三方案对比定稿),不再依赖任何叠加能力;多窗口方案因 libyue 无点击穿透 API 否决 |
 | R3 | three-native 早期(0.1.0)API 漂移/bug | 返工 | 以 fork/锁版本 + 回馈上游;游戏本身是很好的回归用例 |
 | R4 | 阴影/粒子等新管线的 wgpu 性能未证 | 帧率 | 游戏自带三档画质+合批+按需阴影等全部降级手段,语义平移即可 |
@@ -303,8 +326,31 @@ simcore/sim-engine/ai/srv-sim 按行为逐函数译成 MoonBit(纯数值,无平�
 - HUD 结构:§三(110 静态 id;四块 canvas:minimap/dirWidget/reloadRing/bigMap;z-index 栈)。
 - 地图/资产格式:§四(map.json 字段;PNG16 两条解码路径 assets.js:37-60 与 server.js:91-117;GLB 129 个 88MB;音频清单)。
 - 游戏循环与帧率技巧:§七(固定步长 60Hz;9 条帧率技巧)。
-- three-native 覆盖矩阵:three-native/docs/coverage-matrix.md;嵌入示例 examples/cube3d、examples/input_diag。
-- libyue 窗口能力核实(2026-10-05,本地源码):`Window::new_with_options(frame/transparent/no_activate)`、`set_always_on_top`(yue/view.mbt:40-76);无点击穿透/输入区域 API(全库 grep);`native_handle_view` Windows 返回 0(shim/yue_mbt.cpp:581)→ **同日已补 `yue_mbt_window_get_hwnd`(分支 1a9f815,清单 V3)**;prebuild Windows 跨模块消费相对路径 LNK1104 已修(分支 facc2d0)。
+- three-native 覆盖矩阵:three-native/docs/coverage-matrix.md;嵌入示例 examples/cube3d(X11)、examples/cube3d_win(HWND+D3D12,Win10 真机)、examples/input_diag、examples/yue_async_int(async 嵌 yue 主循环,Windows IOCP 实测)、examples/ai_ipc(AI 独立进程 RTT 7.6ms);Windows 专项实证与回填 → [Windows验证清单.md](Windows验证清单.md)。
+- 仓库状态(2026-10-05 更新完毕):three-native master = win/from-hwnd 快进合并 + Linux #cfg 门控修复(fe5b9e3,136/136 绿,已推送);moonbit-libyue master = feature/async-pump 调研文档并入(dee0f6e,已推送);yue main = 2 个 prebuilt-CI 修复提交已推送(65a6badd)。
+- libyue 窗口能力核实(2026-10-05,本地源码):`Window::new_with_options(frame/transparent/no_activate)`、`set_always_on_top`(yue/view.mbt:40-76);无点击穿透/输入区域 API(全库 grep);`native_handle_view` Windows 返回 0(shim/yue_mbt.cpp:581)→ 同日补 `yue_mbt_window_get_hwnd`(分支 1a9f815,清单 V3;游戏侧以 FindWindowA 绕行,补丁备并);prebuild Windows 跨模块消费相对路径 LNK1104 已修(分支 facc2d0)。
 - moonbitlang/async 0.22.4 核实(2026-10-05,mooncakes 文档 + **Windows 真机**):`websocket` 包 = RFC 6455 client/server,`Conn::connect/send_text/recv(Message Text|Binary)/ping/send_close`,native 目标;`external_loop_integration` 包 = `set_external_event_loop` 官方外部事件循环嵌入;**Windows IOCP 实测可用(V6/V7 全过),README "仅 Linux/macOS" 过时**。
-- Windows 机实证全记录:**[Windows验证清单.md](Windows验证清单.md)(2026-10-05,11/11 PASS,含命令/输出/像素取证)**;改动分支:moonbit-libyue `win/native-handle`(3 提交)、three-mbt `win/from-hwnd`(1 提交),均未推 main。
+- Windows 机实证全记录:**[Windows验证清单.md](Windows验证清单.md)(2026-10-05,11/11 PASS,含命令/输出/像素取证)**;改动分支:moonbit-libyue `win/native-handle`(3 提交,待审)、three-mbt `win/from-hwnd`(已并入 master fe5b9e3)。
 - mooncakes 检索:2026-10-05 站内 API(/api-new/v0/search?kw=)实查,选型见 §2。
+
+### 8.1 实施取证存档(2026-10-05/06,均在本仓库 docs/,文件存在性已逐一核对)
+
+| 文件 | 阶段/项 | 内容一句话 |
+|---|---|---|
+| docs/textured_plane_A1验收.png | 阶段1·A1 纹理 | 草地纹理近处保绿/远处褪雾色 |
+| docs/glb_viewer_A2验收.png | 阶段1·A2 GLB | bt7.glb 迷彩/履带/炮塔/炮管正确 |
+| docs/pbr_check_A3验收.png | 阶段1·A3 材质降级 | 右箱近白 18716px/左箱 0 断言取证 |
+| docs/map_lightup_阶段1里程碑.png | 阶段1 里程碑 | 草地绿 70.3%+坦克暗色簇 74.5%+雾梯度 |
+| docs/A5_shadow验收.png | 阶段3·A5 阴影 | 影区/受照 G 通道比 0.47 |
+| docs/A7_lines验收.png | 阶段3·A7 线条 | 琥珀三角+青色折线 |
+| docs/A8_sprite验收.png | 阶段3·A8 粒子/精灵 | 暖色精灵盘+纹理粒子簇 |
+| docs/A9_input验收.png | 阶段3/C1 输入相机 | W/拖拽/滚轮/D/ESC 遥测全生效 |
+| docs/gameapp_场景装配.png(+_全景.png) | 阶段3·场景装配 | 雾天地形+草丛/掩体/山脊轮廓 |
+| docs/gameapp_驾驶验收_before.png / _after.png | 阶段3·驾驶 | 同视角驾驶前后对照 |
+| docs/战斗闭环验收.png | 阶段3·战斗闭环 | 追尾视角+敌车橙红击毁指示 |
+| docs/HUD_自渲染验收.png | 阶段4·HUD | HUD 绘入同一 wgpu 画面 |
+| docs/联机接入验收.png | 阶段5·联机接入 | 十字准星+SHERMAN 血条面板+敌车标记 |
+| docs/e2e_联机冒烟.png(+_窗口几何.txt) | 阶段5·端到端冒烟 | 800×600 裁窗,雾天+橄榄绿地形+HUD |
+| docs/x11_overlay_probe_证据.png | 阶段0·D1 反证 | 原生按钮被 3D 画面完全盖住 |
+
+> 内核对拍(阶段2)与管线(audio/assets)无 PNG 取证,证据为四路轨迹比对结果与 moonbit/ 模块本体;e2e 未竟三项(外部驾驶/后 2 张截图/RSS)见 §0.5 卡点记录。
