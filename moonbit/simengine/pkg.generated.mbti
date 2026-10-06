@@ -1,0 +1,326 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/simengine"
+
+import {
+  "lb091188/steel-moonbit/simcore",
+}
+
+// Values
+pub const ARMOR_AMMO_RELOAD_MULT : Double = 1.25
+
+pub const ARMOR_ENGINE_SLOW : Double = 0.55
+
+pub const ARMOR_GUN_DISP_PENALTY : Double = 1.6
+
+pub const FALL_K : Double = 4.0
+
+pub const FALL_SAFE_V : Double = 9.0
+
+pub const FALL_TRACK_CHANCE : Double = 0.5
+
+pub const FALL_TRACK_V : Double = 11.5
+
+pub const MAX_SLOPE : Double = 0.63
+
+pub const SHELL_GRAVITY : Double = 3.2
+
+pub fn aim_to_local(Double, Double, Double, Double, Double, Double) -> Vec3
+
+pub fn ang_diff(Double, Double) -> Double
+
+pub fn ang_move_toward(Double, Double, Double) -> Double
+
+pub fn clamp(Double, Double, Double) -> Double
+
+pub fn collide_tank(Tank, @simcore.CoverList) -> (Double, Double)
+
+pub fn fire(Tank, World, Vec3, Vec3, (String, EventData) -> Unit) -> Bool
+
+pub fn js_or_1(Double) -> Double
+
+pub fn js_round(Double) -> Int
+
+pub fn lerp(Double, Double, Double) -> Double
+
+pub fn mass_of(Spec) -> Double
+
+pub fn move_toward(Double, Double, Double) -> Double
+
+pub fn obb_push_out(Obb2d, Obb2d) -> (Double, Double)?
+
+pub fn probe_tank_obb(Map[String, PartBoxEntry]?, Tank, Double, Double, Double, Double, Double, Double, Double) -> ObbHit?
+
+pub fn rand() -> Double
+
+pub fn ray_obb_3d(Double, Double, Double, Double, Double, Double, Double, Vec3, Axes, (Double, Double, Double)) -> RayHit?
+
+pub fn set_rng(Int) -> Unit
+
+pub fn tank_obb_frames(PartBoxEntry?, Tank) -> ObbFrames
+
+pub fn update_tank(Tank, Input, Double, Env) -> Unit
+
+pub fn vehicle_spec(String) -> Spec?
+
+// Errors
+
+// Types and methods
+pub(all) struct Autoloader {
+  clip : Int
+  intra : Double
+  long : Double
+}
+
+pub(all) struct Axes {
+  ex : Vec3
+  ey : Vec3
+  ez : Vec3
+}
+
+pub(all) struct DestroyedEv {
+  tank : Tank
+  shooter : Tank?
+}
+
+pub(all) struct Env {
+  terrain : @simcore.Terrain
+  covers_list : @simcore.CoverList
+  tanks : Array[Tank]
+  time : Double
+  emit : (String, EventData) -> Unit
+  on_moved : ((Tank, Double) -> Unit)?
+  take_ram : ((Tank, Tank, Int) -> Unit)?
+}
+
+pub(all) enum EventData {
+  Fire(FireEv)
+  Reloaded(ReloadedEv)
+  Ram(RamEv)
+  Destroyed(DestroyedEv)
+  Hit(HitEv)
+}
+
+pub(all) struct FireEv {
+  tank : Tank
+  pos : Vec3
+  dir : Vec3
+}
+
+pub(all) struct Frame {
+  base : Vec3
+  r : Axes
+}
+
+pub(all) struct HitEv {
+  target : Tank
+  shooter : Tank?
+  point : Vec3
+  zone : String
+  dmg : Int
+  kind : String
+  module_ : String?
+}
+
+pub(all) struct Hooks {
+  on_create : ((Shell) -> Unit)?
+  on_flight : ((Shell) -> Unit)?
+  on_impact : ((String, Vec3) -> Unit)?
+  on_player_miss : ((Vec3) -> Unit)?
+  on_near_miss : ((Shell) -> Unit)?
+  on_kill : ((Shell) -> Unit)?
+  probe_tank : ((Shell, Tank, Double, Double, Double, Double, Double, Double, Double) -> ObbHit?)?
+  on_hit_tank : ((Shell, Tank, ObbHit, Vec3) -> Unit)?
+  on_explode : ((Shell, Vec3, Tank?, Double) -> Unit)?
+}
+pub fn Hooks::make(on_create? : (Shell) -> Unit, on_flight? : (Shell) -> Unit, on_impact? : (String, Vec3) -> Unit, on_player_miss? : (Vec3) -> Unit, on_near_miss? : (Shell) -> Unit, on_kill? : (Shell) -> Unit, probe_tank? : (Shell, Tank, Double, Double, Double, Double, Double, Double, Double) -> ObbHit?, on_hit_tank? : (Shell, Tank, ObbHit, Vec3) -> Unit, on_explode? : (Shell, Vec3, Tank?, Double) -> Unit) -> Self
+
+pub(all) struct Input {
+  mut throttle : Double
+  mut steer : Double
+  mut aim_yaw : Double
+  mut aim_pitch : Double
+  mut fire : Bool
+  mut hold_turret : Bool
+}
+
+pub(all) struct Obb2d {
+  mut x : Double
+  mut z : Double
+  yaw : Double
+  hx : Double
+  hz : Double
+}
+
+pub(all) struct ObbFrames {
+  hull : Frame
+  turret : Frame
+  gun : Frame
+}
+
+pub(all) struct ObbHit {
+  distance : Double
+  point : Vec3
+  normal : Vec3
+  zone : String
+  armor : Double
+}
+
+pub(all) struct PartBoxEntry {
+  turret_pivot : (Double, Double, Double)?
+  gun_pivot : (Double, Double, Double)?
+  gun_parent : String?
+  zones : Array[ZoneBox]?
+}
+
+pub(all) struct RamEv {
+  shooter : Tank
+  target : Tank
+  dmg : Int
+}
+
+pub(all) struct RayHit {
+  t : Double
+  point : Vec3
+  normal : Vec3
+}
+
+pub(all) struct ReloadedEv {
+  tank : Tank
+}
+
+pub(all) struct Shell {
+  mut active : Bool
+  owner : Tank
+  team : Int
+  mut pos : Vec3
+  mut vel : Vec3
+  mut pen : Double
+  mut dmg : Double
+  cal : Double
+  mut life : Double
+  grav : Double
+  mut warned : Bool
+  splash : Double
+  disp_at_fire : Double
+}
+
+pub(all) struct ShellEnv {
+  height_at : (Double, Double) -> Double
+  covers_blocked : (Double, Double, Double, Double, Double, Double, Double) -> Double
+  tanks : Array[Tank]
+  player_pos : Tank?
+  player_team : Int
+}
+
+pub struct Shells {
+  mut list : Array[Shell]
+  cap : Int
+  hooks : Hooks
+}
+pub fn Shells::capped(Self) -> Bool
+pub fn Shells::make(Hooks, max_shells? : Int) -> Self
+pub fn Shells::spawn(Self, Tank, Vec3, Vec3, Double) -> Shell?
+pub fn Shells::update(Self, Double, ShellEnv) -> Unit
+
+pub(all) struct Spec {
+  typ : String
+  cls : String
+  hp : Double
+  max_speed : Double
+  reverse_ratio : Double
+  accel : Double
+  brake : Double
+  coast_drag : Double
+  hull_traverse : Double
+  turret_traverse : Double
+  gun_depression : Double
+  gun_elevation : Double
+  gun_arc : Double?
+  turret_hull_lock : Bool
+  sample_l : Double
+  sample_w : Double
+  disp_base : Double
+  disp_aim_time : Double
+  disp_max : Double
+  disp_move : Double
+  disp_hull_turn : Double
+  disp_turret_turn : Double
+  disp_fire : Double
+  gun_reload : Double
+  gun_autoloader : Autoloader?
+  gun_pen : Double
+  gun_dmg : Double
+  gun_cal : Double?
+  gun_speed : Double
+  gun_life : Double?
+  gun_grav : Double?
+  gun_splash : Double?
+}
+
+pub(all) struct Tank {
+  tag : Int
+  typ : String
+  spec : Spec
+  mut x : Double
+  mut z : Double
+  mut y : Double
+  mut yaw : Double
+  mut speed : Double
+  mut last_yaw_rate : Double
+  mut last_turret_rate : Double
+  mut turret_yaw : Double
+  mut gun_pitch : Double
+  mut pitch : Double
+  mut roll : Double
+  mut track_offset : Double
+  mut gear : String
+  mut shift_t : Double
+  mut flip_t : Double
+  mut y_init : Bool
+  mut fall_v : Double
+  mut ram_t : Double
+  mut hp : Double
+  mut alive : Bool
+  mut reload_t : Double
+  mut reload_total : Double
+  mut clip_left : Int
+  mut clip_phase : String
+  mut disp : Double
+  mut mod_track : Double
+  mut mod_engine : Double
+  mut mod_gun : Double
+  mut mod_ammo : Double
+  no_turret : Bool
+  mut obb_fallback : Bool
+  team : Int
+  net_id : Int
+  is_player : Bool
+  mut st_shots : Int
+  mut st_hits : Int
+  mut st_pens : Int
+  mut st_dmg_dealt : Double
+  mut last_fire_t : Double
+}
+
+pub(all) struct Vec3 {
+  mut x : Double
+  mut y : Double
+  mut z : Double
+}
+
+pub(all) struct World {
+  shells_field : Shells
+}
+
+pub(all) struct ZoneBox {
+  z : String
+  armor : Double
+  c : (Double, Double, Double)
+  h : (Double, Double, Double)
+  p : String
+  q : (Double, Double, Double, Double)?
+}
+
+// Type aliases
+
+// Traits

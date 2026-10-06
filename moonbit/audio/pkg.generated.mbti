@@ -1,0 +1,83 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/audio"
+
+import {
+  "Milky2018/moon_rodio",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/ref",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct Audio {
+  root : String
+  mut search_dirs : Array[String]
+  mut exts : Array[String]
+  cache : Map[String, Bytes]
+  master : @ref.Ref[Double]
+  mut device : @moon_rodio.MixerDeviceSink?
+  mut mixer : @moon_rodio.Mixer?
+  loops : Map[String, Voice]
+  mut oneshots : Array[Voice]
+}
+pub fn Audio::active_voice_count(Self) -> Int
+pub fn Audio::attach_mixer(Self, @moon_rodio.Mixer) -> Unit
+pub fn Audio::cache_count(Self) -> Int
+pub fn Audio::is_cached(Self, String) -> Bool
+pub fn Audio::is_open(Self) -> Bool
+pub fn Audio::load(Self, String) -> Result[Bytes, AudioError]
+pub fn Audio::new(root? : String) -> Self
+pub fn Audio::open(Self) -> Result[Unit, AudioError]
+pub fn Audio::play(Self, String, opts? : PlayOpts) -> Result[Voice, AudioError]
+pub fn Audio::resolve(Self, String) -> String?
+pub fn Audio::set_loop_gain(Self, String, Double) -> Bool
+pub fn Audio::set_loop_speed(Self, String, Double) -> Bool
+pub fn Audio::set_volume(Self, Double) -> Unit
+pub fn Audio::start_ambient(Self) -> Result[Voice, AudioError]
+pub fn Audio::start_engine(Self) -> Result[Voice, AudioError]
+pub fn Audio::start_loop(Self, String, key? : String, opts? : PlayOpts) -> Result[Voice, AudioError]
+pub fn Audio::stop_all(Self) -> Unit
+pub fn Audio::stop_battle(Self) -> Unit
+pub fn Audio::stop_loop(Self, String) -> Bool
+pub fn Audio::volume(Self) -> Double
+pub fn Audio::with_exts(Self, Array[String]) -> Self
+pub fn Audio::with_search_dirs(Self, Array[String]) -> Self
+
+pub(all) enum AudioError {
+  NoDevice(String)
+  LoadFailed(String, String)
+  DecodeFailed(String, String)
+  TooManyVoices(Int)
+} derive(Eq, @debug.Debug)
+pub fn AudioError::equal(Self, Self) -> Bool
+pub fn AudioError::message(Self) -> String
+pub fn AudioError::not_equal(Self, Self) -> Bool
+pub fn AudioError::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PlayOpts {
+  gain : Double
+  rate : Double
+}
+pub fn PlayOpts::new() -> Self
+
+pub struct Voice {
+  sink : @moon_rodio.Sink
+  master : @ref.Ref[Double]
+  base_gain : @ref.Ref[Double]
+  key : String
+  stopped : @ref.Ref[Bool]
+}
+pub fn Voice::gain(Self) -> Double
+pub fn Voice::is_active(Self) -> Bool
+pub fn Voice::key(Self) -> String
+pub fn Voice::set_gain(Self, Double) -> Unit
+pub fn Voice::set_speed(Self, Double) -> Unit
+pub fn Voice::speed(Self) -> Double
+pub fn Voice::stop(Self) -> Unit
+
+// Type aliases
+
+// Traits

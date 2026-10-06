@@ -1,0 +1,6 @@
+// simcore — client/js/simcore.js (SF.Sim) 的 MoonBit 直译包
+// 连同其依赖的 SF.Util 纯函数子集(config.js:1458-1523)与夹具高程重建(SPEC §3)。
+// 全程 Float64(f32 仅出现在高程采样源, 与 JS Float32Array 对应)。
+import {
+  "moonbitlang/core/math",
+}

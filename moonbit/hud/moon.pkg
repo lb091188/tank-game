@@ -1,0 +1,21 @@
+// hud — HUD 自渲染(D1 决策: 全部画在同一 wgpu surface, 不开原生控件):
+// 相机锁定屏幕层 —— hud_root 每帧对齐相机位姿, 子节点局部坐标即"相机前
+// d=0.5m 处平行于像平面的屏幕坐标"(虚视口 800×600, 像素→米换算由 fov 定),
+// 近平面 0.3 之外、地形(眼高≥4m)与车辆(≥6.5m 追距)之前, 实际永不被遮挡。
+// 元素: 中心准星(线段)、左下本车血条+装填条+弹药数字(矩形, basic 不透明
+// 逐层 +z 防 z-fight)、右上击杀播报(公告板文字四边形, sprite 材质逐行
+// 材质做渐隐), 文字走 fontatlas 图集。数据由 gameapp 每帧喂入。
+import {
+  "moonbitlang/core/math",
+  "NoahLiu/three-native/core",
+  "NoahLiu/three-native/math3d",
+  "NoahLiu/three-native/renderers",
+  "lb091188/steel-moonbit/fontatlas",
+}
+
+supported_targets = "native"
+
+// 白盒测试单独声明依赖(utf8 仅测试用)
+import {
+  "moonbitlang/core/encoding/utf8",
+} for "wbtest"

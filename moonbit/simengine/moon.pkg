@@ -1,0 +1,8 @@
+// simengine — client/js/sim-engine.js (SF.SimEngine) 的 MoonBit 直译包:
+// 行驶/自动挡/碰撞/地形贴合/坠落摔伤/瞄准/装填/开炮/炮弹积分/3D OBB 部位判定。
+// 逐函数对照直译, 注释标原 JS 函数名与行号; 运算次序与 JS 逐句一致, 全程 Double。
+import {
+  "moonbitlang/core/double",
+  "moonbitlang/core/math",
+  "lb091188/steel-moonbit/simcore",
+}

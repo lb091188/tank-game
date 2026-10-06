@@ -1,0 +1,9 @@
+// ai — client/js/ai.js (SF.AI) 的 MoonBit 直译包
+// 连同 ai.json 夹具重放所必需的 client/js/sim-engine.js 数值内核子集
+// (updateTank/fire/makeShells/probeTankOBB —— 独立 simengine 包落地前暂寄本包)。
+// 全程 Float64; 与 JS 的差异仅"全局注入改显式 Ctx 传参"(SF.CFG/SF.Bus/Math.random),
+// 运算次序与掷骰次序逐句对应。
+import {
+  "moonbitlang/core/math",
+  "lb091188/steel-moonbit/simcore",
+}

@@ -1,0 +1,56 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/hud"
+
+import {
+  "NoahLiu/three-native/core",
+  "NoahLiu/three-native/renderers",
+  "lb091188/steel-moonbit/fontatlas",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+type FeedItem
+
+type FeedRow
+
+pub struct Hud {
+  view : HudView
+  atlas : @fontatlas.FontAtlas
+  root : @core.Object3D
+  crosshair : @core.Object3D
+  panel_bg : @core.Object3D
+  hp_bg : @core.Object3D
+  hp_fill : @core.Object3D
+  hp_mat : @core.Material
+  rl_bg : @core.Object3D
+  rl_fill : @core.Object3D
+  rl_mat : @core.Material
+  panel_text : @core.Object3D
+  feed_rows : Array[FeedRow]
+  mut feed : Array[FeedItem]
+  mut renderer : @renderers.WebGPURenderer?
+  mut hp_w : Double
+  mut rl_w : Double
+  mut panel_text_s : String
+  max_feed : Int
+}
+pub fn Hud::attach_renderer(Self, @renderers.WebGPURenderer) -> Unit
+pub fn Hud::new(@core.Scene, @fontatlas.FontAtlas, Int, Int, Double) -> Self
+pub fn Hud::push_kill(Self, String, String, Bool, Double) -> Unit
+pub fn Hud::update(Self, @core.PerspectiveCamera, Double, Double, Double, Double, Int, String, Double) -> Unit
+
+pub(all) struct HudView {
+  vw : Double
+  vh : Double
+  fov_deg : Double
+  plane_d : Double
+  px2m : Double
+}
+pub fn HudView::new(Int, Int, Double) -> Self
+
+// Type aliases
+
+// Traits

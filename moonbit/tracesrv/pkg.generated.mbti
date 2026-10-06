@@ -1,0 +1,17 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/tracesrv"
+
+// Values
+
+// Errors
+
+// Types and methods
+type CoopLogEv
+
+type CoopSnap
+
+type DmSnap
+
+// Type aliases
+
+// Traits

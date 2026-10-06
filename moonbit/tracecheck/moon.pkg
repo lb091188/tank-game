@@ -1,0 +1,14 @@
+// tracecheck — 黄金轨迹比对器(main 包): 读 fixtures/golden/simcore.json, 按 SPEC.md 重放
+// simcore 直译实现并逐 snapshot 逐字段比对。全过打印 "TRACE OK simcore N/N" 退出 0;
+// 失败打印首个 mismatch(字段/期望/实际/tick)退出 1。
+pkgtype(kind: "executable")
+
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/core/math",
+  "lb091188/steel-moonbit/simcore",
+}

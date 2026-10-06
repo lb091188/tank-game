@@ -1,0 +1,17 @@
+// traceengine — 黄金轨迹比对器(main 包): 读 fixtures/golden/simengine.json, 按 SPEC.md 重放
+// simengine 直译实现(golden-trace2.js runSimengine 场景)并逐 snapshot 逐字段 + 全量事件流水比对。
+// 全过打印 "TRACE OK simengine N/N" 退出 0; 失败打印首个 mismatch(fixture/snapshot 下标/
+// tick/字段/期望/实际)退出 1。输出约定与 tracecheck 一致。
+pkgtype(kind: "executable")
+
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/double",
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/core/math",
+  "lb091188/steel-moonbit/simcore",
+  "lb091188/steel-moonbit/simengine",
+}

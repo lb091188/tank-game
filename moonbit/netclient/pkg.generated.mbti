@@ -1,0 +1,141 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/netclient"
+
+// Values
+pub const SNAP_MIN_GAP : Int = 40
+
+pub fn encode_create(String, String, String) -> String
+
+pub fn encode_input(Int, Double, Double, Double, Double, Bool) -> String
+
+pub fn encode_join(String, String, String, String) -> String
+
+pub fn encode_leave() -> String
+
+pub fn encode_mode(String) -> String
+
+pub fn encode_ready(Bool, String) -> String
+
+pub fn encode_start(String, String) -> String
+
+pub fn encode_team(Int) -> String
+
+pub fn fmt_num(Double, Int) -> String
+
+pub fn now_ms() -> Double
+
+pub fn parse_server_msg(String) -> ServerMsg? raise
+
+pub async fn run_session(ClientState, String, String, String, String, String) -> Unit
+
+// Errors
+
+// Types and methods
+pub(all) struct ClientState {
+  snaps : SnapBuf
+  events : Array[ServerMsg]
+  mut my_id : Int
+  mut room : String
+  mut is_host : Bool
+  mut players : Array[PlayerRow]
+  mut started : Bool
+  mut seed : Int
+  mut map : String
+  mut mode : String
+  mut snap_count : Int
+  mut status : String
+  mut fatal : String?
+  mut in_throttle : Double
+  mut in_steer : Double
+  mut in_aim_yaw : Double
+  mut in_aim_pitch : Double
+  mut in_fire : Bool
+  mut quit : Bool
+  log : (String) -> Unit
+}
+pub fn ClientState::make((String) -> Unit) -> Self
+
+pub(all) struct EvData {
+  kind : String
+  shooter : Int
+  target : Int
+  hit_kind : String
+  dmg : Int
+  point : (Double, Double, Double)
+}
+
+pub(all) struct PlayerRow {
+  id : Int
+  name : String
+  tank : String
+  ready : Bool
+  host : Bool
+  team : Int
+  connected : Bool
+}
+
+pub(all) struct Pose {
+  x : Double
+  z : Double
+  y : Double
+  yaw : Double
+  tur : Double
+  pitch : Double
+  speed : Double
+  hp : Double
+  alive : Bool
+  reload_t : Double
+  reload_total : Double
+  clip_left : Int
+  body_pitch : Double
+  body_roll : Double
+}
+
+pub(all) struct Poses {
+  poses : Map[Int, Pose]
+  time_left : Int
+  scores : Map[Int, Int]
+}
+
+pub(all) enum ServerMsg {
+  Joined(String, Int, Array[PlayerRow], String)
+  Lobby(Array[PlayerRow])
+  Err(String)
+  Start(String, String, Int, Array[PlayerRow], Bool)
+  Snap(Int, Map[Int, SnapRow], Map[Int, Int])
+  Ev(EvData)
+  End(Array[(Int, String, Int)])
+  Left
+}
+
+pub struct SnapBuf {
+  snaps : Array[TimedSnap]
+}
+pub fn SnapBuf::SnapBuf() -> Self
+pub fn SnapBuf::interpolate(Self, Double, delay? : Double) -> Poses?
+pub fn SnapBuf::len(Self) -> Int
+pub fn SnapBuf::push(Self, Double, Int, Map[Int, SnapRow], Map[Int, Int]) -> Unit
+pub fn SnapBuf::reset(Self) -> Unit
+
+pub(all) struct SnapRow {
+  x : Double
+  z : Double
+  y : Double
+  yaw : Double
+  tur : Double
+  pitch : Double
+  speed : Double
+  hp : Double
+  alive : Bool
+  reload_t : Double
+  reload_total : Double
+  clip_left : Int
+  body_pitch : Double
+  body_roll : Double
+}
+
+type TimedSnap
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,58 @@
+// gameapp — 原生客户端场景装配 + 战斗闭环(steel-front 迁移阶段2/3, main 包):
+// 战斗闭环(combat.mbt): 鼠标拖拽转炮塔/左键开火(GAMEAPP_DEMO=1 自动演示:
+// 自动瞄准开火, 敌方还击) → simengine 弹场(散布/分段积分/部位 OBB 探针)
+// → 命中裁判(穿深/跳弹/吸收/模块损伤/击毁, srvsim Judge 同式) → 事件
+// (fire/hit/destroyed/reloaded) → 视效(曳光线条/火花烟粒子/闪光精灵)
+// + 音效(moonbit/audio, 名目对照 client/js/audio.js)。
+// 把 l01-encounter 真实地图装进单个 X11 窗口 —— 16 位高程图地形
+// (three-native BufferGeometry::heightfield + client terrain.js buildMesh
+// 同款主题顶点色)+ 草地 Repeat 平铺(世界坐标 UV)+ map.json player/waves
+// 的坦克 GLB 按 spawn 摆放(dataURI 内嵌贴图车型经 glbfix 重写后可载)。
+// 光照/雾/天色按 map.json lighting 段; ChaseCamera 追车视角;
+// 本车行驶接 simcore/simengine(WASD → 油门/转向, 固定步长 1/60 tick,
+// 节奏对齐 client/js/main.js tick 的累加器口径);
+// GAMEAPP_FRAMES(FFI getenv)设定时跑满自动退出 rc=0, 未设默认 300 帧。
+// 资产只读自 steel-front 主仓 client/。
+//
+// 输入走 three-native input 抽象(InputState/InputEvent/keysym_to_keycode),
+// 事件源是 yue Window 级键鼠回调 —— X11 泵(open_x11)在 GTK 宿主进程内
+// 被进程级因素阻断(three-native input 包 x11.mbt 教训1 + input_test 实录),
+// yue 后端在本机 A9 验收(xdotool 发键实录 /tmp/input_test_app.log)已证可用。
+//
+// three-native 依赖走 moon.work workspace 本地路径(仓根 moon.work members);
+// yue/wgpu_mbt/moonbit-libyue 是 three-native 声明的依赖, 已装 .mooncakes。
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/external_loop_integration",
+  "moonbitlang/core/double",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/core/math",
+  "lb091188/steel-moonbit/assets",
+  "lb091188/steel-moonbit/audio",
+  "lb091188/steel-moonbit/fontatlas",
+  "lb091188/steel-moonbit/gameapp/glbfix",
+  "lb091188/steel-moonbit/hud",
+  "lb091188/steel-moonbit/simcore",
+  "lb091188/steel-moonbit/simengine",
+  "NoahLiu/three-native/math3d",
+  "NoahLiu/three-native/core",
+  "NoahLiu/three-native/input",
+  "NoahLiu/three-native/lights",
+  "NoahLiu/three-native/loaders",
+  "NoahLiu/three-native/renderers",
+  "NoahLiu/moonbit-libyue/yue",
+  "Milky2018/wgpu_mbt",
+  "lb091188/steel-moonbit/netclient",
+}
+
+options(
+  // MP 模式: async ExternalEventLoop 的 GLib 单步泵(默认 GMainContext 即
+  // yue 的消息源挂载点, 见 glib_loop.c 头注)
+  "native-stub": [ "glib_loop.c" ],
+)
+
+pkgtype(kind: "executable")
+
+supported_targets = "native"

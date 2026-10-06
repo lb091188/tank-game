@@ -1,0 +1,15 @@
+// tracesrv — fixtures/golden/srvsim.json 重放比对器(main 包; 输出约定同 tracecheck)。
+// 重放算法 = tools/golden-trace2.js runSrvsim(dm + coop 两段)的 MoonBit 直译:
+// 全局 RNG 在每段 boot 前重置(rng_boot + bus_reset), 房间种子 777(dm)/778(coop)。
+pkgtype(kind: "executable")
+
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/core/math",
+  "lb091188/steel-moonbit/simcore",
+  "lb091188/steel-moonbit/srvsim",
+}

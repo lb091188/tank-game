@@ -1,0 +1,8 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "mizchi/zlib",
+  "mizchi/image",
+}
+
+pkgtype(kind: "executable")

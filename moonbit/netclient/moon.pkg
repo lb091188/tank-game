@@ -1,0 +1,18 @@
+// netclient — client/js/net.js + lobby.js 线协议的 MoonBit 原生对齐包:
+//   proto.mbt  出线编码(create/join/ready/team/mode/start/input/leave)+ 回包解析
+//              (joined/lobby/err/start/snap[14 字段行]/ev/end/left, server.js:398-565 对照)
+//   interp.mbt 快照缓冲插值(net.js interpolate 直译: SNAP_MIN_GAP=40 防坍缩 +
+//              角度环绕 lerp + 装填读条取最新帧)
+//   client.mbt 会话协程(official @websocket): 连接 → 建房/进房 → 开战 →
+//              recv 循环喂共享态 + 30Hz 输入上行; 共享态只被事件循环线程顺序
+//              访问(recv 协程在 poll 之间运行, GUI 回调在 poll 内运行, 无并发)。
+// 纯协议/插值部分有无网络均可 moon test(client.mbt 依赖 websocket, 仅 native)。
+import {
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/core/math",
+  "moonbitlang/async",
+  "moonbitlang/async/websocket",
+}
+
+supported_targets = "native"

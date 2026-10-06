@@ -1,0 +1,9 @@
+// audio_smoke — 音频链路冒烟入口(真设备出声, 人耳可复核)。
+import {
+  "moonbitlang/async",
+  "lb091188/steel-moonbit/audio",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "native"

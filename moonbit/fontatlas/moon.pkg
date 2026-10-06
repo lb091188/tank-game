@@ -1,0 +1,15 @@
+// fontatlas — HUD 字形图集烘焙(mizchi/font 栅格化 → shelf 装箱 → RGBA 纹理):
+// 启动时把 ASCII+常用符号一次性烘成一张白字/alpha 覆盖图集(three-native
+// Texture::from_rgba), 文字按字形矩形画成公告板四边形(hud 包消费)。
+import {
+  "mizchi/font",
+  "NoahLiu/three-native/core",
+}
+
+// 黑盒测试单独声明依赖(不继承主包 import)
+import {
+  "moonbitlang/core/encoding/utf8",
+  "mizchi/font",
+} for "test"
+
+supported_targets = "native"

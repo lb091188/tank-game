@@ -1,0 +1,5 @@
+// import {
+//   "lb091188/steel-moonbit" @lib,
+// }
+
+pkgtype(kind: "executable")

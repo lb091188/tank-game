@@ -1,0 +1,37 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/gameapp"
+
+import {
+  "moonbitlang/async/external_loop_integration",
+}
+
+// Values
+pub fn mp_addr() -> String?
+
+// Errors
+
+// Types and methods
+type ChaseCamera
+
+type Combat
+
+type Combatant
+
+type FlashItem
+
+type Fx
+
+type Ghost
+
+type Lighting
+
+type TankPlacement
+
+type Tracer
+
+type YueGlibLoop
+pub impl @external_loop_integration.ExternalEventLoop for YueGlibLoop
+
+// Type aliases
+
+// Traits

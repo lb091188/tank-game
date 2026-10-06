@@ -1,0 +1,783 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/ai"
+
+import {
+  "lb091188/steel-moonbit/simcore",
+}
+
+// Values
+pub const GRID_OBS_H : Double = 3.0
+
+pub const GRID_TGT_H : Double = 3.3
+
+pub const INF : Double = inf
+
+pub const SIDE_ARC : Double = 1.0471975512
+
+pub fn aim_to_local(Double, Double, Double, Double, Double, Double) -> (Double, Double, Double)
+
+pub fn ang_diff(Double, Double) -> Double
+
+pub fn ang_move_toward(Double, Double, Double) -> Double
+
+pub fn bush_state_of(Tank, World) -> @simcore.BushState
+
+pub fn camo_of_tank(Tank, World) -> Double
+
+pub fn clamp(Double, Double, Double) -> Double
+
+pub fn class_band_of(Ctx, String) -> (Double, Double)
+
+pub fn cls_armor_of(Cfg, String) -> Double
+
+pub fn collide_tank(Tank, @simcore.CoverList) -> (Double, Double)
+
+pub fn default_cfg() -> Cfg
+
+pub fn dist2d(Double, Double, Double, Double) -> Double
+
+pub fn fire(Ctx, Tank, Shells, Pos, Dir, (String, EvtData) -> Unit) -> Bool
+
+pub fn hide_frac_cls(Ctx, String) -> Double
+
+pub fn js_or0(Double?) -> Double
+
+pub fn js_or0v(Double) -> Double
+
+pub fn js_orv(Double, Double) -> Double
+
+pub fn js_round(Double) -> Double
+
+pub fn js_sign(Double) -> Double
+
+pub fn key_of(Tank, World) -> Int
+
+pub fn lerp(Double, Double, Double) -> Double
+
+pub fn los_clear(World, Double, Double, Double, Double) -> Bool
+
+pub fn los_clear_any(World, Tank, Tank, @simcore.Spot??, margin? : Double) -> Bool
+
+pub fn los_grid(World, Double, Double, Double, Double, Double, Double, Double, Double, @simcore.Spot?, margin? : Double) -> Bool
+
+pub fn make_shells(ShellHooks, max_shells? : Int) -> Shells
+
+pub fn mass_of(Spec) -> Double
+
+pub fn mk_tank(Ctx, Spec, String, x~ : Double, z~ : Double, yaw~ : Double, team~ : Int, net_id~ : Int, id? : Int) -> Tank
+
+pub fn move_toward(Double, Double, Double) -> Double
+
+pub fn nav_find_path(Ctx, World, Double, Double, Double, Double) -> Array[(Double, Double)]?
+
+pub fn nav_g(Ctx) -> Double
+
+pub fn nav_grid_of(Ctx, World) -> NavGrid
+
+pub fn nav_line_clear(Ctx, World, Double, Double, Double, Double) -> Bool
+
+pub fn nearest_plain(World, Tank) -> Tank?
+
+pub fn nearest_target(World, Ctx, Tank) -> Tank?
+
+pub fn now_t(Ctx) -> Double
+
+pub fn obb_push_out(Double, Double, Double, Double, Double, Double, Double, Double, Double, Double) -> (Double, Double)?
+
+pub fn part_boxes_pz4() -> TypeBoxes
+
+pub fn player_spot_margin(Ctx) -> Double
+
+pub fn probe_tank_obb(Tank, TypeBoxes?, Double, Double, Double, Double, Double, Double, Double) -> Hit?
+
+pub fn ray_obb3d(Double, Double, Double, Double, Double, Double, Double, Double, Double, Double, Axes, Double, Double, Double) -> (Double, Pos, Pos)?
+
+pub fn[T] sorted_keys(Map[Int, T]) -> Array[Int]
+
+pub fn spec_pz4() -> Spec
+
+pub fn sqrt(Double) -> Double
+
+pub fn[T] stable_sort_by(Array[T], (T, T) -> Double) -> Unit
+
+pub fn team_memo(World, Ctx) -> Memo
+
+pub fn update_tank(Ctx, Tank, Inp, Double, Env) -> Unit
+
+pub fn w_covers_blocked(World, Double, Double, Double, Double, Double, Double, Double, spot? : @simcore.Spot) -> Double
+
+pub fn w_nearest_cover_between(World, Double, Double, Double, Double) -> @simcore.Cover?
+
+// Errors
+
+// Types and methods
+pub(all) struct Ai {
+  ctx : Ctx
+  tank : Tank
+  p : Personality
+  mut lvl : Double
+  mut ang_rad : Double
+  mut ang_use : Double
+  mut straighten_lead : Double
+  mut td_mul : Double
+  mut ang_side : Double
+  mut ang_dead : Double
+  mut max_frac_reload : Double
+  mut rearm_s : Double
+  mut g_weak : Bool
+  mut g_gate : Bool
+  mut g_win : Bool
+  mut g_peek : Bool
+  mut g_preaim : Bool
+  mut preaim_yaw : Double?
+  mut advancing : Bool
+  mut rearm_brawl_s : Double
+  mut win_open : Bool
+  mut win_since : Double?
+  mut win_blk : Int
+  mut win_open_t : Double
+  mut win_chk_t : Double
+  mut tactic : String
+  mut tac_t : Double
+  mut hill_auth : Bool
+  mut hill_commit : Bool
+  mut hill_go_t : Double
+  mut cf_pt : Pt?
+  mut cf_t : Double
+  mut rev_pulse_ok : Bool
+  mut settle_t : Double
+  mut settle_cd : Double
+  patrol : Array[Pt]
+  hold : Bool
+  home : Pt
+  mut state : String
+  mut wp : Int
+  mut last_radio : Double
+  mut alert_t : Double
+  mut search_t : Double
+  mut search_pt : Pt?
+  mut flank_slot : Double
+  mut input : Inp
+  mut seen : Bool
+  mut react_t : Double
+  mut seen_any_t : Double
+  mut last_seen : Seen?
+  mut seen_now : Bool
+  mut last_target_id : Int
+  mut heard : Heard?
+  mut percept_t : Double
+  mut reposition_t : Double
+  mut retreat_t : Double
+  mut unstuck_t : Double
+  mut stuck_t : Double
+  mut nav_yaw_jitter : Double
+  mut nav_path : Array[(Double, Double)]?
+  mut nav_goal : (Double, Double)?
+  mut nav_t : Double
+  mut nav_chk : Double
+  f_hpw : Map[Int, HpwMemo]
+  hp_memo : Map[Int, HpMemo]
+  mut gate_tries : Int
+  mut gate_pt : Pt?
+  mut gate_pt_t : Double
+  mut gate_track : Bool
+  mut flank_plan_t : Double
+  mut track_t : Double
+  mut aim_ty : Double
+  mut cover_phase : String
+  mut cover_pt : Pt?
+  mut cover_peek : Pt?
+  mut peek_lead : Double
+  mut hide_frac : Double
+  mut cover_t : Double
+  mut cover_enter_t : Double
+  mut rev_stuck_t : Double
+  mut hide_chk_t : Double
+  mut cover_spot_ok : Bool
+  mut cover_ref : Tank?
+  mut cover_face : Double?
+  mut cover_cov : @simcore.Cover?
+  mut hide_stuck_t : Double?
+  mut hide_cov : Bool
+  mut shy_since : Double?
+  mut shy : Bool
+  mut strong : Bool
+  mut band : (Double, Double)?
+  mut memo : Memo?
+  mut role : String?
+  mut station : St?
+  mut st_latch : StLatch?
+  mut hill_t : Double?
+  mut intel_t : Double?
+  mut push_at : Double?
+  mut hurt_t : Double?
+  mut chain_t : Double
+  mut chain_pt : Pt?
+}
+pub fn Ai::band_for(Self) -> (Double, Double)
+pub fn Ai::block_cov(Self, World, RefT) -> @simcore.Cover?
+pub fn Ai::chain_hop(Self, World, RefT, Double, Double) -> Pt?
+pub fn Ai::cover_step(Self, World, RefT?, Double, Double, Double, Bool) -> Unit
+pub fn Ai::find_cover_spot(Self, World, RefT, Double, Double, Double) -> CoverPlan?
+pub fn Ai::focus_call(Self, Tank, World, Double) -> Unit
+pub fn Ai::grid_hidden(Self, Double, Double, RefT, World, face_yaw? : Double) -> Bool
+pub fn Ai::hide_drive(Self, Double, Double, Double, World, RefT) -> Bool
+pub fn Ai::hill_sync(Self, World, RefT) -> Unit
+pub fn Ai::navigate(Self, Double, Double, Double, World, face_yaw? : Double) -> Unit
+pub fn Ai::new(Ctx, Tank, String, Array[(Double, Double)]) -> Self
+pub fn Ai::on_hurt(Self, Tank) -> Unit
+pub fn Ai::peek_march(Self, Double, Double, Double, Double, RefT, Double, Double, World, Bool) -> Pt?
+pub fn Ai::perceive(Self, World) -> Unit
+pub fn Ai::repos_pt(Self, World, RefT, Double) -> Pt
+pub fn Ai::ridge_spot(Self, World, RefT, Double, Double, Double, Double, Double) -> CoverPlan?
+pub fn Ai::tactic_route(Self, World, RefT?, Double, Double, Double, Double, Bool) -> Unit
+pub fn Ai::update(Self, Double, World) -> Inp
+pub fn Ai::win_check(Self, Double, Double, Double, Double, Bool, World) -> (Bool, Double)
+pub fn Ai::win_edge(Self, Bool, Bool, World) -> Unit
+pub fn Ai::win_ray_clear(Self, Double, Double, Double, World, ox? : Double, oz? : Double) -> Int
+
+pub(all) struct AiCfg {
+  view_range : Double
+  reaction_time : Double
+  memory_time : Double
+  shot_hearing : Double
+  search_time : Double
+  radio_cooldown : Double
+  perception_interval : Double
+  spot_player_margin : Double
+  wp_on : Int
+  wp_front_deg : Double
+  wp_side_deg : Double
+  wp_low_y : Double
+  wp_side_y : Double
+  wp_rear_y : Double
+  wp_track_y : Double
+  wp_track_quota_s : Double
+  trade_on : Int
+  trade_kill_mult : Double
+  trade_shy_ratio : Double
+  trade_shy_hold_mul : Double
+  trade_bully_margin : Double
+  trade_bully_score : Double
+  trade_shy_max_s : Double
+  cls_armor_lt : Double
+  cls_armor_mt : Double
+  cls_armor_td : Double
+  cls_armor_ht : Double
+  cls_armor_spg : Double
+  skill_level : Double
+  angle_on : Int
+  angle_deg_mid : Double
+  angle_deg_max : Double
+  angle_settle_s : Double
+  angle_deadzone_deg : Double
+  angle_max_frac_of_reload : Double
+  angle_td_mul : Double
+  fd_on : Int
+  fd_recheck_s : Double
+  fd_rearm_s : Double
+  fd_rearm_brawl_s : Double
+  fd_settle_s : Double
+  fd_rearm_min_hidden_s : Double
+  fd_snap_s : Double
+  band_lt : (Double, Double)
+  band_mt : (Double, Double)
+  band_ht : (Double, Double)
+  band_td : (Double, Double)
+  band_spg : (Double, Double)
+  cf_on : Int
+  cf_min_angle_sep : Double
+  cf_push_out_deg : Double
+  cf_plug_window_s : Double
+  focus_on : Int
+  focus_update_s : Double
+  focus_memory_s : Double
+  focus_max_per_target : Int
+  focus_switch_s : Double
+  focus_slot_hyst_s : Double
+  role_on : Int
+  role_recompute_s : Double
+  role_yield_hp_pct : Double
+  role_line_min_frac : Double
+  role_band_mix : Double
+  role_td_depth_lo : Double
+  role_td_depth_hi : Double
+  role_td_rank_bias : Int
+  role_ht_rank_bias : Int
+  role_squad_line_n : Int
+  cover_on : Int
+  cover_max_cover_dist : Double
+  cover_hide_check_s : Double
+  cover_bush_affinity : Double
+  cover_min_dist_frac : Double
+  cover_suppress_memory_timeout : Double
+  cover_hide_frac_ht : Double
+  cover_hide_frac_mt : Double
+  cover_hide_frac_td : Double
+  cover_peek_pad : Double
+  cover_peek_march_m : Double
+  preaim_on : Int
+  preaim_cap_steer : Double
+  tac_on : Int
+  tac_recheck_s : Double
+  tac_hill_min_adv : Double
+  tac_hill_min_n : Int
+  tac_hill_rally_s : Double
+  tac_hill_plan_s : Double
+  tac_hill_auth_hold_s : Double
+  tac_cover_flank_after_s : Double
+  tac_lane_on : Int
+  tac_chain_on : Int
+  tac_chain_hop_max : Double
+  tac_chain_step_min : Double
+  p_flanker : Personality
+  p_sniper : Personality
+  p_hold : Personality
+}
+
+pub(all) struct AimPt {
+  x : Double
+  z : Double
+  vx : Double
+  vz : Double
+}
+
+pub(all) struct ArmorCfg {
+  ricochet_angle : Double
+  pen_variance : Double
+  dmg_variance : Double
+  track_duration : Double
+  engine_rear_chance : Double
+  ammo_chance : Double
+  ammo_dmg_mult : Double
+  ammo_reload_mult : Double
+  gun_disp_penalty : Double
+  engine_slow : Double
+}
+
+pub(all) struct AutoSpec {
+  clip : Int
+  intra : Double
+  long : Double
+}
+
+pub(all) struct Axes {
+  ex : Pos
+  ey : Pos
+  ez : Pos
+}
+
+pub(all) struct Bus {
+  mut handlers : Array[(String, (BusEvt) -> Unit)]
+}
+pub fn Bus::emit(Self, String, BusEvt) -> Unit
+pub fn Bus::new() -> Self
+pub fn Bus::on(Self, String, (BusEvt) -> Unit) -> Unit
+
+pub(all) enum BusEvt {
+  Radio(Tank, Double, Double)
+  Fire(Tank)
+  Destroyed(Tank)
+}
+
+pub(all) struct Cfg {
+  sim : SimCfg
+  armor : ArmorCfg
+  ai : AiCfg
+}
+
+pub(all) struct CoverPlan {
+  hide : Pt
+  peek : Pt
+  face : Double
+  cov : @simcore.Cover?
+  mut lead : Double
+}
+
+pub(all) struct Ctx {
+  mut rng : @simcore.Mulberry32
+  bus : Bus
+  cfg : Cfg
+  mut game_time : Double
+  mut game_world : World?
+  mut uid_n : Int
+  mut nav_grid : NavGrid?
+  mut nav_uid : Int
+}
+pub fn Ctx::new(Int) -> Self
+pub fn Ctx::rand(Self) -> Double
+
+pub(all) struct Dir {
+  x : Double
+  y : Double
+  z : Double
+}
+
+pub(all) struct DispSpec {
+  base : Double
+  aim_time : Double
+  max : Double
+  dmove : Double
+  hull_turn : Double
+  turret_turn : Double
+  fire : Double
+}
+
+pub(all) struct Env {
+  terrain : @simcore.Terrain
+  covers_list : @simcore.CoverList
+  tanks : Array[Tank]
+  time : Double
+  emit : (String, EvtData) -> Unit
+  on_moved : (Tank, Double) -> Unit
+  take_ram : (Tank, Tank, Int) -> Unit
+}
+
+pub(all) enum EvtData {
+  FireEv(Tank, Pos, Dir)
+  ReloadedEv(Tank)
+  RamEv(Tank, Tank, Int)
+  DestroyedEv(Tank, Tank?)
+  HitEv(Tank?, Tank, String, String, Int, String?, Pos)
+}
+
+pub(all) struct Focus {
+  mut net_id : Int
+  mut t : Double
+  mut hp : Double
+  mut hpw : Double
+  mut sc : Double
+}
+
+pub(all) struct FocusPrev {
+  net_id : Int
+  until : Double
+}
+
+pub(all) struct GunSpec {
+  pen : Double
+  dmg : Double
+  reload : Double
+  speed : Double
+  cal : Double?
+  grav : Double?
+  splash : Double?
+  life : Double?
+  autoloader : AutoSpec?
+}
+
+pub(all) struct Heard {
+  mut x : Double
+  mut z : Double
+  mut t : Double
+}
+
+pub(all) struct HillPlan {
+  mut t : Double
+  x : Double
+  z : Double
+  go_t : Double
+  reg : Map[Int, RegEntry]
+}
+
+pub(all) struct Hit {
+  distance : Double
+  point : Pos
+  normal : Pos
+  zone : String
+  armor : Double
+}
+
+pub(all) struct HpMemo {
+  mut hp : Double
+  mut max : Double
+}
+
+pub(all) struct HpwMemo {
+  mut hpw : Double
+}
+
+pub(all) struct Inp {
+  mut throttle : Double
+  mut steer : Double
+  mut aim_yaw : Double
+  mut aim_pitch : Double
+  mut fire : Bool
+  mut hold_turret : Bool
+}
+pub fn Inp::new(Double) -> Self
+
+pub(all) struct Intel {
+  mut x : Double
+  mut z : Double
+  mut t : Double
+  mut level : Int
+}
+
+pub(all) struct Memo {
+  sig : String
+  t : Double
+  list : Array[Tank]
+  by_k : Map[Int, Tank]
+  roles : Map[Int, String]
+  stations : Map[Int, St?]
+  plug_for : Map[Int, Int]
+  focus_slots : Map[Int, Double]
+  slot_memo : Map[Int, Double]
+  plug_pinned : Map[Int, Plug]
+  threat : Seen?
+  lead : Tank?
+}
+
+pub(all) struct NavGrid {
+  n : Int
+  lo : Double
+  st : Double
+  pass : FixedArray[Int]
+}
+
+pub(all) struct PartBox {
+  zone : String
+  armor : Double
+  px : String
+  cx : Double
+  cy : Double
+  cz : Double
+  qx : Double
+  qy : Double
+  qz : Double
+  qw : Double
+  hx : Double
+  hy : Double
+  hz : Double
+}
+
+pub(all) struct Personality {
+  band : (Double, Double)
+  flank_chance : Double
+  aim_patience : Double
+  lead_skill : Double
+  retreat_hp : Double
+  hold_ground : Bool
+  angle_skill : Double
+}
+
+pub(all) struct Plug {
+  by : Int
+  x : Double
+  z : Double
+  until : Double
+}
+
+pub(all) struct Pos {
+  mut x : Double
+  mut y : Double
+  mut z : Double
+}
+
+pub(all) struct Pt {
+  x : Double
+  z : Double
+}
+
+pub enum RefT {
+  RT(Tank)
+  RS(Seen)
+}
+pub fn RefT::alive(Self) -> Bool
+pub fn RefT::x(Self) -> Double
+pub fn RefT::yaw(Self) -> Double?
+pub fn RefT::z(Self) -> Double
+
+pub(all) struct RegEntry {
+  mut t : Double
+}
+
+pub(all) struct RespawnItem {
+  mut t : Double
+  tk : Tank
+}
+
+pub(all) struct SampleSpec {
+  l : Double
+  w : Double
+}
+
+pub(all) struct Seen {
+  mut x : Double
+  mut z : Double
+  vx : Double
+  vz : Double
+  mut t : Double
+}
+
+pub(all) struct ShEnv {
+  height_at : (Double, Double) -> Double
+  covers_blocked : (Double, Double, Double, Double, Double, Double, Double) -> Double
+  tanks : Array[Tank]
+  player_pos : Tank?
+  player_team : Int
+}
+
+pub(all) struct Shell {
+  mut active : Bool
+  owner : Tank
+  team : Int
+  pos : Pos
+  vel : Pos
+  mut pen : Double
+  mut dmg : Double
+  mut cal : Double
+  mut life : Double
+  mut warned : Bool
+  mut grav : Double
+  mut splash : Double
+  disp_at_fire : Double
+}
+
+pub(all) struct ShellHooks {
+  on_create : (Shell) -> Unit
+  on_flight : (Shell) -> Unit
+  on_impact : (String, Pos) -> Unit
+  on_player_miss : (Pos) -> Unit
+  on_near_miss : (Shell) -> Unit
+  on_kill : (Shell) -> Unit
+  probe_tank : (Shell, Tank, Double, Double, Double, Double, Double, Double, Double) -> Hit?
+  on_hit_tank : (Shell, Tank, Hit, Dir) -> Unit
+  on_explode : (Shell, Pos, Tank?, Double) -> Unit
+}
+
+pub(all) struct Shells {
+  mut list : Array[Shell]
+  cap : Int
+  hooks : ShellHooks
+}
+pub fn Shells::capped(Self) -> Bool
+pub fn Shells::spawn(Self, Ctx, Tank, Pos, Dir, Double) -> Shell?
+pub fn Shells::update(Self, Double, ShEnv) -> Unit
+
+pub(all) struct SimCfg {
+  shell_gravity : Double
+  max_slope : Double
+  fall_safe_v : Double
+  fall_k : Double
+  fall_track_v : Double
+  fall_track_chance : Double
+  gb_fwd : Array[Double]
+  gb_rev : Array[Double]
+  gb_torque_f : Array[Double]
+  gb_torque_r : Array[Double]
+  gb_pause : Double
+}
+
+pub(all) struct Spec {
+  cls : String
+  hp : Double
+  max_speed : Double
+  reverse_ratio : Double
+  accel : Double
+  brake : Double
+  coast_drag : Double
+  hull_traverse : Double
+  turret_traverse : Double
+  gun_depression : Double
+  gun_elevation : Double
+  gun_arc : Double?
+  turret_hull_lock : Bool
+  gun : GunSpec
+  sample : SampleSpec
+  dispersion : DispSpec
+  camo : Double?
+  view : Double?
+}
+
+pub(all) struct St {
+  x : Double
+  z : Double
+  side : Int?
+  d : Double?
+  mut deg : Double?
+  mut sc : Double?
+}
+
+pub(all) struct StLatch {
+  x : Double
+  z : Double
+  role : String?
+}
+
+pub(all) struct Tank {
+  typ : String
+  spec : Spec
+  mut x : Double
+  mut y : Double
+  mut z : Double
+  mut yaw : Double
+  mut speed : Double
+  mut vel_x : Double
+  mut vel_z : Double
+  mut last_yaw_rate : Double
+  mut last_turret_rate : Double
+  mut turret_yaw : Double
+  mut gun_pitch : Double
+  mut pitch : Double
+  mut roll : Double
+  mut track_offset : Double
+  mut gear : String
+  mut shift_t : Double
+  mut flip_t : Double
+  mut y_init : Bool
+  mut fall_v : Double
+  mut ram_t : Double
+  mut hp : Double
+  mut alive : Bool
+  mut reload_t : Double
+  mut reload_total : Double
+  mut clip_left : Int
+  mut clip_phase : String
+  mut disp : Double
+  mut mod_track : Double
+  mut mod_engine : Double
+  mut mod_gun : Double
+  mut mod_ammo : Double
+  parts_no_turret : Bool
+  cr : Double
+  team : Int
+  mut net_id : Int
+  is_player : Bool
+  id : Int?
+  uid : Int
+  mut last_fire_t : Double
+  mut stats_shots : Int
+  mut stats_hits : Int
+  mut stats_pens : Int
+  mut stats_dmg_dealt : Int
+  mut input : Inp
+  mut ai : Ai?
+}
+
+pub(all) struct TypeBoxes {
+  turret_pivot : (Double, Double, Double)
+  gun_pivot : (Double, Double, Double)
+  gun_parent : String
+  zones : Array[PartBox]
+}
+
+pub(all) struct World {
+  mut time : Double
+  terrain : @simcore.Terrain
+  terrain_uid : Int
+  covers : @simcore.CoverList
+  mut intel : Intel
+  enemies : Array[Tank]
+  player : Tank?
+  mp_targets : Array[Tank]
+  mut focus : Focus?
+  mut focus_prev : FocusPrev?
+  mut team_memo : Memo?
+  mut hill_plan : HillPlan?
+}
+
+// Type aliases
+
+// Traits

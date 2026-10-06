@@ -1,0 +1,9 @@
+// srvsim — client/js/srv-sim.js (SF.SrvSim) 权威房直译包, 连同其内核依赖链
+// config.js(SF.CFG/SF.Util 子集) / sim-engine.js(SF.SimEngine) / ai.js(SF.AI) 的同包直译;
+// 地形/掩体几何复用 simcore 包(SPEC.md 加载序 simcore→config→sim-engine→ai→srv-sim)。
+import {
+  "moonbitlang/core/double",
+  "moonbitlang/core/json",
+  "moonbitlang/core/math",
+  "lb091188/steel-moonbit/simcore",
+}

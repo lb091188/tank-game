@@ -1,0 +1,14 @@
+// assets — 游戏资产装载管线(client/js/assets.js 的 MoonBit 侧):
+// GLB 坦克清单+按名读字节(three-native load_glb 解析)、地图 map.json+16 位高程 PNG、
+// partBoxes.json(129 车型 OBB 部位盒表)。
+// 依赖 NoahLiu/three-native 走 moon.work workspace 本地路径解析(见仓根 moon.work);
+// moonbitlang/async 本体仅 async test 块需要(check 会对主包报一次 unused, 留之),
+// 高程 PNG16 解码直接用其 loaders 包(decode_png16_gray, 与 v9_image 实验同源)。
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
+  "NoahLiu/three-native/loaders",
+  "NoahLiu/three-native/core",
+}

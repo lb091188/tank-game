@@ -1,0 +1,136 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/assets"
+
+import {
+  "NoahLiu/three-native/core",
+}
+
+// Values
+pub let client_prefixes : Array[String]
+
+pub fn file_of_type(String) -> String?
+
+pub fn grid_to_world(Int, Int, Int, Double) -> (Double, Double)
+
+pub fn has_model(String) -> Bool
+
+pub fn heightmap_height_at(FixedArray[Double], Int, Double, Double, Double) -> Double
+
+pub fn load_heightmap(Bytes, Int, Double) -> FixedArray[Double] raise
+
+pub async fn load_map(String) -> MapData
+
+pub async fn load_partboxes() -> Map[String, PartBoxTable]
+
+pub async fn load_tank_glb(ModelStore, String) -> @core.Object3D
+
+pub fn map_from_json(Json, String, FixedArray[Double]) -> MapData raise
+
+pub let maps_manifest : Array[MapEntry]
+
+pub let model_files : Map[String, String]
+
+pub fn parse_map_json(String, String, FixedArray[Double]) -> MapData raise
+
+pub fn parse_partboxes(String) -> Map[String, PartBoxTable] raise
+
+pub let partboxes_candidates : Array[String]
+
+pub async fn read_client_file(String) -> Bytes
+
+pub fn read_glb_header(Bytes) -> GlbHeader raise
+
+pub async fn read_model_bytes(String) -> Bytes
+
+pub async fn resolve_client(String) -> String
+
+pub async fn resolve_rel(Array[String]) -> String?
+
+// Errors
+
+// Types and methods
+pub(all) struct GlbHeader {
+  version : UInt
+  total_length : Int
+  json_length : Int
+}
+
+pub(all) struct MapCover {
+  typ : String
+  x : Double
+  z : Double
+  yaw : Double
+  scale : Double
+}
+
+pub(all) struct MapData {
+  id : String
+  dir : String
+  name : String
+  terrain : TerrainCfg
+  heights : FixedArray[Double]
+  spawn : SpawnPoint
+  spawns : Array[SpawnPoint]
+  covers : Array[MapCover]
+  wave_count : Int
+  raw : Json
+}
+pub fn MapData::height_at(Self, Double, Double) -> Double
+
+pub(all) struct MapEntry {
+  id : String
+  dir : String
+  name : String
+  desc : String
+}
+
+pub(all) struct ModelStore {
+  mut bytes_cache : Map[String, Bytes]
+}
+pub async fn ModelStore::get_bytes(Self, String) -> Bytes
+pub fn ModelStore::new() -> Self
+
+pub(all) struct PartBox {
+  zone : String
+  armor : Int
+  parent : String
+  c : Vec3
+  h : Vec3
+  q : Vec4?
+}
+
+pub(all) struct PartBoxTable {
+  turret_pivot : Vec3
+  gun_pivot : Vec3
+  gun_parent : String
+  zones : Array[PartBox]
+}
+
+pub(all) struct SpawnPoint {
+  x : Double
+  z : Double
+  yaw : Double
+}
+
+pub(all) struct TerrainCfg {
+  size : Double
+  resolution : Int
+  max_height : Double
+}
+
+pub(all) struct Vec3 {
+  x : Double
+  y : Double
+  z : Double
+}
+
+pub(all) struct Vec4 {
+  x : Double
+  y : Double
+  z : Double
+  w : Double
+}
+
+// Type aliases
+
+// Traits

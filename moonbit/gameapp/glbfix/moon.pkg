@@ -1,0 +1,14 @@
+// glbfix — GLB dataURI 内嵌贴图重写器(gameapp 本地绕过层)。
+// 背景: steel moonbit/assets/glb.mbt 记档的卡点 —— three-native
+// load_embedded_texture(loaders/gltf.mbt)只认 images[i].bufferView,
+// 遇 dataURI 图直接 unwrap(None) panic(不可捕获), 7 个车型命中
+// (enemy-medium/enemy-td/enemy-heavy/m4-sherman/m4a3e8/m4a3e2-jumbo/stug3),
+// 其中 m4-sherman 是车库默认玩家车、stug3 在 l01 waves 里, gameapp 绕不开。
+// 做法: 装载前把 dataURI 图 base64 解码, 追加进 BIN chunk(4 字节对齐),
+// 新增 bufferView 并把 images[i] 改写为 {mimeType, bufferView}, 再重排容器;
+// 无 dataURI 的 GLB 原字节返回, load_glb 感知不到这层。
+import {
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+}

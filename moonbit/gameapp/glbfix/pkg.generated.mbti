@@ -1,0 +1,13 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/gameapp/glbfix"
+
+// Values
+pub fn patch_glb_datauri(Bytes) -> Bytes raise
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

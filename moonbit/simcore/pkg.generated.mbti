@@ -1,0 +1,96 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/simcore"
+
+// Values
+pub fn clamp(Double, Double, Double) -> Double
+
+pub fn cover_col(CoverRaw) -> Cover
+
+pub fn covers_blocked(CoverList, (Double, Double) -> Double, Double, Double, Double, Double, Double, Double, Double, spot? : Spot) -> Double
+
+pub fn heights_from_u16(FixedArray[UInt], Double) -> FixedArray[Float]
+
+pub fn make_terrain(FixedArray[Float], Double, Int) -> Terrain
+
+pub fn nearest_cover_between(CoverList, Double, Double, Double, Double) -> Cover?
+
+pub fn ray_circle(Double, Double, Double, Double, Double, Double, Double, Double) -> Double
+
+pub fn ray_obb(Double, Double, Double, Double, Double, Cover) -> Double
+
+// Errors
+
+// Types and methods
+pub(all) struct BushState {
+  in_bush : Bool
+  fired : Bool
+  concealed : Bool
+}
+
+pub(all) struct CamoTarget {
+  x : Double
+  z : Double
+  speed : Double
+  last_yaw_rate : Double
+  last_fire_t : Double
+  camo : Double?
+}
+
+pub(all) struct Cover {
+  typ : String
+  blocks_move : Bool
+  blocks_shells : Bool
+  blocks_spot : Bool
+  x : Double
+  z : Double
+  r : Double
+  h : Double
+  shape : String
+  yaw : Double
+  hx : Double
+  hz : Double
+}
+
+pub(all) struct CoverList {
+  items : Array[Cover]
+  mut bushes : Array[Cover]?
+}
+pub fn CoverList::bush_state(Self, CamoTarget, Double) -> BushState
+pub fn CoverList::camo_of(Self, CamoTarget, Double) -> Double
+
+pub(all) struct CoverRaw {
+  typ : String
+  x : Double
+  z : Double
+  yaw : Double?
+  scale : Double?
+}
+
+pub(all) struct Mulberry32 {
+  mut a : UInt
+}
+pub fn Mulberry32::new(Int) -> Self
+pub fn Mulberry32::next(Self) -> Double
+
+pub(all) struct Spot {
+  tx : Double
+  tz : Double
+  fired : Bool
+  concealed : Bool
+}
+
+pub(all) struct Terrain {
+  h : FixedArray[Float]
+  res : Int
+  size : Double
+  half : Double
+  cell : Double
+}
+pub fn Terrain::grad_at(Self, Double, Double) -> Double
+pub fn Terrain::height_at(Self, Double, Double) -> Double
+pub fn Terrain::los_blocked(Self, Double, Double, Double, Double, Double, Double, margin? : Double) -> Bool
+pub fn Terrain::slope_ahead(Self, Double, Double, Double, Double) -> Double
+
+// Type aliases
+
+// Traits

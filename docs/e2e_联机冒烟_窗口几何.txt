@@ -1,0 +1,24 @@
+
+xwininfo: Window id: 0x6200003 "steel-front MP 开战 l01/dm seed=1933559575 srvSim=true · 快照729"
+
+  Absolute upper-left X:  962
+  Absolute upper-left Y:  34
+  Relative upper-left X:  2
+  Relative upper-left Y:  34
+  Width: 800
+  Height: 600
+  Depth: 24
+  Visual: 0x2b
+  Visual Class: TrueColor
+  Border width: 0
+  Class: InputOutput
+  Colormap: 0x6200002 (installed)
+  Bit Gravity State: NorthWestGravity
+  Window Gravity State: NorthWestGravity
+  Backing Store State: NotUseful
+  Save Under State: no
+  Map State: IsViewable
+  Override Redirect State: no
+  Corners:  +962+34  -158+34  -158-446  +962-446
+  -geometry 800x600+960+0
+

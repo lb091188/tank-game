@@ -1,0 +1,44 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "lb091188/steel-moonbit/fontatlas"
+
+import {
+  "NoahLiu/three-native/core",
+  "mizchi/font",
+}
+
+// Values
+pub fn hud_codepoints() -> Array[Int]
+
+// Errors
+
+// Types and methods
+pub(all) struct FontAtlas {
+  texture : @core.Texture
+  width : Int
+  height : Int
+  size_px : Double
+  font : @font.TTFont
+  glyphs : Map[Int, GlyphInfo]
+}
+pub fn FontAtlas::bake(Bytes, Double, Int, Int, Array[Int]) -> Self raise
+pub fn FontAtlas::glyph_count(Self) -> Int
+pub fn FontAtlas::has(Self, Int) -> Bool
+pub fn FontAtlas::layout(Self, String, Double, Double, (Double, Double, Double, Double, Double, Double, Double, Double) -> Unit) -> Unit
+pub fn FontAtlas::line_height(Self) -> Double
+pub fn FontAtlas::measure(Self, String) -> Double
+
+pub(all) struct GlyphInfo {
+  cp : Int
+  u0 : Double
+  v0 : Double
+  u1 : Double
+  v1 : Double
+  w : Double
+  h : Double
+  ox : Double
+  oy : Double
+}
+
+// Type aliases
+
+// Traits

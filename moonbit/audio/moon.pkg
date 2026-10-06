@@ -1,0 +1,10 @@
+// audio — client/js/audio.js 能力面的 MoonBit 原生对齐包(moon_rodio 0.3.5 后端,
+// 播放链路与已验证的 v8_audio 同源: DeviceSinkBuilder::open_default_sink →
+// Mixer → Sink::connect_new + Decoder::builder().with_data().build()/build_looped())。
+import {
+  "Milky2018/moon_rodio",
+  "moonbitlang/core/ref",
+  "moonbitlang/core/debug",
+}
+
+supported_targets = "native"

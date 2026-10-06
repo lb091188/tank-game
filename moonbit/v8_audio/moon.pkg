@@ -1,0 +1,7 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "Milky2018/moon_rodio",
+}
+
+pkgtype(kind: "executable")
