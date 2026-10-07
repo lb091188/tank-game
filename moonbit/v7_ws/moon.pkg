@@ -1,6 +1,0 @@
-import {
-  "moonbitlang/async",
-  "moonbitlang/async/websocket",
-}
-
-pkgtype(kind: "executable")
